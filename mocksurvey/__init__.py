@@ -20,6 +20,8 @@ MockSurvey:
 """
 
 from . import hf
+from . import cf
+from . import tp
 
 import gc
 import math
@@ -1083,8 +1085,6 @@ class PFSSurvey(MockSurvey):
         MockSurvey.__init__(self, simbox, scheme=scheme, rdz_centers=centers, center=center, delta_z=delta_z, sqdeg=sqdeg_each, collision_fraction=collision_fraction)
         
     def wp_jackknife(self):
-        from . import cf
-        
         data = self.get_data()
         rands = self.get_rands()
         data2b = self.get_data(rdz=True)
