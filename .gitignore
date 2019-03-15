@@ -1,0 +1,4 @@
+# ignore the build
+build
+dist
+mocksurvey.egg*
