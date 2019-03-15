@@ -16,7 +16,7 @@ MockField:
     A more sophisticated version of BoxField, with identical data access methods, in which galaxies are selected by celestial coordinates by a given scheme (shape) on the sky.
 
 MockSurvey:
-    A collection of MockFields, centered at nearby places on the sky.
+    A collection of MockFields, centered at nearby places on the sky. Data access methods work in the same way as MockField.
 """
 
 from . import hf

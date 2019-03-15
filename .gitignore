@@ -1,4 +1,4 @@
 # ignore the build
-build
-dist
-mocksurvey.egg*
+/build
+/dist
+/mocksurvey.egg*
