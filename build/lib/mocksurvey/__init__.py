@@ -1,14 +1,32 @@
-from . import hf
-from . import cf
-from . import tp
+"""
+mocksurvey.py
+Author: Alan Pearl
 
-import scipy
+Some useful classes for coducting mock surveys of galaxies populated by `halotools`.
+
+Classes
+-------
+SimBox:
+   Contains information about the simulation box (e.g., the halo data), and populates galaxies given an HOD model available from `halotools`.
+
+BoxField:
+    Basic class used to select a rectangular prism of galaxies (or all galaxies by default) from the SimBox. Data can be accessed via convenient methods.
+
+MockField:
+    A more sophisticated version of BoxField, with identical data access methods, in which galaxies are selected by celestial coordinates by a given scheme (shape) on the sky.
+
+MockSurvey:
+    A collection of MockFields, centered at nearby places on the sky.
+"""
+
+from . import hf
+
 import gc
+import math
+import scipy
 import numpy as np
 from inspect import getfullargspec
-from math import sin, cos, acos, sqrt
-from halotools.sim_manager import CachedHaloCatalog
-from halotools.empirical_models import PrebuiltHodModelFactory
+from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
@@ -71,7 +89,7 @@ class FieldSelector:
         Output: The radius of a circular field (in Mpc/h OR radians)
         """
         omega = self.sqdeg * np.pi**2 / 180.**2
-        angle = acos(1 - omega/2./np.pi)
+        angle = math.acos(1 - omega/2./np.pi)
         
         if return_angle:
             return angle
@@ -83,10 +101,10 @@ class FieldSelector:
         Input: solid angle of entire field (in sq degrees)
         Output: The apothem of a square field (in Mpc/h OR radians)
         """
-        angle0 = sqrt(self.sqdeg)
+        angle0 = math.sqrt(self.sqdeg)
         omega = self.sqdeg * np.pi**2 / 180.**2
-        f = lambda angle: 2*angle*sin(angle/2.) - omega
-        fp = lambda angle: 2*sin(angle/2.) + angle*cos(angle/2.)
+        f = lambda angle: 2*angle*math.sin(angle/2.) - omega
+        fp = lambda angle: 2*math.sin(angle/2.) + angle*math.cos(angle/2.)
         if angle0 < np.pi/6.:
             angle = scipy.optimize.newton(f, fprime=fp, x0=angle0)/2.
         else:
@@ -104,9 +122,9 @@ class FieldSelector:
         """
         angle0 = self.circle_sqdeg2radius(return_angle=True)
         omega = self.sqdeg * np.pi**2 / 180.**2
-        cnst = 1 - sqrt(3)/4 * omega
-        f = lambda angle: angle*sin(angle) - cos(angle) + cnst
-        fp = lambda angle: angle*cos(angle) + 2*sin(angle)
+        cnst = 1 - math.sqrt(3)/4 * omega
+        f = lambda angle: angle*math.sin(angle) - math.cos(angle) + cnst
+        fp = lambda angle: angle*math.cos(angle) + 2*math.sin(angle)
         if angle0 < np.pi/6.:
             angle = scipy.optimize.newton(f, fprime=fp, x0=angle0)
         else:
@@ -145,7 +163,7 @@ class CartesianSelector(FieldSelector):
         """Select galaxies in a hexagon centered at ra,dec = (0,0) Mpc"""
         field_apothem = self.hexagon_sqdeg2apothem()
         xy = xyz[:,:2] - self.center[np.newaxis,:2]
-        diagonal = sqrt(3.) * xy[:,0]
+        diagonal = math.sqrt(3.) * xy[:,0]
         b1 = xy[:,1] < field_apothem
         b2 = xy[:,1] > -field_apothem
         b3 = xy[:,1] < 2*field_apothem - diagonal
@@ -167,7 +185,7 @@ class CartesianSelector(FieldSelector):
     def hexagon_fieldshape(self, rdz=False):
         if rdz: raise ValueError("Why would you need to know the Celestial field shape of a Cartesian field?...")
         field_apothem = self.hexagon_sqdeg2apothem()
-        return np.array([4./sqrt(3.)*field_apothem, 2.*field_apothem, self._z_length()], dtype=np.float32)
+        return np.array([4./math.sqrt(3.)*field_apothem, 2.*field_apothem, self._z_length()], dtype=np.float32)
 
 class CelestialSelector(FieldSelector):
     def __init__(self, mockfield):
@@ -198,7 +216,7 @@ class CelestialSelector(FieldSelector):
         """Select galaxies in a hexagon centered at ra,dec = (0,0) radians"""
         field_apothem = self.hexagon_sqdeg2apothem(return_angle=True)
         rd = rdz[:,:2] - self.center_rdz[np.newaxis,:2]
-        diagonal = sqrt(3.) * rd[:,0]
+        diagonal = np.sqrt(3.) * rd[:,0]
         b1 = rd[:,1] < field_apothem
         b2 = rd[:,1] > -field_apothem
         b3 = rd[:,1] < 2*field_apothem - diagonal
@@ -226,10 +244,10 @@ class CelestialSelector(FieldSelector):
     def hexagon_fieldshape(self, rdz=False):
         field_apothem = self.hexagon_sqdeg2apothem(return_angle=True)
         if rdz:
-            return np.array([4./sqrt(3.)*field_apothem, 2.*field_apothem, self.delta_z], dtype=np.float32)
+            return np.array([4./math.sqrt(3.)*field_apothem, 2.*field_apothem, self.delta_z], dtype=np.float32)
         else:
             field_apothem = hf.angle_lim_to_dist(field_apothem, self.mean_redshift+self.delta_z/2., self.cosmo)
-            return np.array([4./sqrt(3.)*field_apothem, 2.*field_apothem, self._z_length()], dtype=np.float32)
+            return np.array([4./math.sqrt(3.)*field_apothem, 2.*field_apothem, self._z_length()], dtype=np.float32)
 
 
 
@@ -282,6 +300,7 @@ class BoxField:
     - get_rands(rdz=False)
     - get_vel()
     - get_redshift(realspace=False)
+    - get_dist(realspace=False)
     - get_mgid()
     - get_shape(rdz=False)
     - make_rands()
@@ -383,15 +402,17 @@ class BoxField:
         -------
         vel : ndarray of shape (N,3)
             Array containing columns vx, vy, vz (units of km/s). To separate the columns, do one of the following:
-            - >>> `vx = vel[:,0]; vy = vel[:,1]; vz = vel[:,2]`
-            - >>> `vx,vy,vz = vel.T`
+            
+            >>> vx = vel[:,0]; vy = vel[:,1]; vz = vel[:,2]
+            
+            >>> vx,vy,vz = vel.T
         """
         vel = hf.xyz_array(self.simbox.gals, ["vx","vy","vz"])
         return vel[self.selection]
 
     def get_redshift(self, realspace=False):
         """
-        Returns the redshift of each galaxy selected by this object. Equivalent to `get_data(rdz=True)[:,2]`.
+        Returns the redshift of each galaxy selected by this object. Equivalent to ``get_data(rdz=True)[:,2]``.
         
         Returns
         -------
@@ -401,13 +422,30 @@ class BoxField:
         Parameters
         ----------
         realspace : boolean (default = False)
-            If `True`, return cosmological redshift only, ignoring any velocity distortion
+            If ``True``, return cosmological redshift only, ignoring any velocity distortion
         """
         rdz = self._rdz_real if realspace else self._rdz
         if rdz is None:
             rdz = self.get_data(rdz=True, realspace=realspace)
         
         return rdz[:,2]
+    
+    def get_dist(self, realspace=False):
+        """
+        Returns the comoving distance of each galaxy selected by this object.
+        
+        Returns
+        -------
+        distance : ndarray of shape (N,3)
+            Array containing the distance of each galaxy (units of Mpc/h)
+        
+        Parameters
+        ----------
+        realspace : boolean (default = False)
+            If ``True``, return true distance, ignoring any velocity distortion
+        """
+        xyz = self.get_data(realspace=realspace)
+        return np.sqrt(np.sum(xyz**2, axis=1))
         
 
     def get_mgid(self):
@@ -576,6 +614,7 @@ class MockField:
     - get_rands(rdz=False)
     - get_vel()
     - get_redshift(realspace=False)
+    - get_dist(realspace=False)
     - get_mgid()
     - get_shape(rdz=False)
     - make_rands()
@@ -643,6 +682,10 @@ class MockField:
     def get_redshift(self, realspace=False):
         return self._get_redshift(realspace=realspace)
     
+    def get_dist(self, realspace=False):
+        xyz = self.get_data(realspace=realspace)
+        return np.sqrt(np.sum(xyz**2, axis=1))
+    
     def get_mgid(self):
         return np.asarray(self.simbox.gals["mgid"][self.selection])
     
@@ -701,6 +744,7 @@ class MockField:
     get_rands.__doc__ = BoxField.get_rands.__doc__
     get_vel.__doc__ = BoxField.get_vel.__doc__
     get_redshift.__doc__ = BoxField.get_redshift.__doc__
+    get_dist.__doc__ = BoxField.get_dist.__doc__
     get_mgid.__doc__ = BoxField.get_mgid.__doc__
     get_shape.__doc__ = BoxField.get_shape.__doc__
     make_rands.__doc__ = BoxField.make_rands.__doc__
@@ -908,7 +952,7 @@ class MockField:
         
         points = np.array([ [0.,0.,0.], [self.simbox.Lbox[0], 0., 0.] ]) + origin
         ra = hf.ra_dec_z(points, np.zeros_like(points), self.simbox.cosmo)[:,0]
-        ra = abs(ra[1]-ra[0]) * sqrt(2.)
+        ra = abs(ra[1]-ra[0]) * math.sqrt(2.)
         
         Lbox_rdz = np.array([ra, ra, self.delta_z], dtype=np.float32)
         
@@ -1039,7 +1083,7 @@ class PFSSurvey(MockSurvey):
         MockSurvey.__init__(self, simbox, scheme=scheme, rdz_centers=centers, center=center, delta_z=delta_z, sqdeg=sqdeg_each, collision_fraction=collision_fraction)
         
     def wp_jackknife(self):
-        import correlation_functions as cf
+        from . import cf
         
         data = self.get_data()
         rands = self.get_rands()
@@ -1152,7 +1196,7 @@ class SimBox:
     def get_halos(self):
         """Get halo catalog from <simname> dark matter simulation"""
         self._set_version_name()
-        self.halocat = CachedHaloCatalog(simname=self.simname, redshift=self.redshift, 
+        self.halocat = sim_manager.CachedHaloCatalog(simname=self.simname, redshift=self.redshift, 
             halo_finder='rockstar', dz_tol=self.dz_tol, version_name=self.version_name)
         self.halos = self.halocat.halo_table
 
@@ -1167,7 +1211,7 @@ class SimBox:
 
     def construct_model(self):
         """Use HOD Model to construct mock galaxy sample"""
-        self.model = PrebuiltHodModelFactory(self.hodname, redshift=self.redshift, cosmo=self.cosmo, threshold=self.threshold)
+        self.model = empirical_models.PrebuiltHodModelFactory(self.hodname, redshift=self.redshift, cosmo=self.cosmo, threshold=self.threshold)
 
 # Generate a function to select halos before population, if performance is crucial
 # ================================================================================
@@ -1220,82 +1264,9 @@ class SimBox:
 
     def _set_version_name(self):
         if self.version_name is None:
-            if self.simname in {'multidark', 'bolshoi', 'bolplanck', 'consuelo'}:
-                self.version_name = 'halotools_v0p4'
+            if self.simname in {"multidark", "bolshoi", "bolplanck", "consuelo"}:
+                self.version_name = "halotools_v0p4"
             else:
-                self.version_name = 'my_cosmosim_halos'
+                self.version_name = "my_cosmosim_halos"
 
-def mock_testsuite(simbox=None, center=None, scheme=None, sqdeg=None):
-    """
-    Test a variety of centers and selection limits over the default SimBox.
-    The SimBox/centers/lims can be given, but the outputs will not be
-    tested against a known output
-    """
-    if (simbox is None) and (center is None) and (scheme is None) and (sqdeg is None):
-        test_exact_output = True
-    else:
-        test_exact_output = False
-    if simbox is None:
-        simbox = SimBox()
-    if center is None:
-        center = [200,200,200]
-    if scheme is None:
-        scheme = "hex"
-    if sqdeg is None:
-        sqdeg = 15.
-    
-    test_field(simbox, center, scheme, sqdeg, test_exact_output=test_exact_output)
 
-def test_field(simbox, center, scheme, sqdeg, cartesian_distortion=True, test_exact_output=False):
-    import test_plots as tp
-
-    field = simbox.field(center=center, scheme=scheme, sqdeg=sqdeg, cartesian_distortion=cartesian_distortion)
-    while True:
-        print("Show plots for center=%s, sqdeg=%s, cartesian_distortion=%s?"%(center, sqdeg, cartesian_distortion), end="")
-        user_input = input("(y/n) [q to quit] ==> ").lower()
-        make_plots = end_all = False
-        if user_input.startswith("y"):
-            make_plots = True
-            break
-        elif user_input.startswith("n"):
-            break
-        elif user_input.startswith("q"):
-            end_all = True
-            break
-
-    if end_all:
-        exit()
-
-    if make_plots:
-        import matplotlib.pyplot as plt
-        mass = tp.plot_halo_mass(field)
-        plt.show()
-        data_xyz, rand_xyz = tp.plot_pos_scatter(field)
-        plt.show()
-        data_rdz, rand_rdz = tp.plot_sky_scatter(field)
-        plt.show()
-        xi_real = tp.plot_xi_rp_pi(field, realspace=True)
-        plt.show()
-        xi_red = tp.plot_xi_rp_pi(field)
-        plt.show()
-        wp = tp.plot_wp_rp(field)
-        plt.show()
-    else:
-        mass = tp.plot_halo_mass(field, plot=False)
-        data_xyz, rand_xyz = tp.plot_pos_scatter(field, plot=False)
-        data_rdz, rand_rdz = tp.plot_sky_scatter(field, plot=False)
-        xi_real = tp.plot_xi_rp_pi(field, realspace=True, plot=False)
-        xi_red = tp.plot_xi_rp_pi(field, plot=False)
-        wp = tp.plot_wp_rp(field, plot=False)
-    
-    if test_exact_output and False:
-        np.save("test-suite/data_xyz", data_xyz)
-        np.save("test-suite/data_rdz", data_rdz)
-        np.save("test-suite/rand_xyz", rand_xyz)
-        np.save("test-suite/rand_rdz", rand_rdz)
-        np.save("test-suite/mass", mass)
-        np.save("test-suite/xi_real", xi_real)
-        np.save("test-suite/xi_red", xi_red)
-        np.save("test-suite/wp", wp)
-    
-    

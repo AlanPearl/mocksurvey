@@ -1,6 +1,6 @@
 Metadata-Version: 1.0
 Name: mocksurvey
-Version: 0.0.1.dev2
+Version: 0.0.1.dev3
 Summary: Some useful tools for conducting realistic mock surveys out of galaxies populated by `halotools` models.
 Home-page: UNKNOWN
 Author: Alan Pearl
