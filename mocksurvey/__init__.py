@@ -32,6 +32,60 @@ from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
+class ObsData:
+    def __init__(self, funcs, names=None, args=None, kwargs=None):
+        N = len(funcs)
+        self.funcs = funcs
+        self.names = range(N) if names is None else names
+        self.funcdic = dict(zip(names,funcs))
+        self.argsdic = dict(zip(names,[None]*N)) if args is None else dict(zip(names,args))
+        self.kwargsdic = dict(zip(names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
+        self.indexdic = {}
+        self.lendic = {}
+        
+        self.mean = None
+        self.covar = None
+        self.param_names = None
+        self.true_params = None
+    
+    def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, rdz_distance=False, debugging_plots=False):
+        
+        self.mean, self.covar = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, rdz_distance=rdz_distance, debugging_plots=debugging_plots)
+        return self.mean, self.covar
+    
+    def get_data(self, name=None, covar=True):
+        if self.mean is None:
+            if covar:
+                raise ValueError("Must run the jackknife first.\nUse <ObsData object>.jackknife(data,rands,...)")
+            if not covar:
+                raise ValueError("Must calculate the observables first.\nUse <ObsData object>.obs_func(data,rands)")
+        
+        if name is None:
+            return self.mean, self.covar if covar else self.mean
+        else:
+            index0 = self.indexdic[name]
+            index1 = index0 + self.lendic[name]
+            s = slice(index0, index1)
+            return self.mean[s], self.covar[s,s] if covar else self.mean[s]
+    
+    def obs_func(self, data, rands=None):
+        answers = []
+        i = 0
+        for name in self.names:
+            func = self.funcdic[name]
+            args = self.argsdic[name]
+            ans = np.atleast_1d(func(data,rands,*args))
+            l = len(ans)
+            if not name in self.indexdic:
+                self.indexdic[name] = i
+                self.lendic[name] = l
+            i += l
+            answers.append(ans)
+        answer = np.concatenate(answers)
+        if self.mean is None:
+            self.mean = answer
+        return answer
+
 class RedshiftSelector:
     def __init__(self, mockfield):
         self.mean_redshift = mockfield.simbox.redshift

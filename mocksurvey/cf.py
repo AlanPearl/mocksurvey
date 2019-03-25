@@ -4,7 +4,7 @@ import numpy as np
 from . import hf
 
 class PairCounts:
-    def __init__(self, Ndata, Nrand, DD, DR, RR, n_rpbins, pimax=None, dpi=None):
+    def __init__(self, Ndata, Nrand, DD, DR, RR, n_rpbins, pimax=None):
         """Class used to store information about the pair counts DD, DR, and RR
            needed for calculating correlation functions"""
         self.Ndata = Ndata
@@ -14,7 +14,6 @@ class PairCounts:
         self.RR = np.asarray(RR)
         self.n_rpbins = n_rpbins
         self.pimax = pimax
-        self.dpi = dpi
 
     def __add__(self, other):
         sums = (self.Ndata + other.Ndata,
@@ -22,7 +21,7 @@ class PairCounts:
                 self.DD + other.DD,
                 self.DR + other.DR,
                 self.RR + other.RR)
-        return PairCounts(*sums, self.n_rpbins, self.pimax, self.dpi)
+        return PairCounts(*sums, self.n_rpbins, self.pimax)
 
     def __repr__(self):
         msg = "\tPairCounts\n\t==========\n"
@@ -64,22 +63,15 @@ def paircount_r(data, rands, rbins, nthreads=2, pair_counter_func=Corrfunc.theor
 
 # Count pairs in rp and pi bins
 # =============================
-def paircount_rp_pi(data, rands, rpbins, pimax=50.0, dpi=1.0, nthreads=2, precomputed=(None,None,None)):
-    if dpi != 1.:
-        pimax //= dpi
-        data[:,2] /= dpi
-        rands[:,2] /= dpi
+def paircount_rp_pi(data, rands, rpbins, pimax=50.0, nthreads=2, precomputed=(None,None,None)):
     answer = paircount_r(data, rands, rpbins, nthreads, Corrfunc.theory.DDrppi,
-                 {"pimax":pimax}, {"pimax":pimax, "dpi":dpi}, precomputed)
-    if dpi != 1.:
-        data[:,2] *= dpi
-        rands[:,2] *= dpi
+                 {"pimax":pimax}, {"pimax":pimax}, precomputed)
 
     return answer
 
 def counts_to_wp(pc):
     # Only estimator available: Landy & Szalay (1993)
-    return pc.dpi * convert_rp_pi_counts_to_wp(pc.Ndata, pc.Ndata, pc.Nrand, pc.Nrand,
+    return convert_rp_pi_counts_to_wp(pc.Ndata, pc.Ndata, pc.Nrand, pc.Nrand,
                                       pc.DD, pc.DR, pc.DR, pc.RR, pc.n_rpbins, pc.pimax)
 
 def counts_to_xi(pc):
@@ -191,44 +183,65 @@ def xi_r(data, rands, rbins, nthreads=2, estimator='Landy-Szalay'):
     else:
         raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
 
-# Returns the projected correlation function wp(rp) using Corrfunc
-# ================================================================
-def wp_rp(data, rands, rpbins, pimax, dpi=1.0, nthreads=2):
-    # Only estimator available: Landy & Szalay (1993)
+def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=2):
+    """
+    wp_rp(data, rands, rpbins, pimax, boxsize=None, nthreads=2)
+    
+    Return the projected correlation function :math:`w_p(r_p)` to measure the clustering of `data`, compared to uniformly distributed `rands`. If `rands` is ``None``, then `data` must be selected from a cube of side length `boxsize`. Wrapper for Corrfunc. Only Landy & Szalay estimator available.
+    
+    Parameters
+    ----------
+    data : array_like, with shape (N,3)
+        Array containing columns x, y, z of data to be measured. Units should be
+        
+    rands : array_like, with shape (Nrand,3)
+        Array containing columns x, y, z of random data uniformly selected in the same space as `data`.
+    
+    rpbins : array_like, with shape (Nbins+1,)
+        Array containing the edges of bins of separation ``rp = sqrt(dx^2 + dy^2)``. Must be increasing in value.
+    
+    pimax : float (default = 50.)
+        Line-of-sight (z-direction) separation to integrate the correlation function over.
+    
+    boxsize : float (default = None)
+        Side length of the cube which `data` is selected in. Only used if `rands` is set to ``None``.
+    
+    nthreads : int (default = 2)
+        Number of CPU cores to be used for multiprocessing.
+    
+    Returns
+    -------
+    wp : ndarray, with shape (Nbins,)
+        Projected two-point correlation function (units of distance) evaluated within each specified bin enclosed by `rpbins`.
+    """
     if rands is None:
-        return Corrfunc.theory.wp()
+        assert(not boxsize is None)
+        return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
     n_rpbins = len(rpbins) - 1
 
     x,y,z = data.T
     xr,yr,zr = rands.T
-
-    zr = zr/dpi
-    z = z/dpi
-    pimax //= dpi
 
     N = len(data)
     Nran = len(rands)
     if N==0 or Nran==0:
         return np.nan
 
-    DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins,
-                X1=x, Y1=y, Z1=z, periodic=False)
+    DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
     DD = DD['npairs']
 
-    DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins,
-                X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)
+    DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)
     DR = DR['npairs']
 
-    RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins,
-                X1=xr, Y1=yr, Z1=zr, periodic=False)
+    RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
     RR = RR['npairs']
 
-    wp = dpi * convert_rp_pi_counts_to_wp(N, N, Nran, Nran, DD, DR, DR, RR, n_rpbins, pimax)
+    wp = convert_rp_pi_counts_to_wp(N, N, Nran, Nran, DD, DR, DR, RR, n_rpbins, pimax)
     return wp
 
-def wp_rp_box(data, rpbins, pimax, boxsize, dpi=1.0, nthreads=2):
-    wp = Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)
-    return wp["wp"]
+# def wp_rp_box(data, rpbins, pimax, boxsize, nthreads=2):
+#     wp = Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)
+#     return wp["wp"]
 
 # Calculate any of the above three correlation functions, estimating errors via the block jackknife/bootstrap method
 # ==================================================================================================================
@@ -262,29 +275,28 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
 
     ind_d, ind_r = _assign_block_indices(data_to_bin, rands_to_bin, centers, fieldshape, nbins, rdz_distance)
     
-    if rands is None:
-        mean_answer = func(data, *args, **kwargs)
-    else:
-        mean_answer = func(data, rands, *args, **kwargs)
+    mean_answer = func(data, rands, *args, **kwargs)
 
     answer_l = []
     for l in range(N):
         ind_d_sample = np.where(ind_d != l)[0]
-        if not rands is None: ind_r_sample = np.where(ind_r != l)[0]
-        
         data_sample = data[ind_d_sample]
-        if not rands is None: rands_sample = rands[ind_r_sample]
+        if not rands is None:
+            ind_r_sample = np.where(ind_r != l)[0]
+            rands_sample = rands[ind_r_sample]
+        else:
+            rands_sample = None
+        
         if debugging_plots:
             import matplotlib.pyplot as plt
             if not rands is None: plt.scatter(rands_to_bin[ind_r_sample][:,0], rands_to_bin[ind_r_sample][:,1], s=.1)
             plt.scatter(data_to_bin[ind_d_sample][:,0], data_to_bin[ind_d_sample][:,1], s=1)
             plt.show()
-        if rands is None:
-            answer_l.append(func(data_sample, *args, **kwargs))
-        else:
-            answer_l.append(func(data_sample, rands_sample, *args, **kwargs))
-        if np.all(np.isnan(answer_l[-1])):
+        
+        answer_l.append(func(data_sample, rands_sample, *args, **kwargs))
+        if np.any(np.isnan(answer_l[-1])):
             answer_l.pop()
+            N -= 1
     answer_l = np.asarray(answer_l)
 
     covar = (N-1)/N * np.sum( (answer_l[:,:,None] - mean_answer[None,:,None]) * (answer_l[:,None,:] - mean_answer[None,None,:]), axis=0)

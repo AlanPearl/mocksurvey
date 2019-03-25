@@ -286,11 +286,21 @@ def xyz_array(struc_array, keys=['x', 'y', 'z'], attributes=False):
     z = struc_array[keys[2]]
     return np.vstack([x, y, z]).T
 
+def logN(data, rands, njackknife=None, volume_factor=1):
+    if njackknife is None:
+        factor = 1
+    else:
+        n = np.product(njackknife)
+        factor = n/(n-1)
+    return np.log(volume_factor*factor*len(data))
+
+# def logN(data, rands, njackknife=None, volume_factor=1):
+#         return logN_box(data, njackknife, volume_factor)
+# logN.__doc__ = "**Only use this function if `rands` argument is required. Else use logN_box**\n" + logN_box.__doc__
 
 def rand_rdz(N, ralim, declim, zlim, seed=None):
     """
-Returns an array of shape (N,3) with columns ra,dec,z within the specified limits
-such that the selected points are chosen randomly over a uniform distribution
+Returns an array of shape (N,3) with columns ra,dec,z (z is treated as distance) within the specified limits such that the selected points are chosen randomly over a uniform distribution
     """
     N = int(N)
     if not seed is None: np.random.seed(seed)
