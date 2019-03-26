@@ -215,7 +215,8 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=2):
         Projected two-point correlation function (units of distance) evaluated within each specified bin enclosed by `rpbins`.
     """
     if rands is None:
-        assert(not boxsize is None)
+        if boxsize is None:
+            raise ValueError("`boxsize` cannot be None if `rands` is None")
         return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
     n_rpbins = len(rpbins) - 1
 
@@ -272,6 +273,9 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
     N = np.product(nbins)
     if hf.is_arraylike(centers[0]):
         N *= len(centers)
+    
+    centers = np.asarray(centers)
+    fieldshape = np.asarray(fieldshape)
 
     ind_d, ind_r = _assign_block_indices(data_to_bin, rands_to_bin, centers, fieldshape, nbins, rdz_distance)
     

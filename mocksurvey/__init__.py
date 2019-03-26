@@ -38,7 +38,7 @@ class ObsData:
         self.funcs = funcs
         self.names = range(N) if names is None else names
         self.funcdic = dict(zip(names,funcs))
-        self.argsdic = dict(zip(names,[None]*N)) if args is None else dict(zip(names,args))
+        self.argsdic = dict(zip(names,[()]*N)) if args is None else dict(zip(names,args))
         self.kwargsdic = dict(zip(names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
         self.indexdic = {}
         self.lendic = {}
@@ -74,13 +74,17 @@ class ObsData:
         for name in self.names:
             func = self.funcdic[name]
             args = self.argsdic[name]
-            ans = np.atleast_1d(func(data,rands,*args))
+            kwargs = self.kwargsdic[name]
+            
+            ans = np.atleast_1d(func(data,rands,*args,**kwargs))
+            answers.append(ans)
+            
             l = len(ans)
             if not name in self.indexdic:
                 self.indexdic[name] = i
                 self.lendic[name] = l
             i += l
-            answers.append(ans)
+            
         answer = np.concatenate(answers)
         if self.mean is None:
             self.mean = answer
