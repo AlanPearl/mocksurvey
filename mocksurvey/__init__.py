@@ -756,7 +756,22 @@ class MockField:
             selector = CelestialSelector(self)
         
         return selector.get_fieldshape(rdz=rdz)
-
+    
+    def get_lims(self, rdz=False, overestimation_factor=1.):
+        shape = self.get_shape(rdz=rdz) * overestimation_factor
+        center = self.center_rdz if rdz else self.center
+        
+        z_shape = self.get_shape(rdz=True)[2] * overestimation_factor
+        z_center = self.center_rdz[2]
+        
+        xlim = [center[0]-shape[0]/2., center[0]+shape[0]/2.]
+        ylim = [center[1]-shape[1]/2., center[1]+shape[1]/2.]
+        zlim = [z_center-z_shape/2., self.z_center+z_shape/2.]
+        if not rdz:
+            zlim = self.simbox.cosmo.comoving_distance(np.asarray(zlim)) * self.simbox.cosmo.h
+        
+        return np.array([xlim, ylim, zlim])
+    
     def make_rands(self, density_factor=None, seed=None):
         if density_factor is None:
             density_factor = self.rand_density_factor
@@ -778,15 +793,17 @@ class MockField:
         
         else:
             # Celestial (ra,dec) selection
-            field_shape = self.get_shape(rdz=True) * 1.02
-            field_shape = np.min([field_shape, 2.*self.Lbox_rdz], axis=0)
-            ralim = [self.center_rdz[0]-field_shape[0]/2., self.center_rdz[0]+field_shape[0]/2.]
-            declim = [self.center_rdz[1]-field_shape[1]/2., self.center_rdz[1]+field_shape[1]/2.]
-            zlim = [self.simbox.redshift-field_shape[2]/2., self.simbox.redshift+field_shape[2]/2.]
-            zlim = self.simbox.cosmo.comoving_distance(np.asarray(zlim)) * self.simbox.cosmo.h
+            ralim, declim, _ = self.get_lims(rdz=True, overestimation_factor=1.02)
+            zlim = self.get_lims(rdz=False, overestimation_factor=1.02)[2]
+            # field_shape = self.get_shape(rdz=True) * 1.02
+            # field_shape = np.min([field_shape, 2.*self.Lbox_rdz], axis=0)
+            # ralim = [self.center_rdz[0]-field_shape[0]/2., self.center_rdz[0]+field_shape[0]/2.]
+            # declim = [self.center_rdz[1]-field_shape[1]/2., self.center_rdz[1]+field_shape[1]/2.]
+            # zlim = [self.simbox.redshift-field_shape[2]/2., self.simbox.redshift+field_shape[2]/2.]
+            # zlim = self.simbox.cosmo.comoving_distance(np.asarray(zlim)) * self.simbox.cosmo.h
             
             rands = hf.rand_rdz(Nran, ralim, declim, zlim.value, seed)
-            rands = hf.rdz2xyz(rands, None) + self.origin
+            rands = self.rdz2xyz(rands, input_distance=True)
             
             
         self._rands = {
@@ -808,6 +825,33 @@ class MockField:
     get_mgid.__doc__ = BoxField.get_mgid.__doc__
     get_shape.__doc__ = BoxField.get_shape.__doc__
     make_rands.__doc__ = BoxField.make_rands.__doc__
+    
+    def xyz2rdz(self, xyz, vel=None):
+        return hf.ra_dec_z(xyz-self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
+    
+    def rdz2xyz(self, rdz, input_distance=True):
+        cosmo = None if input_distance else self.simbox.cosmo
+        return hf.rdz2xyz(rdz, cosmo=cosmo) + self.origin
+    
+    def measure_volume(self, precision=1e-3):
+        rdz_lims = self.get_lims(rdz=True, overestimation_factor=1.02)
+        N0 = 10000
+        N = N0
+        n = 0
+        r = 0
+        sigma = lambda: np.sqrt( (1-r)/(r*(N-1)) )
+        get_Nmore = lambda: int( N0 - N + 1 + (1-r)/(r*sigma()**2) )
+        
+        Nmore = N
+        while (not r) or (sigma() > precision):
+            rand_rdz = hf.rand_rdz(Nmore, *rdz_lims)
+            n += self._rdz_selection(rand_rdz).sum()/Nmore
+            r = n/N
+            
+            Nmore = get_Nmore()
+            N += Nmore
+            
+        return r * hf.volume_rdz(*rdz_lims)
     
 # Private member functions
 # ========================
@@ -867,8 +911,7 @@ class MockField:
             already_done = {xkey, ykey, zkey}.issubset(datanames)
             if not already_done:
                 rdz = self._get_rdz(realspace=realspace, dataset=dataset)
-                xyz = hf.rdz2xyz(rdz, cosmo=self.simbox.cosmo) + self.origin
-                xyz = xyz
+                xyz = self.rdz2xyz(rdz)
                 hf.update_table(dataset, {xkey: xyz[:,0], ykey: xyz[:,1], zkey: xyz[:,2]})
 
         xyz = hf.xyz_array(dataset, keys=[xkey, ykey, zkey])
@@ -997,7 +1040,7 @@ class MockField:
         else:
             vel = self._get_vel(dataset=dataset)
         
-        return hf.ra_dec_z(xyz, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
+        return hf.ra_dec_z(xyz-self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
 
     
     def _centers_to_origin(self):
@@ -1101,7 +1144,7 @@ class MockSurvey:
         selection = np.any(selections, axis=0)
         
         self.rand_rdz = self.rand_rdz[selection]
-        self.rand_xyz = hf.rdz2xyz(self.rand_rdz, self.simbox.cosmo) + self.origin
+        self.rand_xyz = self.rdz2xyz(self.rand_rdz)
         
     
     def _field2survey(self, funcstring, rdz, realspace):

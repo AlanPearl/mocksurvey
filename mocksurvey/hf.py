@@ -328,7 +328,7 @@ def rdz_distance(rdz, rdz_prime, cosmo=None):
     
     Returns the distance of each rdz coordinate from rdz_prime
     """
-    if hasattr(cosmo, "comoving_distance"):
+    if not cosmo is None:
         rdz[:,2] = (cosmo.comoving_distance(rdz[:,2]).value * cosmo.h).astype(np.float32)
     r,d,z = rdz.T
     rp,dp,zp = rdz_prime
