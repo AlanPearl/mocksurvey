@@ -775,23 +775,23 @@ class MockField:
         density_gals = self.simbox.get_density()
         density_rands = density_factor * density_gals
         
-        field_shape = self.get_shape() * 1.02 # Increase limits by 2%, just to be safe :)
-        # Don't generate a field of randoms way bigger than the size of the simulation box in any dimension
-        field_shape = np.min([field_shape, self.simbox.Lbox + np.abs(self.simbox.Lbox - 2.*self.center)], axis=0)
-        Nran = int(density_rands * np.product(field_shape) + 0.5)
-        
         if self.cartesian_selection:
+            volume = np.product(self.get_shape(rdz=False))
+            Nran = int(density_rands * volume + 0.5)
             # Cartesian selection
             if not seed is None:
                 np.random.seed(seed)
-            rands = (np.random.random((Nran, 3)).astype(np.float32) - 0.5) * field_shape[None,:] + self.center[None,:]
+            rands = (np.random.random((Nran, 3)).astype(np.float32) - 0.5) * self.get_shape(rdz=False)[None,:] + self.center[None,:]
         
         else:
             # Celestial (ra,dec) selection
             ralim, declim, _ = self.get_lims(rdz=True, overestimation_factor=1.02)
-            zlim = self.get_lims(rdz=False, overestimation_factor=1.02)[2]
+            zlim = self.get_lims(rdz=False, overestimation_factor=1.02)[2] - self.origin[2]
             
-            rands = hf.rand_rdz(Nran, ralim, declim, zlim.value, seed)
+            volume = hf.volume_rdz(ralim, declim, zlim)
+            Nran = int(density_rands * volume + 0.5)
+            
+            rands = hf.rand_rdz(Nran, ralim, declim, zlim, seed)
             rands = self.rdz2xyz(rands, input_distance=True)
             
             
@@ -818,7 +818,7 @@ class MockField:
     def xyz2rdz(self, xyz, vel=None):
         return hf.ra_dec_z(xyz-self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
     
-    def rdz2xyz(self, rdz, input_distance=True):
+    def rdz2xyz(self, rdz, input_distance=False):
         cosmo = None if input_distance else self.simbox.cosmo
         return hf.rdz2xyz(rdz, cosmo=cosmo) + self.origin
     
@@ -1130,16 +1130,16 @@ class MockSurvey:
         
         density = density_factor * self.simbox.get_density()
         lims = np.asarray(self.get_shape(rdz=True, return_lims=True)).T
+        lims[2] = np.asarray(self.get_shape(rdz=False, return_lims=True)).T[2]
         
-        N = density * hf.volume_rdz(*lims, cosmo=self.simbox.cosmo)
-        
+        N = density * hf.volume_rdz(*lims)
         self.rand_rdz = hf.rand_rdz(N, *lims, seed=seed).astype(np.float32)
         
-        selections = [field._rdz_selection(self.rand_rdz) for field in self.fields]
+        selections = [field._rdz_selection(self.rand_rdz, input_distance=True) for field in self.fields]
         selection = np.any(selections, axis=0)
         
         self.rand_rdz = self.rand_rdz[selection]
-        self.rand_xyz = self.rdz2xyz(self.rand_rdz)
+        self.rand_xyz = self.rdz2xyz(self.rand_rdz, input_distance=True)
         
     
     def _field2survey(self, funcstring, rdz, realspace):
