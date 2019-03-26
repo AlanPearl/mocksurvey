@@ -322,7 +322,7 @@ class BoxField:
         - **shape** = None (select all, equivalent to `shape=simbox.Lbox`)
         - **collision_fraction** = 0.
         - **realspace_selection** = False
-        - **empty_field** = False
+        - **empty** = `simbox.empty` (default = False)
         - **rand_density_factor** = 10.
         - **zprec** = 1e-3
     
@@ -345,7 +345,7 @@ class BoxField:
     realspace_selection : boolean
         If true, select galaxies before applying velocity distortion.
     
-    empty_field : boolean
+    empty : boolean
         If true, don't actually select any galaxies. Necessary if the simbox has not been populated.
     
     rand_density_factor : float
@@ -371,7 +371,7 @@ class BoxField:
         self.shape = None
         self.collision_fraction = 0.
         self.realspace_selection = False
-        self.empty_field = False
+        self.empty = simbox.empty
         self.rand_density_factor = 10.
         self.zprec = 1e-3
         
@@ -379,7 +379,7 @@ class BoxField:
         
         self.center = np.asarray(self.center, dtype=np.float32)
         self.selection = slice(None)
-        if (not self.shape is None) and (not self.empty_field):
+        if (not self.shape is None) and (not self.empty):
             self.shape = np.atleast_1d(self.shape).astype(np.float32)
             if len(self.shape) == 1: self.shape = np.tile(self.shape, 3)
             self.selection = self._make_selection()
@@ -621,7 +621,7 @@ class MockField:
         - **realspace_selection** = False
         - **cartesian_selection** = False
         - **cartesian_distortion** = False
-        - **empty_field** = False
+        - **empty** = False
         - **rand_density_factor** = 20.
         - **zprec** = 1e-3
     
@@ -659,7 +659,7 @@ class MockField:
     cartesian_distortion : boolean
         If true, apply velocity distortion along the :math:`\\hat{z}` direction instead of the exact line-of-sight direction.
     
-    empty_field : boolean
+    empty : boolean
         If true, don't actually select any galaxies. Necessary if the simbox has not been populated.
     
     rand_density_factor : float
@@ -686,7 +686,7 @@ class MockField:
         self.cartesian_distortion = False
         self.cartesian_selection = False
         self.realspace_selection = False
-        self.empty_field = False
+        self.empty = simbox.empty
         self.collision_fraction = 0.
         self.scheme = "square"
         self.sqdeg = 15.
@@ -702,7 +702,7 @@ class MockField:
         self.field_selector, self.redshift_selector = self.get_selectors()
         
         # Create field selection from FieldSelector, given sqdeg and scheme
-        if not self.empty_field:
+        if not self.empty:
             self._initialize()
     
     def _initialize(self):
@@ -714,14 +714,14 @@ class MockField:
         for key in self._gals:
             self._gals[key] = self._gals[key][self.selection]
         #gc.collect()
-
+    
     def get_selectors(self):
         if self.cartesian_selection:
             return CartesianSelector(self).make_selection, RedshiftSelector(self).make_selection
         else:
             return CelestialSelector(self).make_selection, RedshiftSelector(self).make_selection
-        
-
+    
+    
 # Public member functions for data access
 # =======================================
     def get_data(self, rdz=False, realspace=False):
@@ -761,16 +761,11 @@ class MockField:
         shape = self.get_shape(rdz=rdz) * overestimation_factor
         center = self.center_rdz if rdz else self.center
         
-        z_shape = self.get_shape(rdz=True)[2] * overestimation_factor
-        z_center = self.center_rdz[2]
-        
         xlim = [center[0]-shape[0]/2., center[0]+shape[0]/2.]
         ylim = [center[1]-shape[1]/2., center[1]+shape[1]/2.]
-        zlim = [z_center-z_shape/2., self.z_center+z_shape/2.]
-        if not rdz:
-            zlim = self.simbox.cosmo.comoving_distance(np.asarray(zlim)) * self.simbox.cosmo.h
+        zlim = [center[2]-shape[2]/2., center[2]+shape[2]/2.]
         
-        return np.array([xlim, ylim, zlim])
+        return np.array([xlim, ylim, zlim], dtype=np.float32)
     
     def make_rands(self, density_factor=None, seed=None):
         if density_factor is None:
@@ -795,12 +790,6 @@ class MockField:
             # Celestial (ra,dec) selection
             ralim, declim, _ = self.get_lims(rdz=True, overestimation_factor=1.02)
             zlim = self.get_lims(rdz=False, overestimation_factor=1.02)[2]
-            # field_shape = self.get_shape(rdz=True) * 1.02
-            # field_shape = np.min([field_shape, 2.*self.Lbox_rdz], axis=0)
-            # ralim = [self.center_rdz[0]-field_shape[0]/2., self.center_rdz[0]+field_shape[0]/2.]
-            # declim = [self.center_rdz[1]-field_shape[1]/2., self.center_rdz[1]+field_shape[1]/2.]
-            # zlim = [self.simbox.redshift-field_shape[2]/2., self.simbox.redshift+field_shape[2]/2.]
-            # zlim = self.simbox.cosmo.comoving_distance(np.asarray(zlim)) * self.simbox.cosmo.h
             
             rands = hf.rand_rdz(Nran, ralim, declim, zlim.value, seed)
             rands = self.rdz2xyz(rands, input_distance=True)
@@ -835,22 +824,29 @@ class MockField:
     
     def measure_volume(self, precision=1e-3):
         rdz_lims = self.get_lims(rdz=True, overestimation_factor=1.02)
+        rdz_lims[2] = self.simbox.redshift2distance(rdz_lims[2])
         N0 = 10000
-        N = N0
+        N = 0
         n = 0
         r = 0
         sigma = lambda: np.sqrt( (1-r)/(r*(N-1)) )
-        get_Nmore = lambda: int( N0 - N + 1 + (1-r)/(r*sigma()**2) )
+        get_Nmore = lambda: int( N0 - N + 1 + (1-r)/(r*precision**2) )
         
-        Nmore = N
+        Nmore = N0
+        i = 0
         while (not r) or (sigma() > precision):
+            i += 1
+            if i > 10:
+                raise RecursionError(f"sigma={sigma} > required={precision} after 10 iterations")
             rand_rdz = hf.rand_rdz(Nmore, *rdz_lims)
-            n += self._rdz_selection(rand_rdz).sum()/Nmore
-            r = n/N
             
-            Nmore = get_Nmore()
+            n += self._rdz_selection(rand_rdz, input_distance=True).sum()
             N += Nmore
             
+            r = n/N
+            
+            Nmore = get_Nmore() if r else N0
+        
         return r * hf.volume_rdz(*rdz_lims)
     
 # Private member functions
@@ -941,11 +937,11 @@ class MockField:
         
         already_done = zkey in datanames
         if not already_done:
-            xyz = self._get_xyz(realspace=realspace, dataset=dataset) - self.origin
+            xyz = self._get_xyz(realspace=realspace, dataset=dataset)
             if self.cartesian_distortion:
-                dist = xyz[:,2]
+                dist = xyz[:,2] - self.origin[None,2]
             else:
-                dist = np.sqrt(np.sum(xyz**2, axis=1))
+                dist = np.sqrt(np.sum((xyz-self.origin[None,:])**2, axis=1))
             
             vr = np.zeros(dist.shape)
             redshift = hf.distance2redshift(dist, vr, self.simbox.cosmo, self.zprec)
@@ -969,10 +965,14 @@ class MockField:
         selection[collisions] = False
         return selection
     
-    def _rdz_selection(self, data):
-        redshift = data[:,2]
-        data = data[:,:2]
-        return self.field_selector(data) & self.redshift_selector(redshift)
+    def _rdz_selection(self, data, input_distance=False):
+        zlim = self.get_lims(rdz=not input_distance)[2]
+        if input_distance: zlim -= self.origin[2]
+        
+        red_select = (zlim[0] < data[:,2]) & (data[:,2] < zlim[1])
+        field_select = self.field_selector(data[:,:2])
+        
+        return field_select & red_select
 
     def _get_dataset_helper(self, dataset):
         if not isinstance(dataset, str):
@@ -1032,16 +1032,11 @@ class MockField:
             cosmology=self.simbox.cosmo, redshift=self.simbox.redshift, period=self.simbox.Lbox)
 
         return xyz_red.astype(np.float32)
-
+    
     def _redshift_distortion_rdz(self, realspace=False, dataset=None):
-        xyz = self._get_xyz(realspace=True, dataset=dataset) - self.origin
-        if realspace:
-            vel = np.zeros(xyz.shape, dtype=np.float32)
-        else:
-            vel = self._get_vel(dataset=dataset)
-        
-        return hf.ra_dec_z(xyz-self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
-
+        xyz = self._get_xyz(realspace=True, dataset=dataset)
+        vel = None if realspace else self._get_vel(dataset=dataset)
+        return self.xyz2rdz(xyz, vel)
     
     def _centers_to_origin(self):
         # Cast to numpy arrays
@@ -1175,7 +1170,7 @@ class PFSSurvey(MockSurvey):
         if center is None:
             center = simbox.Lbox/2.
         
-        emptyfield = simbox.field(delta_z=delta_z, sqdeg=sqdeg_each, scheme=scheme, empty_field=True)
+        emptyfield = simbox.field(delta_z=delta_z, sqdeg=sqdeg_each, scheme=scheme, empty=True)
         w,h,_ = emptyfield.get_shape(rdz=True)
         w *= 3./4.; h *= 0.5
         centers = [[-3*w,0], [-2*w,h], [-2*w,-h], [-w,0], [0,h], [0,-h],
@@ -1217,26 +1212,30 @@ class SimBox:
         self.populate_on_instantiation = True # Populate the galaxies upon instantiation
         self.dz_tol = 0.1 # Make sure only one halo catalog exists within +/- dz_tol of given redshift
         self.Nbox = None
+        self.Lbox = np.array([1000.]*3, dtype=np.float32)
+        self.empty = False
+        self.volume = None
 
         # Update default parameters with any keyword arguments
         hf.kwargs2attributes(self, kwargs)
         # Initialize model and get halos
         self.populated = False
         self.construct_model()
-        self.get_halos()
-        if self.Nbox is None:
-            self.Lbox = self.halocat.Lbox.astype(np.float32)  # side lengths (x,y,z) of the box
-        else:
-            self.Nbox = np.asarray(self.Nbox)
-            self.Lbox = (self.halocat.Lbox * self.Nbox).astype(np.float32)
-        
-        self.mgid_counter = 0 # assign mock galaxy id's starting from zero
-        if self.populate_on_instantiation:
-            # Paint galaxies into the dark matter halos
-            self.populate_mock()
+        if not self.empty:
+            self.get_halos()
+            if self.Nbox is None:
+                self.Lbox = self.halocat.Lbox.astype(np.float32)  # side lengths (x,y,z) of the box
+            else:
+                self.Nbox = np.asarray(self.Nbox)
+                self.Lbox = (self.halocat.Lbox * self.Nbox).astype(np.float32)
+            
+            self.mgid_counter = 0 # assign mock galaxy id's starting from zero
+            if self.populate_on_instantiation:
+                # Paint galaxies into the dark matter halos
+                self.populate_mock()
 
-    def get_density(self, dataset="gals", rdz_lims=None):
-        volume = self.get_volume(rdz_lims=rdz_lims)
+    def get_density(self, dataset="gals"):
+        volume = np.product(self.Lbox) if self.volume is None else self.volume
         if dataset.startswith("gal"):
             number = len(self.gals)
         elif dataset.startswith("halo"):
@@ -1245,14 +1244,12 @@ class SimBox:
             raise ValueError("dataset=%s invalid. Must be in {`gal*`, `halo*`}"%dataset)
         return number/volume
     
-    def get_volume(self, rdz_lims=None):
-        if rdz_lims is None:
-            return np.product(self.Lbox)
-        
-        ralim,declim,zlim = rdz_lims
-        return hf.volume_rdz(ralim, declim, zlim, cosmo=self.cosmo)
-        # TODO
-
+    def get_volume(self):
+        return np.product(self.Lbox)
+    
+    def redshift2distance(self, redshift):
+        dist = self.cosmo.comoving_distance(redshift).value * self.cosmo.h
+        return dist.astype(redshift.dtype)
 # Conduct a mock observation (a single field or a multi-field survey)
 # =========================================
 
