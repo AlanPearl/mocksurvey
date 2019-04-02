@@ -2,7 +2,7 @@ try:
     corrfunc_works = True
     import Corrfunc.theory
     from Corrfunc.utils import convert_rp_pi_counts_to_wp#, convert_3d_counts_to_cf
-except ModuleNotFoundError:
+except ImportError:
     corrfunc_works = False
     import halotools.mock_observables as mockobs
 import numpy as np
