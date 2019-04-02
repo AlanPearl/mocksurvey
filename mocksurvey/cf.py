@@ -1,5 +1,10 @@
-import Corrfunc.theory
-from Corrfunc.utils import convert_rp_pi_counts_to_wp#, convert_3d_counts_to_cf
+try:
+    corrfunc_works = True
+    import Corrfunc.theory
+    from Corrfunc.utils import convert_rp_pi_counts_to_wp#, convert_3d_counts_to_cf
+except ModuleNotFoundError:
+    corrfunc_works = False
+    import halotools.mock_observables as mockobs
 import numpy as np
 from . import hf
 
@@ -240,16 +245,14 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=2):
     wp = convert_rp_pi_counts_to_wp(N, N, Nran, Nran, DD, DR, DR, RR, n_rpbins, pimax)
     return wp
 
-# def wp_rp_box(data, rpbins, pimax, boxsize, nthreads=2):
-#     wp = Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)
-#     return wp["wp"]
-
 # Calculate any of the above three correlation functions, estimating errors via the block jackknife/bootstrap method
 # ==================================================================================================================
 def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, func="xi_r", args=[], kwargs={}, rdz_distance=False, debugging_plots=False):
     """
     Given a function which returns a statistic over an array of rbins,
-    compute the statistic and its uncertainty
+    compute the statistic and its uncertainty.
+    The function provided MUST take data and rands as its first two
+    arguments, each being ndarrays of shape (N,3)
     ___
     Returns:
     - statistic [rp]
@@ -263,12 +266,10 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
         pass
     elif func.lower() == 'xi_r':
         func = xi_r
-    elif func.lower() == 'xi_rp_pi':
-        func = xi_rp_pi
     elif func.lower() == 'wp_rp':
         func = wp_rp
     else:
-        raise KeyError("Argument func=%s not valid. Must be one of: %s" %(func, '{<callable>, "xi_r", "xi_rp_pi", "wp_rp"}'))
+        raise KeyError("Argument func=%s not valid. Must be one of: %s" %(func, '{<callable>, "xi_r", "wp_rp"}'))
 
     N = np.product(nbins)
     if hf.is_arraylike(centers[0]):

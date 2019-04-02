@@ -1221,6 +1221,7 @@ class SimBox:
         # Initialize model and get halos
         self.populated = False
         self.construct_model()
+        self.Lbox = np.asarray(self.Lbox, dtype=np.float32)
         if not self.empty:
             self.get_halos()
             if self.Nbox is None:
@@ -1290,6 +1291,9 @@ class SimBox:
             self._populate_periodically(Nbox, seed, masking_function)
         else:
             self._populate(seed, masking_function)
+        
+        # TODO: set this column here instead of asserting it
+        assert(self.gals["mgid"] == np.arange(len(self.gals)))
 
     def get_halos(self):
         """Get halo catalog from <simname> dark matter simulation"""
