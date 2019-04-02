@@ -38,7 +38,7 @@ class PairCounts:
 
 # Count pairs in 3D r bins
 # ========================
-def paircount_r(data, rands, rbins, nthreads=2, pair_counter_func=Corrfunc.theory.DD,
+def paircount_r(data, rands, rbins, nthreads=1, pair_counter_func=Corrfunc.theory.DD,
                 kwargs={}, pc_kwargs={}, precomputed=(None,None,None)):
     x,y,z = data.T
     xr,yr,zr = rands.T
@@ -68,7 +68,7 @@ def paircount_r(data, rands, rbins, nthreads=2, pair_counter_func=Corrfunc.theor
 
 # Count pairs in rp and pi bins
 # =============================
-def paircount_rp_pi(data, rands, rpbins, pimax=50.0, nthreads=2, precomputed=(None,None,None)):
+def paircount_rp_pi(data, rands, rpbins, pimax=50.0, nthreads=1, precomputed=(None,None,None)):
     answer = paircount_r(data, rands, rpbins, nthreads, Corrfunc.theory.DDrppi,
                  {"pimax":pimax}, {"pimax":pimax}, precomputed)
 
@@ -126,7 +126,7 @@ def bias_rp(data, rands, rpbins, wp_dms=None, pimax=50., suppress_warning=False)
 
 # Returns the 2D correlation function xi(rp, pi) using Corrfunc
 # =============================================================
-def xi_rp_pi(data, rands, rpbins, pibins, nthreads=2, estimator='Landy-Szalay'):
+def xi_rp_pi(data, rands, rpbins, pibins, nthreads=1, estimator='Landy-Szalay'):
     # Corrfunc implementation requires evenly spaced pibins, with first bin starting at pi=0
     pimax = pibins[-1]
     n_pibins = len(pibins) - 1
@@ -140,6 +140,10 @@ def xi_rp_pi(data, rands, rpbins, pibins, nthreads=2, estimator='Landy-Szalay'):
     xr,yr,zr = rands.T * array_factor
     if len(data)==0 or len(rands)==0:
         return np.nan
+    
+    if not corrfunc_works:
+        return mockobs.rp_pi_tpcf(data, rpbins, pibins, randoms=rands, 
+                                  num_threads=nthreads, estimator=estimator)
 
     DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
     DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
@@ -162,12 +166,15 @@ def xi_rp_pi(data, rands, rpbins, pibins, nthreads=2, estimator='Landy-Szalay'):
 
 # Returns the 3D correlation function xi(r) using Corrfunc
 # ========================================================
-def xi_r(data, rands, rbins, nthreads=2, estimator='Landy-Szalay'):
+def xi_r(data, rands, rbins, nthreads=1, estimator='Landy-Szalay'):
     x,y,z = data.T
     xr,yr,zr = rands.T
     if len(data)==0 or len(rands)==0:
         return np.nan
-
+    
+    if not corrfunc_works:
+        return mockobs.tpcf(data, rbins, randoms=rands, estimator=estimator, num_threads=nthreads)
+    
     DD_counts = Corrfunc.theory.DD(autocorr=True, nthreads=nthreads, binfile=rbins, X1=x, Y1=y, Z1=z, periodic=False)
     DD_counts = DD_counts['npairs']
 
@@ -188,9 +195,9 @@ def xi_r(data, rands, rbins, nthreads=2, estimator='Landy-Szalay'):
     else:
         raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
 
-def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=2):
+def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1):
     """
-    wp_rp(data, rands, rpbins, pimax, boxsize=None, nthreads=2)
+    wp_rp(data, rands, rpbins, pimax, boxsize=None, nthreads=1)
     
     Return the projected correlation function :math:`w_p(r_p)` to measure the clustering of `data`, compared to uniformly distributed `rands`. If `rands` is ``None``, then `data` must be selected from a cube of side length `boxsize`. Wrapper for Corrfunc. Only Landy & Szalay estimator available.
     
@@ -222,6 +229,12 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=2):
     if rands is None:
         if boxsize is None:
             raise ValueError("`boxsize` cannot be None if `rands` is None")
+        
+        if not corrfunc_works:
+            return mockobs.wp(data, rpbins, pimax, period=boxsize,
+                              estimator="Landy-Szalay", num_threads=nthreads)
+        
+        boxsize = np.atleast_1d(boxsize)[0]
         return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
     n_rpbins = len(rpbins) - 1
 
@@ -232,7 +245,11 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=2):
     Nran = len(rands)
     if N==0 or Nran==0:
         return np.nan
-
+    
+    if not corrfunc_works:
+        return mockobs.wp(data, rpbins, pimax, randoms=rands, 
+                          estimator="Landy-Szalay", num_threads=nthreads)
+    
     DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
     DD = DD['npairs']
 

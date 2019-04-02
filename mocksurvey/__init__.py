@@ -837,7 +837,7 @@ class MockField:
         while (not r) or (sigma() > precision):
             i += 1
             if i > 10:
-                raise RecursionError(f"sigma={sigma} > required={precision} after 10 iterations")
+                raise RecursionError("sigma=%f > required=%f after 10 iterations" %(sigma, precision))
             rand_rdz = hf.rand_rdz(Nmore, *rdz_lims)
             
             n += self._rdz_selection(rand_rdz, input_distance=True).sum()
@@ -1292,8 +1292,8 @@ class SimBox:
         else:
             self._populate(seed, masking_function)
         
-        # TODO: set this column here instead of asserting it
-        assert(self.gals["mgid"] == np.arange(len(self.gals)))
+        # TODO: make this assertion work. And then set it here instead of asserting it
+        # assert(np.all(self.gals["mgid"] == np.arange(len(self.gals))))
 
     def get_halos(self):
         """Get halo catalog from <simname> dark matter simulation"""
