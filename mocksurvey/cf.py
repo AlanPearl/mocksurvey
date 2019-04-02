@@ -38,10 +38,17 @@ class PairCounts:
 
 # Count pairs in 3D r bins
 # ========================
-def paircount_r(data, rands, rbins, nthreads=1, pair_counter_func=Corrfunc.theory.DD,
+def paircount_r(data, rands, rbins, nthreads=1, pair_counter_func="DD",
                 kwargs={}, pc_kwargs={}, precomputed=(None,None,None)):
     x,y,z = data.T
     xr,yr,zr = rands.T
+    
+    if callable(pair_counter_func):
+        pass
+    elif pair_counter_func.lower() == "dd":
+        pair_counter_func = Corrfunc.theory.DD
+    else:
+        raise ValueError("pair_counter_func must be callable")
     
     DD_counts, DR_counts, RR_counts = precomputed
     if len(data)<2:
