@@ -357,7 +357,7 @@ class BoxField:
     Useful Methods
     --------------
     - get_data(rdz=False, realspace=False)
-    - get_rands(rdz=False)
+    - get_rands(rdz=False, realspace=False)
     - get_vel()
     - get_redshift(realspace=False)
     - get_dist(realspace=False)
@@ -402,7 +402,7 @@ class BoxField:
         
     def get_data(self, rdz=False, realspace=False):
         """
-        Returns the positions of all galaxies selected by this object
+        Returns the positions of all galaxies selected by this object.
         
         Returns
         -------
@@ -430,9 +430,9 @@ class BoxField:
             self._set_data(xyz, rdz=rdz, realspace=realspace)
         return xyz
     
-    def get_rands(self, rdz=False):
+    def get_rands(self, rdz=False, realspace=True):
         """
-        Returns the positions of uniform random data selected by this object
+        Returns the positions of uniform random data selected by this object.
         
         Returns
         -------
@@ -447,6 +447,9 @@ class BoxField:
         ----------
         rdz : boolean (default = False)
             If ``True``, return columns of ra, dec, z (ra,dec in radians)
+        
+        realspace : boolean (default = True)
+            This argument is IGNORED and only included for consistency between get_data() and get_rands()
         """
         if self._xyz_rands is None:
             self.make_rands()
@@ -510,7 +513,7 @@ class BoxField:
 
     def get_mgid(self):
         """
-        Returns the Mock Galaxy ID of each galaxy selected by this object
+        Returns the Mock Galaxy ID of each galaxy selected by this object.
         
         Returns
         -------
@@ -542,7 +545,7 @@ class BoxField:
     
     def make_rands(self, density_factor=None, seed=None):
         """
-        Generate a uniform distribution of random data to trace the selection function of this object
+        Generate a uniform distribution of random data to trace the selection function of this object.
         
         Parameters
         ----------
@@ -550,7 +553,7 @@ class BoxField:
             Generate this many times more data than the number of galaxies. A value of ~20 or higher is encouraged if randoms are going to be used for correlation functions down to radii under 1 Mpc/h
         
         seed : int (default = None)
-            Seed for the random generation so it may be reproduced.
+            Seed for the random generation so it may be reproduced
         """
         if density_factor is None:
             density_factor = self.rand_density_factor
@@ -671,7 +674,7 @@ class MockField:
     Useful Methods
     --------------
     - get_data(rdz=False, realspace=False)
-    - get_rands(rdz=False)
+    - get_rands(rdz=False, realspace=True)
     - get_vel()
     - get_redshift(realspace=False)
     - get_dist(realspace=False)
@@ -730,7 +733,7 @@ class MockField:
         else:
             return self._get_xyz(dataset=self._gals, realspace=realspace)
     
-    def get_rands(self, rdz=False):
+    def get_rands(self, rdz=False, realspace=True):
         if rdz:
             return self._get_rdz(dataset=self._rands)
         else:

@@ -84,14 +84,14 @@ def paircount_rp_pi(data, rands, rpbins, pimax=50.0, nthreads=1, precomputed=(No
 def counts_to_wp(pc):
     # Only estimator available: Landy & Szalay (1993)
     return convert_rp_pi_counts_to_wp(pc.Ndata, pc.Ndata, pc.Nrand, pc.Nrand,
-                                      pc.DD, pc.DR, pc.DR, pc.RR, pc.n_rpbins, pc.pimax)
+                    pc.DD, pc.DR, pc.DR, pc.RR, pc.n_rpbins, pc.pimax)
 
 def counts_to_xi(pc):
     """
     Returns xi(r) if given Paircounts object has no pimax value
     Else, returns xi(rp, pi)"""
     # Use the Landy & Szalay (1993) estimator
-    factor = pc.Nrand / pc.Ndata
+    factor = pc.Nrand / float(pc.Ndata)
     factor2 = factor**2
     xi = (factor2*pc.DD - 2.*factor*pc.DR + pc.RR)/pc.RR
     if not pc.pimax is None:

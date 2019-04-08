@@ -25,7 +25,7 @@ def get_N_subsamples_len_M(sample, N, M, norepeats=False, suppress_warning=False
     if norepeats:
         if N*M > maxM:
             msg = "Warning: Cannot make %d subsamples without repeats\n" %N
-            N = int(maxM/M)
+            N = int(maxM/float(M))
             msg += "Making %d subsamples instead" %N
             if not suppress_warning:
                 print(msg)
@@ -288,11 +288,19 @@ def xyz_array(struc_array, keys=['x', 'y', 'z'], attributes=False):
 
 def logN(data, rands, njackknife=None, volume_factor=1):
     if njackknife is None:
-        factor = 1
+        jackknife_factor = 1
     else:
         n = np.product(njackknife)
-        factor = n/(n-1)
-    return np.log(volume_factor*factor*len(data))
+        jackknife_factor = n/float(n-1)
+    return np.log(volume_factor*jackknife_factor*len(data))
+
+def ln_density(data, rands, volume, njackknife=None):
+    if njackknife is None:
+        jackknife_factor = 1
+    else:
+        n = np.product(njackknife)
+        jackknife_factor = n/float(n-1)
+    return np.log(jackknife_factor * len(data) / float(volume))
 
 # def logN(data, rands, njackknife=None, volume_factor=1):
 #         return logN_box(data, njackknife, volume_factor)
