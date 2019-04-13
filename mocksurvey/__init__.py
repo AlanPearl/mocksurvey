@@ -320,12 +320,12 @@ class BoxField:
     Default Values:
         - **center** = `simbox.Lbox`/2.
         - **shape** = None (select all, equivalent to `shape=simbox.Lbox`)
+        - **realspace** = False
         - **collision_fraction** = 0.
         - **realspace_selection** = False
         - **empty** = `simbox.empty` (default = False)
         - **rand_density_factor** = 10.
         - **zprec** = 1e-3
-    
     Arguments
     ---------
     simbox : SimBox object
@@ -338,6 +338,9 @@ class BoxField:
         
     shape : float or array_like, with shape (3,)
         Length of the field in the x, y, and z directions, i.e. select all galaxies within `center` :math:`\pm` 0.5 * `shape`. If float is given, then each dimension will be the same length.
+    
+    realspace : boolean
+        If true, do not apply redshift distortion to galaxies.
     
     collision_fraction : float, between 0 and 1
         Fraction of galaxies to randomly exclude from the observation.
