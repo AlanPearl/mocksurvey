@@ -32,6 +32,8 @@ from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
+__all__ = ["ObsData", "RedshiftSelector", "FieldSelector", "CartesianSelector", "CelestialSelector", "SimBox", "HaloBox", "GalBox", "BoxField", "MockField", "MockSurvey", "PFSSurvey"]
+
 class ObsData:
     def __init__(self, funcs, names=None, args=None, kwargs=None):
         N = len(funcs)
@@ -1203,6 +1205,7 @@ class PFSSurvey(MockSurvey):
 
 MockSurvey.__doc__ += MockField.__doc__
 
+
 class SimBox:
     """
     Contains all information about the halos, galaxies, and the model in charge of populating the galaxies.
@@ -1218,7 +1221,7 @@ class SimBox:
         self.populate_on_instantiation = True # Populate the galaxies upon instantiation
         self.dz_tol = 0.1 # Make sure only one halo catalog exists within +/- dz_tol of given redshift
         self.Nbox = None
-        self.Lbox = np.array([1000.]*3, dtype=np.float32)
+        self.Lbox = np.array([400.]*3, dtype=np.float32)
         self.empty = False
         self.volume = None
 
@@ -1228,15 +1231,9 @@ class SimBox:
         self.populated = False
         self.construct_model()
         self.Lbox = np.asarray(self.Lbox, dtype=np.float32)
+        self.mgid_counter = 0 # assign mock galaxy id's starting from zero
         if not self.empty:
             self.get_halos()
-            if self.Nbox is None:
-                self.Lbox = self.halocat.Lbox.astype(np.float32)  # side lengths (x,y,z) of the box
-            else:
-                self.Nbox = np.asarray(self.Nbox)
-                self.Lbox = (self.halocat.Lbox * self.Nbox).astype(np.float32)
-            
-            self.mgid_counter = 0 # assign mock galaxy id's starting from zero
             if self.populate_on_instantiation:
                 # Paint galaxies into the dark matter halos
                 self.populate_mock()
@@ -1307,6 +1304,13 @@ class SimBox:
         self.halocat = sim_manager.CachedHaloCatalog(simname=self.simname, redshift=self.redshift, 
             halo_finder='rockstar', dz_tol=self.dz_tol, version_name=self.version_name)
         self.halos = self.halocat.halo_table
+        
+        # Set the side lengths of the box
+        if self.Nbox is None:
+            self.Lbox = self.halocat.Lbox.astype(np.float32)
+        else:
+            self.Nbox = np.asarray(self.Nbox)
+            self.Lbox = (self.halocat.Lbox * self.Nbox).astype(np.float32)
 
     def update_model_params(self, param_dict, param_names=None):
         if not param_names is None:
@@ -1378,3 +1382,54 @@ class SimBox:
                 self.version_name = "my_cosmosim_halos"
 
 
+
+class HaloBox(SimBox):
+    accepted_kwargs = ["simname", "version_name", "cosmo", "redshift", "dz_tol", "Nbox", "Lbox", "empty"]
+    """
+    Contains all information about the halos, galaxies, and the model in charge of populating the galaxies.
+    """
+    def __init__(self, **kwargs):
+        gc.collect()
+        self.simname = "smdpl"
+        self.version_name = None
+        self.cosmo = cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459)
+        self.redshift = 1.0
+        self.dz_tol = 0.1
+        self.Nbox = None
+        self.Lbox = np.array([400.]*3, dtype=np.float32)
+        self.empty = False
+
+        # Update default parameters with any keyword arguments
+        hf.kwargs2attributes(self, kwargs)
+        # Initialize model and get halos
+        self.Lbox = np.asarray(self.Lbox, dtype=np.float32)
+        if not self.empty:
+            self.get_halos()
+
+class GalBox(SimBox):
+    accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox"]
+    def __init__(self, halobox, **kwargs):
+        #gc.collect()
+        self.halobox = halobox
+        self.populate_on_instantiation = False
+        self.hodname = "zheng07"
+        self.threshold = -21
+        self.empty = halobox.empty
+        self.volume = None
+        self.Nbox = self.halobox.Nbox
+        
+        hf.kwargs2attributes(self, kwargs)
+        
+        self.halos = None if self.empty else self.halobox.halos
+        self.halocat = None if self.empty else self.halobox.halocat
+        self.redshift = self.halobox.redshift
+        self.Lbox = self.halobox.Lbox
+        self.cosmo = self.halobox.cosmo
+        
+        self.populated = False
+        self.construct_model()
+        # Populate galaxies inside halos
+        self.mgid_counter = 0 # assign mock galaxy id's starting from zero
+        if not self.empty and self.populate_on_instantiation:
+            if self.populate_on_instantiation:
+                self.populate_mock()
