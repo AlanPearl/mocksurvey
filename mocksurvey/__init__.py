@@ -32,9 +32,9 @@ from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
-__all__ = ["ObsData", "RedshiftSelector", "FieldSelector", "CartesianSelector", "CelestialSelector", "SimBox", "HaloBox", "GalBox", "BoxField", "MockField", "MockSurvey", "PFSSurvey"]
+__all__ = ["Observable", "RedshiftSelector", "FieldSelector", "CartesianSelector", "CelestialSelector", "SimBox", "HaloBox", "GalBox", "BoxField", "MockField", "MockSurvey", "PFSSurvey"]
 
-class ObsData:
+class Observable:
     def __init__(self, funcs, names=None, args=None, kwargs=None):
         N = len(funcs)
         self.funcs = funcs
@@ -46,31 +46,86 @@ class ObsData:
         self.lendic = {}
         
         self.mean = None
-        self.covar = None
+        self.mean_jack = None
+        self.covar_jack = None
+        self.mean_real = None
+        self.covar_real = None
+        self.mean_rand = None
+        self.covar_rand = None
         self.param_names = None
         self.true_params = None
+
+    def get_jackknife(self, name=None):
+        return self.get_data(name, method="jackknife")
     
-    def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, rdz_distance=False, debugging_plots=False):
-        
-        self.mean, self.covar = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, rdz_distance=rdz_distance, debugging_plots=debugging_plots)
-        return self.mean, self.covar
+    def get_realization(self, name=None):
+        return self.get_data(name, method="realization")
     
-    def get_data(self, name=None, covar=True):
-        if self.mean is None:
-            if covar:
-                raise ValueError("Must run the jackknife first.\nUse <ObsData object>.jackknife(data,rands,...)")
-            if not covar:
-                raise ValueError("Must calculate the observables first.\nUse <ObsData object>.obs_func(data,rands)")
+    def get_random_realization(self, name=None):
+        return self.get_data(name, method="random_realization")
+    
+    def get_data(self, name=None, method=None):
+        accepted = ["jackknife", "realization", "random_realization"]
+        if not method is None and not (method in accepted):
+            raise ValueError(f"`method` must be one of {accepted}")
+        if method is None:
+            mean, covar = self.mean, None
+        else:
+            mean = self.__dict__["mean_"+method[:4]]
+            covar = self.__dict__["covar_"+method[:4]]
+        if mean is None:
+            if method is None:
+                raise ValueError("Must calculate the observables first.\nUse <Observable object>.obs_func(data,rands)")
+            else:
+                raise ValueError(f"Must run this method first.\nUse <Observable object>.{method}(data,rands,...)")
+
         
         if name is None:
-            return self.mean, self.covar if covar else self.mean
+            return mean if (method is None) else (mean, covar)
         else:
             index0 = self.indexdic[name]
             index1 = index0 + self.lendic[name]
             s = slice(index0, index1)
-            return self.mean[s], self.covar[s,s] if covar else self.mean[s]
+            return mean[s] if (method is None) else (mean[s], covar[s,s])
+
+    def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, rdz_distance=False, debugging_plots=False):
+        
+        self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, rdz_distance, debugging_plots)
+        return self.mean, self.covar
     
-    def obs_func(self, data, rands=None):
+    def realization(self, rands, field, nrealization=25, **get_data_kw):
+        data = field.get_data(**get_data_kw)
+        samples = [self.obs_func(data, rands, store=False)]
+        if len(samples[0]) >= nrealization:
+            raise ValueError("`nrealization` must be greater than the number of observables to get a nonsingular covariance matrix")
+        
+        for i in range(nrealization):
+            field.simbox.populate_mock()
+            data = type(field)(**field._kwargs_).get_data(**get_data_kw)
+            samples.append(self.obs_func(data, rands, store=False))
+        
+        samples = np.array(samples)
+        self.mean_real = np.mean(samples, axis=0)
+        self.covar_real = np.cov(samples, rowvar=False)
+        return self.mean_real, self.covar_real
+    
+    def random_realization(self, data, field, nrealization=25, **get_rands_kw):
+        rands = field.get_rands(**get_rands_kw)
+        samples = [self.obs_func(data, rands, store=False)]
+        if len(samples[0]) >= nrealization:
+            raise ValueError("`nrealization` must be greater than the number of observables to get a nonsingular covariance matrix")
+        
+        for i in range(nrealization):
+            field.make_rands()
+            data = field.get_rands(**get_rands_kw)
+            samples.append(self.obs_func(data, rands, store=False))
+        
+        samples = np.array(samples)
+        self.mean_real = np.mean(samples, axis=0)
+        self.covar_real = np.cov(samples, rowvar=False)
+        return self.mean_rand, self.covar_rand
+    
+    def obs_func(self, data, rands=None, store=True):
         answers = []
         i = 0
         for name in self.names:
@@ -88,7 +143,7 @@ class ObsData:
             i += l
             
         answer = np.concatenate(answers)
-        if self.mean is None:
+        if store:
             self.mean = answer
         return answer
 
@@ -371,6 +426,9 @@ class BoxField:
     - make_rands()
     """
     def __init__(self, simbox, **kwargs):
+        self._kwargs_ = kwargs.copy()
+        self._kwargs_.update({"simbox":simbox})
+        
         self.simbox = simbox
         self.center = self.simbox.Lbox/2.
         self.shape = None
@@ -560,6 +618,7 @@ class BoxField:
         seed : int (default = None)
             Seed for the random generation so it may be reproduced
         """
+        self._xyz_rands = self._rdz_rands = None
         if density_factor is None:
             density_factor = self.rand_density_factor
         
@@ -688,6 +747,9 @@ class MockField:
     - make_rands()
     """
     def __init__(self, simbox, **kwargs):
+        self._kwargs_ = kwargs.copy()
+        self._kwargs_.update({"simbox":simbox})
+        
         self.simbox = simbox
         self.center = self.simbox.Lbox/2.
         self.center_rdz = np.array([0.,0.,simbox.redshift])
@@ -704,6 +766,7 @@ class MockField:
         
         # Update default parameters with any keyword arguments
         hf.kwargs2attributes(self, kwargs)
+        
         self._gals = {}
         self._rands = {}
         self.origin, self.Lbox_rdz = self._centers_to_origin()
@@ -1082,6 +1145,9 @@ class MockSurvey:
     All keyword arguments are passed to MockField object (**see MockField documentation below**)
     """
     def __init__(self, simbox, rdz_centers, **kwargs):
+        self._kwargs_ = kwargs.copy()
+        self._kwargs_.update({"simbox":simbox, "rdz_centers":rdz_centers})
+        
         # Initialize the MockFields in their specified positions
         self.fields = [simbox.field(center_rdz=c, **kwargs) for c in rdz_centers]
         
@@ -1211,6 +1277,8 @@ class SimBox:
     Contains all information about the halos, galaxies, and the model in charge of populating the galaxies.
     """
     def __init__(self, **kwargs):
+        self._kwargs_ = kwargs.copy()
+        
         gc.collect()
         self.simname = "smdpl" # Small Multidark Planck; also try bolshoi, bolplanck, multidark, consuelo...
         self.version_name = None # Version of halo catalog: "halotools_v0p4" or "my_cosmosim_halos"
@@ -1389,6 +1457,8 @@ class HaloBox(SimBox):
     Contains all information about the halos, galaxies, and the model in charge of populating the galaxies.
     """
     def __init__(self, **kwargs):
+        self._kwargs_ = kwargs.copy()
+        
         gc.collect()
         self.simname = "smdpl"
         self.version_name = None
@@ -1409,6 +1479,8 @@ class HaloBox(SimBox):
 class GalBox(SimBox):
     accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox"]
     def __init__(self, halobox, **kwargs):
+        self._kwargs_ = kwargs.copy()
+        
         #gc.collect()
         self.halobox = halobox
         self.populate_on_instantiation = False
