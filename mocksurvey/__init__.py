@@ -39,9 +39,9 @@ class Observable:
         N = len(funcs)
         self.funcs = funcs
         self.names = range(N) if names is None else names
-        self.funcdic = dict(zip(names,funcs))
-        self.argsdic = dict(zip(names,[()]*N)) if args is None else dict(zip(names,args))
-        self.kwargsdic = dict(zip(names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
+        self.funcdic = dict(zip(self.names,self.funcs))
+        self.argsdic = dict(zip(self.names,[()]*N)) if args is None else dict(zip(names,args))
+        self.kwargsdic = dict(zip(self.names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
         self.indexdic = {}
         self.lendic = {}
         
@@ -52,8 +52,6 @@ class Observable:
         self.covar_real = None
         self.mean_rand = None
         self.covar_rand = None
-        self.param_names = None
-        self.true_params = None
 
     def get_jackknife(self, name=None):
         return self.get_data(name, method="jackknife")
