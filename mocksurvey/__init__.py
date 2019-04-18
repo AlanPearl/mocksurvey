@@ -86,10 +86,10 @@ class Observable:
             s = slice(index0, index1)
             return mean[s] if (method is None) else (mean[s], covar[s,s])
 
-    def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, rdz_distance=False, debugging_plots=False):
+    def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, **kwargs):
         
-        self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, rdz_distance, debugging_plots)
-        return self.mean, self.covar
+        self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, **kwargs)
+        return self.mean_jack, self.covar_jack
     
     def realization(self, rands, field, nrealization=25, **get_data_kw):
         data = field.get_data(**get_data_kw)
@@ -97,7 +97,7 @@ class Observable:
         if len(samples[0]) >= nrealization:
             raise ValueError("`nrealization` must be greater than the number of observables to get a nonsingular covariance matrix")
         
-        for i in range(nrealization):
+        for i in range(nrealization-1):
             field.simbox.populate_mock()
             data = type(field)(**field._kwargs_).get_data(**get_data_kw)
             samples.append(self.obs_func(data, rands, store=False))
@@ -113,7 +113,7 @@ class Observable:
         if len(samples[0]) >= nrealization:
             raise ValueError("`nrealization` must be greater than the number of observables to get a nonsingular covariance matrix")
         
-        for i in range(nrealization):
+        for i in range(nrealization-1):
             field.make_rands()
             data = field.get_rands(**get_rands_kw)
             samples.append(self.obs_func(data, rands, store=False))

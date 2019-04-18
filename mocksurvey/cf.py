@@ -271,7 +271,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1):
 
 # Calculate any of the above three correlation functions, estimating errors via the block jackknife/bootstrap method
 # ==================================================================================================================
-def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, func="xi_r", args=[], kwargs={}, rdz_distance=False, debugging_plots=False):
+def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, func="xi_r", args=[], kwargs={}, rdz_distance=False, debugging_plots=False, give_jackknife_mean=False):
     """
     Given a function which returns a statistic over an array of rbins,
     compute the statistic and its uncertainty.
@@ -303,9 +303,8 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
     fieldshape = np.asarray(fieldshape)
 
     ind_d, ind_r = _assign_block_indices(data_to_bin, rands_to_bin, centers, fieldshape, nbins, rdz_distance)
-    
-    mean_answer = func(data, rands, *args, **kwargs)
 
+    mean_answer = func(data, rands, *args, **kwargs)
     answer_l = []
     for l in range(N):
         ind_d_sample = np.where(ind_d != l)[0]
@@ -330,6 +329,7 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
 
     covar = (N-1)/N * np.sum( (answer_l[:,:,None] - mean_answer[None,:,None]) * (answer_l[:,None,:] - mean_answer[None,None,:]), axis=0)
 
+    mean_answer = np.mean(answer_l, axis=0) if give_jackknife_mean else mean_answer
     return mean_answer, covar
 
 

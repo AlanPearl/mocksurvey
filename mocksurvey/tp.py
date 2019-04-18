@@ -49,7 +49,7 @@ def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, plot=True, realspace=Fa
         ax.set_ylabel("$%s$ ($h^{-1}$ Mpc)" %axstr[axes[1]], fontsize=fontsize)
     return data, rand
 
-def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, plot=True):
+def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, plot=True, **scatter_kwargs):
     data = field.get_data(rdz=True) * 180./np.pi
     rand = field.get_rands(rdz=True) * 180./np.pi
     s_rand = s / field.rand_density_factor
@@ -57,8 +57,8 @@ def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, plot=True):
     if plot:
         if ax is None:
             ax = plt.gca()
-        ax.scatter(rand[:,0], rand[:,1], s=s_rand)
-        ax.scatter(data[:,0], data[:,1], s=s)
+        ax.scatter(rand[:,0], rand[:,1], s=s_rand, **scatter_kwargs)
+        ax.scatter(data[:,0], data[:,1], s=s, **scatter_kwargs)
         ax.set_xlabel("$\\alpha$ (deg)", fontsize=fontsize)
         ax.set_ylabel("$\\delta$ (deg)", fontsize=fontsize)
     return data, rand
