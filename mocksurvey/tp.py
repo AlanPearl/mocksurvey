@@ -30,7 +30,7 @@ def plot_halo_mass(field, nbins=50, from_gals=False, fontsize=14, ax=None, plot=
         ax.loglog()
     return mass
 
-def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, plot=True, realspace=False, plot_vel=False, axes=[0,2]):
+def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, plot=True, realspace=False, plot_vel=False, axes=[0,2], **scatter_kwargs):
     data = field.get_data(realspace=realspace)
     rand = field.get_rands()
     
@@ -42,8 +42,8 @@ def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, plot=True, realspace=Fa
         if plot_vel:
             vel = field.get_vel()
             ax.quiver(data[:,axes[0]], data[:,axes[1]], vel[:,axes[0]], vel[:,axes[1]])
-        ax.scatter(rand[:,axes[0]], rand[:,axes[1]], s=s_rand)
-        ax.scatter(data[:,axes[0]], data[:,axes[1]], s=s)
+        ax.scatter(rand[:,axes[0]], rand[:,axes[1]], s=s_rand, **scatter_kwargs)
+        ax.scatter(data[:,axes[0]], data[:,axes[1]], s=s, **scatter_kwargs)
         axstr = ["x","y","z"]
         ax.set_xlabel("$%s$ ($h^{-1}$ Mpc)" %axstr[axes[0]], fontsize=fontsize)
         ax.set_ylabel("$%s$ ($h^{-1}$ Mpc)" %axstr[axes[1]], fontsize=fontsize)

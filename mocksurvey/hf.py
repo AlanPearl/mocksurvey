@@ -111,7 +111,7 @@ def get_random_center(Lbox, fieldshape, numcenters=None, seed=None, pad=None):
     else:
         pad = np.asarray(pad)
     
-    assert(np.all(pad + fieldshape < Lbox))
+    assert(np.all(2.*pad + fieldshape <= Lbox))
     if not seed is None: np.random.seed(seed)
     xyz_min = np.random.random(shape)*(Lbox - fieldshape - 2.*pad) #- origin_shift
     if not seed is None: np.random.seed()
