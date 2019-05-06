@@ -123,7 +123,11 @@ class Observable:
         self.covar_real = np.cov(samples, rowvar=False)
         return self.mean_rand, self.covar_rand
     
-    def obs_func(self, data, rands=None, store=True):
+    def obs_func(self, data, rands=None, store=True, param_dict={}):
+        supported_params = {"icc"}
+        if not set(param_dict.keys()).issubset(supported_params):
+            raise ValueError(f"param_dict={param_dict} contains illegal keys."
+                             f"\nAllowed keys must be in: {supported_params}")
         answers = []
         i = 0
         for name in self.names:
@@ -132,6 +136,11 @@ class Observable:
             kwargs = self.kwargsdic[name]
             
             ans = np.atleast_1d(func(data,rands,*args,**kwargs))
+            # Integral constraint constant
+            # ============================
+            if "icc" in param_dict and name.lower().startswith("wp"):
+                ans -= param_dict["icc"]
+            
             answers.append(ans)
             
             l = len(ans)
@@ -424,8 +433,7 @@ class BoxField:
     - make_rands()
     """
     def __init__(self, simbox, **kwargs):
-        self._kwargs_ = kwargs.copy()
-        self._kwargs_.update({"simbox":simbox})
+        self._kwargs_ = {**kwargs, "simbox":simbox}
         
         self.simbox = simbox
         self.center = self.simbox.Lbox/2.
@@ -745,8 +753,7 @@ class MockField:
     - make_rands()
     """
     def __init__(self, simbox, **kwargs):
-        self._kwargs_ = kwargs.copy()
-        self._kwargs_.update({"simbox":simbox})
+        self._kwargs_ = {**kwargs, "simbox":simbox}
         
         self.simbox = simbox
         self.center = self.simbox.Lbox/2.
@@ -1143,8 +1150,8 @@ class MockSurvey:
     All keyword arguments are passed to MockField object (**see MockField documentation below**)
     """
     def __init__(self, simbox, rdz_centers, **kwargs):
-        self._kwargs_ = kwargs.copy()
-        self._kwargs_.update({"simbox":simbox, "rdz_centers":rdz_centers})
+        self._kwargs_ = {**kwargs, "simbox":simbox,
+                         "rdz_centers":rdz_centers}
         
         # Initialize the MockFields in their specified positions
         self.fields = [simbox.field(center_rdz=c, **kwargs) for c in rdz_centers]
@@ -1361,7 +1368,7 @@ class SimBox:
         else:
             self._populate(seed, masking_function)
         
-        # TODO: make this assertion work. And then set it here instead of asserting it
+        # TODO: make this assertion work. And then set gals["mgid"] here instead of asserting it
         # assert(np.all(self.gals["mgid"] == np.arange(len(self.gals))))
 
     def get_halos(self):

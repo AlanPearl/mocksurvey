@@ -202,7 +202,8 @@ def xi_r(data, rands, rbins, nthreads=1, estimator='Landy-Szalay'):
     else:
         raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
 
-def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1):
+def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
+          use_halotools_version=False):
     """
     wp_rp(data, rands, rpbins, pimax, boxsize=None, nthreads=1)
     
@@ -237,9 +238,14 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1):
         if boxsize is None:
             raise ValueError("`boxsize` cannot be None if `rands` is None")
         
-        if not corrfunc_works:
-            return mockobs.wp(data, rpbins, pimax, period=boxsize,
-                              estimator="Landy-Szalay", num_threads=nthreads)
+        if use_halotools_version or not corrfunc_works:
+            import halotools.mock_observables as mockobs
+            if rands is None:
+                return mockobs.wp(data, rpbins, pimax, period=boxsize,
+                        estimator="Landy-Szalay", num_threads=nthreads)
+            else:
+                return mockobs.wp(data, rpbins, pimax, randoms=rands,
+                        estimator="Landy-Szalay", num_threads=nthreads)
         
         boxsize = np.atleast_1d(boxsize)[0]
         return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
@@ -251,7 +257,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1):
     N = len(data)
     Nran = len(rands)
     if N==0 or Nran==0:
-        return np.nan
+        return np.array([np.nan]*n_rpbins)
     
     if not corrfunc_works:
         return mockobs.wp(data, rpbins, pimax, randoms=rands, 
