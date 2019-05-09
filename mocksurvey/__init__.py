@@ -40,8 +40,14 @@ class Observable:
         self.funcs = funcs
         self.names = range(N) if names is None else names
         self.funcdic = dict(zip(self.names,self.funcs))
-        self.argsdic = dict(zip(self.names,[()]*N)) if args is None else dict(zip(names,args))
-        self.kwargsdic = dict(zip(self.names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
+        if isinstance(args, dict):
+            self.argsdic = args.copy()
+        else:
+            self.argsdic = dict(zip(self.names,[()]*N)) if args is None else dict(zip(names,args))
+        if isinstance(kwargs, dict):
+            self.kwargsdic = kwargs.copy()
+        else:
+            self.kwargsdic = dict(zip(self.names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
         self.indexdic = {}
         self.lendic = {}
         
@@ -124,6 +130,8 @@ class Observable:
         return self.mean_rand, self.covar_rand
     
     def obs_func(self, data, rands=None, store=True, param_dict={}):
+        if not isinstance(store, bool):
+            raise ValueError(f"`store` argument must be bool, not {type(store)}")
         supported_params = {"icc"}
         if not set(param_dict.keys()).issubset(supported_params):
             raise ValueError(f"param_dict={param_dict} contains illegal keys."
@@ -1359,7 +1367,7 @@ class SimBox:
 # Helper member functions
 # =======================
 
-    def populate_mock(self, seed=None, Nbox=None, masking_function=None):
+    def populate_mock(self, seed=None, Nbox=None, masking_function=None, rotation=False):
         """Implement HOD model over halos to populate mock galaxy sample"""
         if Nbox is None:
             Nbox = self.Nbox
@@ -1368,6 +1376,18 @@ class SimBox:
         else:
             self._populate(seed, masking_function)
         
+        if rotation:
+            k0 = [ ["x","y","z"], ["vx","vy","vz"],
+            ["halo_x","halo_y","halo_z"], ["halo_vx","halo_vy","halo_vz"]]
+            
+            k1 = [[s+"_tmp" for s in keys] for keys in k0]
+            k2 = [np.roll(a,rotation).tolist() for a in k0]
+            keys = [np.ravel(k).tolist() for k in [k0,k1,k2]]
+
+            for olds,news in [[keys[0],keys[1]],[keys[1],keys[2]]]:
+                for old,new in zip(olds,news):
+                    self.gals.rename_column(old,new)
+
         # TODO: make this assertion work. And then set gals["mgid"] here instead of asserting it
         # assert(np.all(self.gals["mgid"] == np.arange(len(self.gals))))
 
