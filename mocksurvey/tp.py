@@ -9,8 +9,13 @@ def plot_shade_err(x, y, err=None, color=None, label=None, alpha=0.8, saf=0.5, f
     ax.plot(x, y, color=color, alpha=alpha, **line_kwa)
     ax.scatter(x, y, color=color, label=label, alpha=alpha*saf, **scatter_kwa)
     if not err is None:
-        ax.fill_between(x, y-err, y+err, color=color, alpha=alpha*faf, **fill_kwa)
-        ax.errorbar(x, y, yerr=err, color=color, ecolor=color, alpha=alpha, **errorbar_kwa)
+        if len(np.shape(err)) == 2:
+            lower,upper = err
+        else:
+            lower,upper = y-err, y+err
+        ax.fill_between(x, y-lower, y+upper, color=color, alpha=alpha*faf, **fill_kwa)
+        ax.errorbar(x, y, yerr=(lower,upper), color=color, ecolor=color, alpha=alpha, **errorbar_kwa)
+    return ax
 
 def plot_halo_mass(field, nbins=50, from_gals=False, fontsize=14, ax=None, plot=True):
     """Plot the halo mass function dN/dM_halo"""
@@ -28,7 +33,7 @@ def plot_halo_mass(field, nbins=50, from_gals=False, fontsize=14, ax=None, plot=
         ax.set_xlabel("$M_{\\rm halo}$ $(h^{-1} M_{\\ast})$", fontsize=fontsize)
         ax.set_ylabel("$dN/dM_{\\rm halo}$", fontsize=fontsize)
         ax.loglog()
-    return mass
+    return ax
 
 def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, plot=True, realspace=False, plot_vel=False, axes=[0,2], **scatter_kwargs):
     data = field.get_data(realspace=realspace)
@@ -47,7 +52,7 @@ def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, plot=True, realspace=Fa
         axstr = ["x","y","z"]
         ax.set_xlabel("$%s$ ($h^{-1}$ Mpc)" %axstr[axes[0]], fontsize=fontsize)
         ax.set_ylabel("$%s$ ($h^{-1}$ Mpc)" %axstr[axes[1]], fontsize=fontsize)
-    return data, rand
+    return ax
 
 def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, plot=True, **scatter_kwargs):
     data = field.get_data(rdz=True) * 180./np.pi
@@ -61,11 +66,11 @@ def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, plot=True, **scatter_kw
         ax.scatter(data[:,0], data[:,1], s=s, **scatter_kwargs)
         ax.set_xlabel("$\\alpha$ (deg)", fontsize=fontsize)
         ax.set_ylabel("$\\delta$ (deg)", fontsize=fontsize)
-    return data, rand
+    return ax
 
-def plot_xi_rp_pi(field, realspace=False, fontsize=14, ax=None, plot=True):
-    rpbins = pibins = np.linspace(1e-5,30,31)
-    dpi = pibins[1] - pibins[0]; pimax = pibins[-1]
+def plot_xi_rp_pi(field, realspace=False, rmax=25, fontsize=14, ax=None, plot=True):
+    rpbins = pibins = np.linspace(1e-5,rmax,31)
+    pimax = pibins[-1]
     contour_levels = np.logspace(-2, 3, 21) # every 0.25 in log space
     linewidths = np.array([.2]*len(contour_levels))
     linewidths[contour_levels==1] = .6
@@ -75,7 +80,7 @@ def plot_xi_rp_pi(field, realspace=False, fontsize=14, ax=None, plot=True):
     
     data = field.get_data(realspace=realspace)
     rand = field.get_rands()
-    pc = cf.paircount_rp_pi(data, rand, rpbins, pimax=pimax, dpi=dpi)
+    pc = cf.paircount_rp_pi(data, rand, rpbins, pimax=pimax)
     xi = cf.counts_to_xi(pc)
     xi[xi < 0] = 0 # don't allow xi(rp, pi) to go negative for log scale
     
@@ -87,8 +92,8 @@ def plot_xi_rp_pi(field, realspace=False, fontsize=14, ax=None, plot=True):
         ax.imshow(xi.T, extent=lrbt, origin='lower', interpolation='bilinear', norm=norm)
         ax.set_xlabel("$r_{\\rm p}$ ($h^{-1}$ Mpc)", fontsize=fontsize)
         ax.set_ylabel("$\\pi$ ($h^{-1}$ Mpc)", fontsize=fontsize)
-        plt.colorbar(sm, ax=ax)
-    return xi
+        plt.colorbar(sm, ax=ax).set_label("$\\xi(r_{\\rm p}, \\pi)$", fontsize=fontsize)
+    return ax
 
 def plot_wp_rp(field, realspace=False, fontsize=14, ax=None, plot=True):
     rpbins = np.logspace(-0.87, 1.73, 14) # these bins approximately match those of Zehavi 2011
@@ -106,5 +111,5 @@ def plot_wp_rp(field, realspace=False, fontsize=14, ax=None, plot=True):
         ax.plot(rp, wp)
         ax.set_xlabel("$r_{\\rm p}$ ($h^{-1}$ Mpc)", fontsize=fontsize)
         ax.set_ylabel("$w_{\\rm p}$ ($h^{-1}$ Mpc)", fontsize=fontsize)
-    return wp
+    return ax
     

@@ -24,6 +24,7 @@ from . import cf
 from . import tp
 
 import gc
+import warnings
 import math
 import scipy
 import numpy as np
@@ -760,22 +761,35 @@ class MockField:
     - get_shape(rdz=False)
     - make_rands()
     """
+    defaults = {
+        "cartesian_distortion": False,
+        "cartesian_selection": False,
+        "realspace_selection": False,
+        "collision_fraction": 0.,
+        "scheme": "square",
+        "sqdeg": 15.,
+        "delta_z": 0.1,
+        "zprec": 1e-3,
+        "rand_density_factor": 20.,
+    }
     def __init__(self, simbox, **kwargs):
         self._kwargs_ = {**kwargs, "simbox":simbox}
-        
         self.simbox = simbox
         self.center = self.simbox.Lbox/2.
         self.center_rdz = np.array([0.,0.,simbox.redshift])
-        self.cartesian_distortion = False
-        self.cartesian_selection = False
-        self.realspace_selection = False
         self.empty = simbox.empty
-        self.collision_fraction = 0.
-        self.scheme = "square"
-        self.sqdeg = 15.
-        self.delta_z = 0.1
-        self.zprec = 1e-3
-        self.rand_density_factor = 20.
+        self.__dict__.update(self.defaults)
+        
+        
+#        self.cartesian_distortion = False
+#        self.cartesian_selection = False
+#        self.realspace_selection = False
+#        self.collision_fraction = 0.
+#        self.scheme = "square"
+#        self.sqdeg = 15.
+#        self.delta_z = 0.1
+#        self.zprec = 1e-3
+#        self.rand_density_factor = 20.
         
         # Update default parameters with any keyword arguments
         hf.kwargs2attributes(self, kwargs)
@@ -1287,24 +1301,87 @@ MockSurvey.__doc__ += MockField.__doc__
 
 class SimBox:
     """
-    Contains all information about the halos, galaxies, and the model in charge of populating the galaxies.
+    SimBox(**kwargs)
+    
+    Stores all data for the halos, galaxies, and the model dictating their connection.
+    
+    Default Values:
+        - **simname** = "smdpl"
+        - **version_name** = None
+        - **hodname** = "zheng07"
+        - **cosmo** = cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459)
+        - **redshift** = 1.0
+        - **threshold** = 10.5
+        - **populate_on_instantiation** = True
+        - **dz_tol** = 0.1
+        - **Nbox** = [1, 1, 1]
+        - **empty** = False
+        - **Lbox** = [400., 400., 400.] (if empty=True)
+        - **volume** = None
+
+    Keyword Arguments
+    -----------------
+    simname : string
+        Identifies the halo table to use; options: {"smdpl", "bolshoi", "bolplanck", "multidark", "consuelo"}
+    
+    version_name : string
+        Identifies the version of the halo table to use (version string is set during creation of the Cached Halo Catalog)
+    
+    hodname : string
+        Identifies the HOD model to dictate the galaxy-halo connection
+    
+    cosmo : cosmology.Cosmology object
+        Used primarily to convert comoving distance to redshift
+    
+    redshift : float
+        The redshift of the dark matter simulation snapshot
+    
+    threshold : float
+        Only galaxies larger than this value (of stellar mass/absolute magnitude) will be populated
+    
+    populate_on_instantiation : bool
+        If False, the galaxies will not be populated upon instantiation, which saves a few seconds
+    
+    dz_tol : float
+        The precision to which the Cosmology object will calculate its interpolation grid of redshifts
+    
+    Nbox : length-3 array-like (int, int, int)
+        Number of periodic halo cubes that are instantiated along each axis
+    
+    empty : boolean
+        If true, don't load the halo table or populate galaxies, which saves a lot of time, but produces an empty SimBox object which is almost useless
+    
+    Lbox : length-3 array-like (float, float, float)
+        Length of each axis of the simulation box (taken automatically from halo catalog unless empty=True)
+    
+    volume : float
+        Volume of the simulation box region where halos are selected from (not needed unless calculating density of a position-masked set of halos)
+    
+    Useful Methods
+    --------------
+    - populate_mock(seed=None, masking_function=None, rotation=0, Nbox=None)
+    - update_param_dict(param_dict, param_names=None)
+    - redshift2distance(redshift)
+    - get_density()
+    - get_volume()
     """
+    defaults = {
+        "simname": "smdpl", # Small Multidark Planck; also try bolshoi, bolplanck, multidark, consuelo...
+        "version_name": None, # Version of halo catalog: "halotools_v0p4" or "my_cosmosim_halos"
+        "hodname": "zheng07", # Specifies the HOD model to populate galaxies; also try Zheng07
+        "cosmo": cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459),
+        "redshift": 1.0, # Redshift of simulation
+        "threshold": -21., # Galaxy mass threshold is 10**[threshold] M_sun
+        "populate_on_instantiation": True, # Populate the galaxies upon instantiation
+        "dz_tol": 0.1, # Make sure only one halo catalog exists within +/- dz_tol of given redshift
+        "Nbox": None,
+        "Lbox": np.array([400.]*3, dtype=np.float32),
+        "empty": False,
+        "volume": None,
+    }
     def __init__(self, **kwargs):
         self._kwargs_ = kwargs.copy()
-        
-        gc.collect()
-        self.simname = "smdpl" # Small Multidark Planck; also try bolshoi, bolplanck, multidark, consuelo...
-        self.version_name = None # Version of halo catalog: "halotools_v0p4" or "my_cosmosim_halos"
-        self.hodname = "Hearin15" # Specifies the HOD model to populate galaxies; also try Zheng07
-        self.cosmo = cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459)
-        self.redshift = 1.0 # Redshift of simulation
-        self.threshold = 10.5 # Galaxy mass threshold is 10**[threshold] M_sun
-        self.populate_on_instantiation = True # Populate the galaxies upon instantiation
-        self.dz_tol = 0.1 # Make sure only one halo catalog exists within +/- dz_tol of given redshift
-        self.Nbox = None
-        self.Lbox = np.array([400.]*3, dtype=np.float32)
-        self.empty = False
-        self.volume = None
+        self.__dict__.update(self.defaults)
 
         # Update default parameters with any keyword arguments
         hf.kwargs2attributes(self, kwargs)
@@ -1320,7 +1397,7 @@ class SimBox:
                 self.populate_mock()
 
     def get_density(self, dataset="gals"):
-        volume = np.product(self.Lbox) if self.volume is None else self.volume
+        volume = self.get_volume()
         if dataset.startswith("gal"):
             number = len(self.gals)
         elif dataset.startswith("halo"):
@@ -1330,7 +1407,7 @@ class SimBox:
         return number/volume
     
     def get_volume(self):
-        return np.product(self.Lbox)
+        return np.product(self.Lbox) if self.volume is None else self.volume
     
     def redshift2distance(self, redshift):
         dist = self.cosmo.comoving_distance(redshift).value * self.cosmo.h
@@ -1367,17 +1444,20 @@ class SimBox:
 # Helper member functions
 # =======================
 
-    def populate_mock(self, seed=None, Nbox=None, masking_function=None, rotation=False):
+    def populate_mock(self, seed=None, masking_function=None, rotation=False, Nbox=None):
         """Implement HOD model over halos to populate mock galaxy sample"""
+        gc.collect()
         if Nbox is None:
             Nbox = self.Nbox
-        if not Nbox is None:
-            self._populate_periodically(Nbox, seed, masking_function)
-        else:
-            self._populate(seed, masking_function)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if not Nbox is None:
+                self._populate_periodically(Nbox, seed, masking_function)
+            else:
+                self._populate(seed, masking_function)
         
         if rotation:
-            k0 = [ ["x","y","z"], ["vx","vy","vz"],
+            k0 = [["x","y","z"], ["vx","vy","vz"],
             ["halo_x","halo_y","halo_z"], ["halo_vx","halo_vy","halo_vz"]]
             
             k1 = [[s+"_tmp" for s in keys] for keys in k0]
@@ -1417,6 +1497,39 @@ class SimBox:
     def construct_model(self):
         """Use HOD Model to construct mock galaxy sample"""
         self.model = empirical_models.PrebuiltHodModelFactory(self.hodname, redshift=self.redshift, cosmo=self.cosmo, threshold=self.threshold)
+    
+    def get_halo_mass(self):
+        return self.halos["halo_mvir"]
+        
+    def get_halo_occupation(self, galaxy_type="all"):
+        if not self.populated:
+            self.populate_mock()
+        halos = self.model.mock.halo_table
+        
+        if galaxy_type.lower() == "all":
+            n = halos["halo_num_centrals"] + halos["halo_num_satellites"]
+        elif galaxy_type.lower().startswith("cen"):
+            n = halos["halo_num_centrals"]
+        elif galaxy_type.lower().startswith("sat"):
+            n = halos["halo_num_satellites"]
+        else:
+            raise ValueError(f"galaxy_type={galaxy_type} not understood. Must be one of {'both', 'central', 'satellite'}")
+        
+        return n
+    
+    def get_halo_moments(self, prim_haloprop, galaxy_type="all", **kwargs):
+        if galaxy_type.lower() == "all":
+            n = lambda **k: (self.model.mean_occupation_centrals(**k)
+                          + self.model.mean_occupation_satellites(**k))
+        elif galaxy_type.lower().startswith("cen"):
+            n = self.model.mean_occupation_centrals
+        elif galaxy_type.lower().startswith("sat"):
+            n = self.model.mean_occupation_satellites
+        else:
+            raise ValueError(f"galaxy_type={galaxy_type} not understood. Must be one of {'both', 'cen*', 'sat*'}")
+        
+        return n(prim_haloprop=prim_haloprop, **kwargs)
+            
 
 # Generate a function to select halos before population, if performance is crucial
 # ================================================================================
@@ -1477,14 +1590,28 @@ class SimBox:
 
 
 class HaloBox(SimBox):
+    """
+    HaloBox(**kwargs)
+    
+    Subclass of SimBox, but this class only contains halo data, and no galaxy data. Using several GalBoxes and only one HaloBox is recommended for multiprocessing.
+    
+    Acceptable kwargs
+    -----------------
+        - **simname**
+        - **version_name**
+        - **cosmo**
+        - **redshift**
+        - **dz_tol**
+        - **Nbox**
+        - **Lbox**
+        - **empty**
+        
+    See SimBox documentation below
+    """
     accepted_kwargs = ["simname", "version_name", "cosmo", "redshift", "dz_tol", "Nbox", "Lbox", "empty"]
-    """
-    Contains all information about the halos, galaxies, and the model in charge of populating the galaxies.
-    """
     def __init__(self, **kwargs):
         self._kwargs_ = kwargs.copy()
         
-        gc.collect()
         self.simname = "smdpl"
         self.version_name = None
         self.cosmo = cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459)
@@ -1502,11 +1629,33 @@ class HaloBox(SimBox):
             self.get_halos()
 
 class GalBox(SimBox):
+    """
+    HaloBox(**kwargs)
+    
+    Subclass of SimBox, but this class only contains HOD model/galaxy data, and no halo data. Using several GalBoxes and only one HaloBox is recommended for multiprocessing.
+    
+    Positionsal Arguments
+    ---------------------
+    halobox : HaloBox/SimBox object
+        Object which stores the Cached Halo Table, so that the GalBox doesn't have to.
+    
+    Acceptable kwargs
+    -----------------
+        - **simname**
+        - **version_name**
+        - **cosmo**
+        - **redshift**
+        - **dz_tol**
+        - **Nbox**
+        - **Lbox**
+        - **empty**
+        
+    See SimBox documentation below
+    """
     accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox"]
     def __init__(self, halobox, **kwargs):
         self._kwargs_ = kwargs.copy()
         
-        #gc.collect()
         self.halobox = halobox
         self.populate_on_instantiation = False
         self.hodname = "zheng07"
@@ -1530,3 +1679,5 @@ class GalBox(SimBox):
         if not self.empty and self.populate_on_instantiation:
             if self.populate_on_instantiation:
                 self.populate_mock()
+
+HaloBox.__doc__ = GalBox.__doc__ = SimBox.__doc__

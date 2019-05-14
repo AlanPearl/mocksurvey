@@ -6,6 +6,7 @@ except ImportError:
     corrfunc_works = False
     import halotools.mock_observables as mockobs
 import numpy as np
+import warnings
 from . import hf
 
 class PairCounts:
@@ -248,7 +249,9 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
                         estimator="Landy-Szalay", num_threads=nthreads)
         
         boxsize = np.atleast_1d(boxsize)[0]
-        return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
     n_rpbins = len(rpbins) - 1
 
     x,y,z = data.T
