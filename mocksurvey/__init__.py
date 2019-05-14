@@ -1653,14 +1653,14 @@ class GalBox(SimBox):
     See SimBox documentation below
     """
     accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox"]
-    def __init__(self, halobox, **kwargs):
+    def __init__(self, halobox=None, **kwargs):
         self._kwargs_ = kwargs.copy()
         
-        self.halobox = halobox
+        self.halobox = HaloBox(empty=True) if halobox is None else halobox
         self.populate_on_instantiation = False
         self.hodname = "zheng07"
         self.threshold = -21
-        self.empty = halobox.empty
+        self.empty = self.halobox.empty
         self.volume = None
         self.Nbox = self.halobox.Nbox
         

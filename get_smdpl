@@ -1,0 +1,12 @@
+#!/bin/bash
+
+mkdir -p downloads
+
+wget -O downloads/smdpl-z-0-49-m-9-63e7-2018-09-20.dat -L https://pitt.box.com/shared/static/88gphvkw03vesk8ak257s2bo66uhfkyk.dat
+wget -O downloads/smdpl-z-1-00-m-9-63e7-2018-09-20.dat -L https://pitt.box.com/shared/static/0gvl1wecsic68wgbt1qbj2e826vud5s1.dat
+wget -O downloads/smdpl-z-1-36-m-9-63e7-2018-12-05.dat -L https://pitt.box.com/shared/static/rme9qmktqev77lmct12zgg5xyiqpjzfv.dat
+
+
+python halocache/halocache_from_cosmosim.py smdpl-z-0-49-m-9-63e7-2018-09-20.dat smdpl 0.49 400 9.63e7
+python halocache/halocache_from_cosmosim.py smdpl-z-1-00-m-9-63e7-2018-09-20.dat smdpl 1.00 400 9.63e7
+python halocache/halocache_from_cosmosim.py smdpl-z-1-36-m-9-63e7-2018-12-05.dat smdpl 1.36 400 9.63e7
