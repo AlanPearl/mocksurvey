@@ -102,7 +102,7 @@ class Observable:
         data = field.get_data(**get_data_kw)
         samples = [self.obs_func(data, rands, store=False)]
         if len(samples[0]) >= nrealization:
-            raise ValueError("`nrealization` must be greater than the number of observables to get a nonsingular covariance matrix")
+            print("`nrealization` should probably be greater than the number of observables")
         
         for i in range(nrealization-1):
             field.simbox.populate_mock()
@@ -118,7 +118,7 @@ class Observable:
         rands = field.get_rands(**get_rands_kw)
         samples = [self.obs_func(data, rands, store=False)]
         if len(samples[0]) >= nrealization:
-            raise ValueError("`nrealization` must be greater than the number of observables to get a nonsingular covariance matrix")
+            print("`nrealization` should probably be greater than the number of observables")
         
         for i in range(nrealization-1):
             field.make_rands()
