@@ -98,7 +98,7 @@ def redshift_lim_to_dist(delta_redshift, mean_redshift, cosmo):
     dist = distances[1] - distances[0]
     return dist
 
-def get_random_center(Lbox, fieldshape, numcenters=None, seed=None, pad=None):
+def get_random_center(Lbox, fieldshape, numcenters=None, seed=None, pad=30):
     #origin_shift = np.asarray(origin_shift)
     Lbox = np.asarray(Lbox)
     fieldshape = np.asarray(fieldshape)
@@ -118,13 +118,13 @@ def get_random_center(Lbox, fieldshape, numcenters=None, seed=None, pad=None):
     center = xyz_min + fieldshape/2. + pad
     return center
 
-def get_random_gridded_center(Lbox, fieldshape, numcenters=None, fieldpad=None, replace=False, seed=None):
+def get_random_gridded_center(Lbox, fieldshape, numcenters=None, pad=None, replace=False, seed=None):
     Lbox = np.asarray(Lbox); fieldshape = np.asarray(fieldshape)
     if numcenters is None:
         numcenters = 1
         one_dim = True
         
-    centers = grid_centers(Lbox, fieldshape, fieldpad)
+    centers = grid_centers(Lbox, fieldshape, pad)
     if not replace and numcenters > len(centers):
         raise ValueError("numcenters=%d, but there are only %d possible grid centers" %(numcenters, len(centers)))
     if isinstance(numcenters, str) and numcenters.lower().startswith("all"):
@@ -139,9 +139,9 @@ def get_random_gridded_center(Lbox, fieldshape, numcenters=None, fieldpad=None, 
     else:
         return centers
 
-def grid_centers(Lbox, fieldshape, fieldpad=None):
-    if fieldpad is None: fieldpad = np.array([0.,0.,0.])
-    nbd = (Lbox / fieldshape).astype(int)
+def grid_centers(Lbox, fieldshape, pad=None):
+    if pad is None: pad = np.array([0.,0.,0.])
+    nbd = (Lbox / (np.asarray(fieldshape)+2*pad)).astype(int)
     xcen, ycen, zcen = [np.linspace(0,Lbox[i],nbd[i]+1)[1:] for i in range(3)]
     centers = np.asarray(np.meshgrid(xcen,ycen,zcen)).reshape((3,xcen.size*ycen.size*zcen.size)).T
     centers -= np.asarray([xcen[0],ycen[0],zcen[0]])[np.newaxis,:]/2.

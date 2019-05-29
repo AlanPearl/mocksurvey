@@ -80,9 +80,11 @@ class Observable:
             covar = self.__dict__["covar_"+method[:4]]
         if mean is None:
             if method is None:
-                raise ValueError("Must calculate the observables first.\nUse <Observable object>.obs_func(data,rands)")
+                raise ValueError("Must calculate the observables first.\n"
+                        "Use <Observable object>.obs_func(data,rands)")
             else:
-                raise ValueError(f"Must run this method first.\nUse <Observable object>.{method}(data,rands,...)")
+                raise ValueError("Must run this method first.\n"
+                    f"Use <Observable object>.{method}(data,rands,...)")
 
         
         if name is None:
@@ -97,6 +99,25 @@ class Observable:
         
         self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, **kwargs)
         return self.mean_jack, self.covar_jack
+    
+#    def jackknife_avg(self, field, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, nrealization=25, randomize_centers=False, jackknife_kwargs={}, **get_data_kw):
+#        data = field.get_data(**get_data_kw)
+#        rands = field.get_rands(**get_data_kw)
+#        samples = [self.jackknife(data, rands, centers, fieldshape, nbins,
+#                                  data_to_bin, rands_to_bin, **jackknife_kwargs)]
+#        if len(samples[0]) >= nrealization:
+#            print("`nrealization` should probably be greater than the number of observables")
+#            
+#        field_kw = field._kwargs_.copy()
+#        for i in range(nrealization-1):
+#            field.simbox.populate_mock()
+#            if randomize_centers:
+#                c = hf.get_random_center(field.simbox.Lbox, field.shape)
+#                field_kw.update({"center":c})
+#            data = type(field)(**field_kw).get_data(**get_data_kw)
+#            samples.append(self.jackknife(data, rands, ))
+#        
+#        self.mean_jack, self.covar_jack = np.mean()
     
     def realization(self, rands, field, nrealization=25, **get_data_kw):
         data = field.get_data(**get_data_kw)
@@ -1315,6 +1336,7 @@ class SimBox:
         - **populate_on_instantiation** = True
         - **dz_tol** = 0.1
         - **Nbox** = [1, 1, 1]
+        - **rotation** = None
         - **empty** = False
         - **Lbox** = [400., 400., 400.] (if empty=True)
         - **volume** = None
@@ -1347,6 +1369,9 @@ class SimBox:
     
     Nbox : length-3 array-like (int, int, int)
         Number of periodic halo cubes that are instantiated along each axis
+        
+    rotation : int or None
+        Default (``None``) produces random orientation, while an integer 0, 1, or 2 (mod 3) indicates that the z, y, or x axis should be the one along our line-of-sight respectively. ``None`` is helpful for producing a LITTLE bit more sample variance in statistics which depend on line-of-sight, like the projected correlation function, :math:`w_{\\rm p}(r_{\\rm p})`. However, for consistent results, you must always pass rotation=0 (or any consistent integer).
     
     empty : boolean
         If true, don't load the halo table or populate galaxies, which saves a lot of time, but produces an empty SimBox object which is almost useless
@@ -1375,6 +1400,7 @@ class SimBox:
         "populate_on_instantiation": True, # Populate the galaxies upon instantiation
         "dz_tol": 0.1, # Make sure only one halo catalog exists within +/- dz_tol of given redshift
         "Nbox": None,
+        "rotation": None,
         "Lbox": np.array([400.]*3, dtype=np.float32),
         "empty": False,
         "volume": None,
@@ -1444,7 +1470,7 @@ class SimBox:
 # Helper member functions
 # =======================
 
-    def populate_mock(self, seed=None, masking_function=None, rotation=False, Nbox=None):
+    def populate_mock(self, seed=None, masking_function=None, rotation=None, Nbox=None):
         """Implement HOD model over halos to populate mock galaxy sample"""
         gc.collect()
         if Nbox is None:
@@ -1456,6 +1482,10 @@ class SimBox:
             else:
                 self._populate(seed, masking_function)
         
+        if rotation is None:
+            rotation = self.rotation
+        if rotation is None:
+            rotation = np.random.randint(3)
         if rotation:
             k0 = [["x","y","z"], ["vx","vy","vz"],
             ["halo_x","halo_y","halo_z"], ["halo_vx","halo_vy","halo_vz"]]
@@ -1529,7 +1559,7 @@ class SimBox:
             raise ValueError(f"galaxy_type={galaxy_type} not understood. Must be one of {'both', 'cen*', 'sat*'}")
         
         return n(prim_haloprop=prim_haloprop, **kwargs)
-            
+
 
 # Generate a function to select halos before population, if performance is crucial
 # ================================================================================
@@ -1611,15 +1641,8 @@ class HaloBox(SimBox):
     accepted_kwargs = ["simname", "version_name", "cosmo", "redshift", "dz_tol", "Nbox", "Lbox", "empty"]
     def __init__(self, **kwargs):
         self._kwargs_ = kwargs.copy()
+        self.__dict__.update({self.defaults[s] for s in self.accepted_kwargs})
         
-        self.simname = "smdpl"
-        self.version_name = None
-        self.cosmo = cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459)
-        self.redshift = 1.0
-        self.dz_tol = 0.1
-        self.Nbox = None
-        self.Lbox = np.array([400.]*3, dtype=np.float32)
-        self.empty = False
 
         # Update default parameters with any keyword arguments
         hf.kwargs2attributes(self, kwargs)
@@ -1634,34 +1657,30 @@ class GalBox(SimBox):
     
     Subclass of SimBox, but this class only contains HOD model/galaxy data, and no halo data. Using several GalBoxes and only one HaloBox is recommended for multiprocessing.
     
-    Positionsal Arguments
+    Positional Arguments
     ---------------------
     halobox : HaloBox/SimBox object
         Object which stores the Cached Halo Table, so that the GalBox doesn't have to.
     
     Acceptable kwargs
     -----------------
-        - **simname**
-        - **version_name**
-        - **cosmo**
-        - **redshift**
-        - **dz_tol**
-        - **Nbox**
-        - **Lbox**
+        - **populate_on_instantiation**
+        - **hodname**
+        - **threshold**
         - **empty**
+        - **volume**
+        - **Nbox**
+        - **rotation**
         
     See SimBox documentation below
     """
-    accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox"]
+    accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox", "rotation"]
     def __init__(self, halobox=None, **kwargs):
         self._kwargs_ = kwargs.copy()
-        
         self.halobox = HaloBox(empty=True) if halobox is None else halobox
-        self.populate_on_instantiation = False
-        self.hodname = "zheng07"
-        self.threshold = -21
+        self.__dict__.update({self.defaults[s] for s in self.accepted_kwargs})
+        
         self.empty = self.halobox.empty
-        self.volume = None
         self.Nbox = self.halobox.Nbox
         
         hf.kwargs2attributes(self, kwargs)

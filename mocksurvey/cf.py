@@ -102,6 +102,11 @@ def counts_to_xi(pc):
         xi = np.reshape(xi, (Nrp, Npi))
     return xi
 
+def RRrppi_periodic(N, boxsize, rpbins, pibins):
+    drp2 = np.diff(rpbins**2)
+    dpi = np.diff(pibins)
+    return N**2 / boxsize**3 * 2*np.pi * drp2[:,None] * dpi[None,:]
+
 # Returns the bias as a function of rp (rpbins must be given)
 # ===========================================================
 def bias_rp(data, rands, rpbins, wp_dms=None, pimax=50., suppress_warning=False):
@@ -132,9 +137,11 @@ def bias_rp(data, rands, rpbins, wp_dms=None, pimax=50., suppress_warning=False)
         bias = np.asarray(biases)
     return bias #/bias_field_solid_angle_1
 
+
+
 # Returns the 2D correlation function xi(rp, pi) using Corrfunc
 # =============================================================
-def xi_rp_pi(data, rands, rpbins, pibins, nthreads=1, estimator='Landy-Szalay'):
+def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='Landy-Szalay'):
     # Corrfunc implementation requires evenly spaced pibins, with first bin starting at pi=0
     pimax = pibins[-1]
     n_pibins = len(pibins) - 1
@@ -145,36 +152,60 @@ def xi_rp_pi(data, rands, rpbins, pibins, nthreads=1, estimator='Landy-Szalay'):
     array_factor = np.array([[1.], [1.], [pi_factor]])
 
     x,y,z = data.T * array_factor
-    xr,yr,zr = rands.T * array_factor
-    if len(data)==0 or len(rands)==0:
-        return np.nan
     
     if not corrfunc_works:
         return mockobs.rp_pi_tpcf(data, rpbins, pibins, randoms=rands, 
                                   num_threads=nthreads, estimator=estimator)
 
-    DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
-    DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
-
-    DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z,
-                                                                                X2=xr, Y2=yr, Z2=zr, periodic=False)
-    DR = np.reshape(DR['npairs'], (n_rpbins, n_pibins))
-
-    RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
-    RR = np.reshape(RR['npairs'], (n_rpbins, n_pibins))
-
-    factor = len(rands) / float(len(data))
-    factor2 = factor**2
-    if estimator.lower() == 'landy-szalay':
-        return (factor2*DD - 2.*factor*DR + RR)/RR # Landy & Szalay (1993) Estimator
-    elif estimator.lower() == 'natural':
-        return factor**2 * DD/RR - 1. # Natural Estimator
+    if rands is None:
+        if boxsize is None:
+            raise ValueError("`boxsize` cannot be None if `rands` is None")
+        if np.any((data > boxsize) | (data < 0)):
+            data = data%boxsize
+        
+        DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z)
+        DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
+        RR = RRrppi_periodic(len(data), boxsize, rpbins, pibins)
+        return DD/RR - 1.
     else:
-        raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
+        xr,yr,zr = rands.T * array_factor
+        DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
+        DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
+    
+        DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z,
+                                                                                    X2=xr, Y2=yr, Z2=zr, periodic=False)
+        DR = np.reshape(DR['npairs'], (n_rpbins, n_pibins))
+    
+        RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
+        RR = np.reshape(RR['npairs'], (n_rpbins, n_pibins))
+    
+        factor = len(rands) / float(len(data))
+        factor2 = factor**2
+        if estimator.lower() == 'landy-szalay':
+            return (factor2*DD - 2.*factor*DR + RR)/RR # Landy & Szalay (1993) Estimator
+        elif estimator.lower() == 'natural':
+            return factor**2 * DD/RR - 1. # Natural Estimator
+        else:
+            raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
 
 # Returns the 3D correlation function xi(r) using Corrfunc
 # ========================================================
-def xi_r(data, rands, rbins, nthreads=1, estimator='Landy-Szalay'):
+def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay'):
+    if rands is None:
+        # Periodic boundary conditions
+        if boxsize is None:
+            raise ValueError("`boxsize` cannot be None if `rands` is None")
+        if hf.is_arraylike(boxsize):
+            raise ValueError(f"`boxsize` must be a scalar, not {boxsize.__class__}")
+        if rbins[-1]*3 > boxsize:
+            raise ValueError(f"cube side length must be at least 3x the largest r bin, but"
+                             "`boxsize={boxsize}` and `3*rbins[-1]={3*rbins[-1]}`")
+        if np.any((data > boxsize) | (data < 0)):
+            data = data%boxsize
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return Corrfunc.theory.xi(boxsize, nthreads, rbins, *data.T)["xi"]
     x,y,z = data.T
     xr,yr,zr = rands.T
     if len(data)==0 or len(rands)==0:
@@ -236,8 +267,16 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
         Projected two-point correlation function (units of distance) evaluated within each specified bin enclosed by `rpbins`.
     """
     if rands is None:
+        # Periodic boundary conditions
         if boxsize is None:
             raise ValueError("`boxsize` cannot be None if `rands` is None")
+        if hf.is_arraylike(boxsize):
+            raise ValueError(f"`boxsize` must be a scalar, not {boxsize.__class__}")
+        if rpbins[-1]*3 > boxsize:
+            raise ValueError(f"cube side length must be at least 3x the largest rp bin, but"
+                             "`boxsize={boxsize}` and `3*rpbins[-1]={3*rpbins[-1]}`")
+        if np.any((data > boxsize) | (data < 0)):
+            data = data%boxsize
         
         if use_halotools_version or not corrfunc_works:
             import halotools.mock_observables as mockobs
@@ -248,7 +287,6 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
                 return mockobs.wp(data, rpbins, pimax, randoms=rands,
                         estimator="Landy-Szalay", num_threads=nthreads)
         
-        boxsize = np.atleast_1d(boxsize)[0]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
