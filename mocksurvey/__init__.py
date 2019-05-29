@@ -1641,7 +1641,7 @@ class HaloBox(SimBox):
     accepted_kwargs = ["simname", "version_name", "cosmo", "redshift", "dz_tol", "Nbox", "Lbox", "empty"]
     def __init__(self, **kwargs):
         self._kwargs_ = kwargs.copy()
-        self.__dict__.update({self.defaults[s] for s in self.accepted_kwargs})
+        self.__dict__.update({s:self.defaults[s] for s in self.accepted_kwargs})
         
 
         # Update default parameters with any keyword arguments
@@ -1678,7 +1678,7 @@ class GalBox(SimBox):
     def __init__(self, halobox=None, **kwargs):
         self._kwargs_ = kwargs.copy()
         self.halobox = HaloBox(empty=True) if halobox is None else halobox
-        self.__dict__.update({self.defaults[s] for s in self.accepted_kwargs})
+        self.__dict__.update({s:self.defaults[s] for s in self.accepted_kwargs})
         
         self.empty = self.halobox.empty
         self.Nbox = self.halobox.Nbox
