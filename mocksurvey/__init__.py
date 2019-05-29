@@ -1504,8 +1504,24 @@ class SimBox:
     def get_halos(self):
         """Get halo catalog from <simname> dark matter simulation"""
         self._set_version_name()
-        self.halocat = sim_manager.CachedHaloCatalog(simname=self.simname, redshift=self.redshift, 
-            halo_finder='rockstar', dz_tol=self.dz_tol, version_name=self.version_name)
+        def get_halos():
+            self.halocat = sim_manager.CachedHaloCatalog(
+                simname=self.simname, redshift=self.redshift, 
+                halo_finder='rockstar', dz_tol=self.dz_tol, 
+                version_name=self.version_name)
+            
+        # if at first you don't succeed . . .
+        try:
+            try:
+                try:
+                    get_halos()
+                except OSError:
+                    get_halos()
+            except OSError:
+                get_halos()
+        except OSError:
+            raise
+        
         self.halos = self.halocat.halo_table
         
         # Set the side lengths of the box
