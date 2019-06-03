@@ -359,3 +359,19 @@ def make_npoly(radius, n):
     points = [unit_vector(radius, phi1*i) for i in range(n)]
     inside = (0.,0.,1.)
     return spoly.SingleSphericalPolygon(points, inside)
+
+def factor_velocity(v, halo_v, halo_vel_factor=None, gal_vel_factor=None, inplace=False):
+    if not inplace:
+        v = v.copy()
+    if not halo_vel_factor is None:
+        new_halo_v = halo_vel_factor * halo_v
+        v += new_halo_v - halo_v
+    elif not gal_vel_factor is None:
+        new_halo_v = halo_v
+    
+    if not gal_vel_factor is None:
+        v -= new_halo_v
+        v *= gal_vel_factor
+        v += new_halo_v
+    
+    return v

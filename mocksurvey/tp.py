@@ -65,9 +65,9 @@ def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, **scatter_kwargs):
     ax.set_ylabel("$\\delta$ (deg)", fontsize=fontsize)
     return ax
 
-def plot_xi_rp_pi(field, realspace=False, rmax=25, fontsize=14, ax=None):
+def plot_xi_rp_pi(field, realspace=False, periodic=False, rmax=25, fontsize=14, ax=None):
     rpbins = pibins = np.linspace(1e-5,rmax,31)
-    pimax = pibins[-1]
+#    pimax = pibins[-1]
     contour_levels = np.logspace(-2, 3, 21) # every 0.25 in log space
     linewidths = np.array([.2]*len(contour_levels))
     linewidths[contour_levels==1] = .6
@@ -76,9 +76,12 @@ def plot_xi_rp_pi(field, realspace=False, rmax=25, fontsize=14, ax=None):
     sm = mpl.cm.ScalarMappable(norm=norm); sm.set_array([])
     
     data = field.get_data(realspace=realspace)
-    rand = field.get_rands()
-    pc = cf.paircount_rp_pi(data, rand, rpbins, pimax=pimax)
-    xi = cf.counts_to_xi(pc)
+    rand = None if periodic else field.get_rands()
+    boxsize = field.simbox.Lbox[0] if periodic else None
+    xi = cf.xi_rp_pi(data, rand, rpbins, pibins, boxsize=boxsize)
+    
+#    pc = cf.paircount_rp_pi(data, rand, rpbins, pimax=pimax)
+#    xi = cf.counts_to_xi(pc)
     xi[xi < 0] = 0 # don't allow xi(rp, pi) to go negative for log scale
     
     if ax is None:
@@ -91,14 +94,18 @@ def plot_xi_rp_pi(field, realspace=False, rmax=25, fontsize=14, ax=None):
     plt.colorbar(sm, ax=ax).set_label("$\\xi(r_{\\rm p}, \\pi)$", fontsize=fontsize)
     return ax
 
-def plot_wp_rp(field, realspace=False, fontsize=14, ax=None):
+def plot_wp_rp(field, realspace=False, periodic=False, fontsize=14, ax=None):
     rpbins = np.logspace(-0.87, 1.73, 14) # these bins approximately match those of Zehavi 2011
     rp = np.sqrt(rpbins[:-1]*rpbins[1:])
+    pimax = 50.
     
     data = field.get_data(realspace=realspace)
-    rand = field.get_rands()
-    pc = cf.paircount_rp_pi(data, rand, rpbins)
-    wp = cf.counts_to_wp(pc)
+    rand = None if periodic else field.get_rands()
+    boxsize = field.simbox.Lbox[0] if periodic else None
+    wp = cf.wp_rp(data, rand, rpbins, pimax=pimax, boxsize=boxsize)
+    
+#    pc = cf.paircount_rp_pi(data, rand, rpbins)
+#    wp = cf.counts_to_wp(pc)
     wp[wp < 0] = 0 # don't allow wp(rp) to go negative for log scale
     
     if ax is None:

@@ -106,7 +106,7 @@ class Observable:
 #        samples = [self.jackknife(data, rands, centers, fieldshape, nbins,
 #                                  data_to_bin, rands_to_bin, **jackknife_kwargs)]
 #        if len(samples[0]) >= nrealization:
-#            print("`nrealization` should probably be greater than the number of observables")
+#            print("`nrealization` should probably be greater than the number of observables", flush=True)
 #            
 #        field_kw = field._kwargs_.copy()
 #        for i in range(nrealization-1):
@@ -123,7 +123,7 @@ class Observable:
         data = field.get_data(**get_data_kw)
         samples = [self.obs_func(data, rands, store=False)]
         if len(samples[0]) >= nrealization:
-            print("`nrealization` should probably be greater than the number of observables")
+            print("`nrealization` should probably be greater than the number of observables", flush=True)
         
         for i in range(nrealization-1):
             field.simbox.populate_mock()
@@ -139,7 +139,7 @@ class Observable:
         rands = field.get_rands(**get_rands_kw)
         samples = [self.obs_func(data, rands, store=False)]
         if len(samples[0]) >= nrealization:
-            print("`nrealization` should probably be greater than the number of observables")
+            print("`nrealization` should probably be greater than the number of observables", flush=True)
         
         for i in range(nrealization-1):
             field.make_rands()
@@ -152,8 +152,6 @@ class Observable:
         return self.mean_rand, self.covar_rand
     
     def obs_func(self, data, rands=None, store=True, param_dict={}):
-        if not isinstance(store, bool):
-            raise ValueError(f"`store` argument must be bool, not {type(store)}")
         supported_params = {"icc"}
         if not set(param_dict.keys()).issubset(supported_params):
             raise ValueError(f"param_dict={param_dict} contains illegal keys."
@@ -473,6 +471,8 @@ class BoxField:
         self.empty = simbox.empty
         self.rand_density_factor = 10.
         self.zprec = 1e-3
+        self.halo_vel_factor = None
+        self.gal_vel_factor = None
         
         hf.kwargs2attributes(self, kwargs)
         
@@ -556,7 +556,7 @@ class BoxField:
             self._rdz_rands = hf.ra_dec_z(self._xyz_rands-self.origin, np.zeros_like(self._xyz_rands), self.simbox.cosmo, self.zprec)
         return self._rdz_rands if rdz else self._xyz_rands
     
-    def get_vel(self):
+    def get_vel(self, halo_vel_factor=None, gal_vel_factor=None):
         """
         Returns the velocity of each galaxy selected by this object.
         
@@ -569,8 +569,23 @@ class BoxField:
             
             >>> vx,vy,vz = vel.T
         """
-        vel = hf.xyz_array(self.simbox.gals, ["vx","vy","vz"])
-        return vel[self.selection]
+        if halo_vel_factor is None:
+            halo_vel_factor = self.halo_vel_factor
+        if gal_vel_factor is None:
+            gal_vel_factor = self.gal_vel_factor
+        
+        if (not halo_vel_factor is None) or (not gal_vel_factor is None):
+            return hf.factor_velocity(
+                hf.xyz_array(self.simbox.gals, 
+                        ["vx","vy","vz"])[self.selection],
+                hf.xyz_array(self.simbox.gals, 
+                        ["halo_vx", "halo_vy", "halo_vz"])[self.selection],
+                halo_vel_factor=halo_vel_factor,
+                gal_vel_factor=gal_vel_factor,
+                inplace=True)
+        else:
+            return hf.xyz_array(self.simbox.gals, 
+                                ["vx","vy","vz"])[self.selection]
 
     def get_redshift(self, realspace=False):
         """
@@ -698,7 +713,16 @@ class BoxField:
         else:
             xyz = hf.xyz_array(self.simbox.gals)[self.selection]
             if not realspace:
-                vz = self.simbox.gals["vz"][self.selection]
+                if (self.halo_vel_factor is None) and (self.gal_vel_factor is None):    
+                    vz = self.simbox.gals["vz"][self.selection]
+                else:
+                    vz = hf.factor_velocity(self.simbox.gals["vz"]
+                                                [self.selection],
+                                        self.simbox.gals["halo_vz"]
+                                                [self.selection],
+                                        halo_vel_factor=self.halo_vel_factor,
+                                        gal_vel_factor=self.gal_vel_factor,
+                                        inplace=False)
                 xyz = self._apply_distortion(xyz, vz)
         return xyz
     
@@ -800,6 +824,8 @@ class MockField:
         self.center_rdz = np.array([0.,0.,simbox.redshift])
         self.empty = simbox.empty
         self.__dict__.update(self.defaults)
+        self.halo_vel_factor = None
+        self.gal_vel_factor = None
         
         
 #        self.cartesian_distortion = False
@@ -855,8 +881,9 @@ class MockField:
         else:
             return self._get_xyz(dataset=self._rands)
 
-    def get_vel(self):
-        return self._get_vel()
+    def get_vel(self, halo_vel_factor=None, gal_vel_factor=None):        
+        return self._get_vel(halo_vel_factor=halo_vel_factor, 
+                             gal_vel_factor=gal_vel_factor)
 
     def get_redshift(self, realspace=False):
         return self._get_redshift(realspace=realspace)
@@ -1032,8 +1059,12 @@ class MockField:
         xyz = hf.xyz_array(dataset, keys=[xkey, ykey, zkey])
         return xyz
     
-    def _get_vel(self, realspace=False, dataset=None):
+    def _get_vel(self, realspace=False, dataset=None, halo_vel_factor=None, gal_vel_factor=None):
         dataset, datanames, selection = self._get_dataset(dataset)
+        if halo_vel_factor is None:
+            halo_vel_factor = self.halo_vel_factor
+        if gal_vel_factor is None:
+            gal_vel_factor = self.gal_vel_factor
 
         if realspace or dataset is self._rands:
             if len(datanames) == 0:
@@ -1042,7 +1073,14 @@ class MockField:
                 length = len(dataset[ list(datanames)[0] ])
             return np.zeros((length, 3))
         else:
-            return hf.xyz_array(self.simbox.gals, keys=['vx', 'vy', 'vz'])[selection]
+            return hf.factor_velocity(
+                hf.xyz_array(self.simbox.gals, 
+                             keys=['vx', 'vy', 'vz'])[selection],
+                hf.xyz_array(self.simbox.gals, 
+                             keys=['halo_vx', 'halo_vy', 'halo_vz'])[selection],
+                halo_vel_factor=halo_vel_factor,
+                gal_vel_factor=gal_vel_factor,
+                inplace=True)
     
     def _get_redshift(self, realspace=False, dataset=None):
         dataset, datanames, selection = self._get_dataset(dataset)
@@ -1139,8 +1177,8 @@ class MockField:
         selection = select_lower & select_upper
 # =============================================================================
 #         if np.any(~selection):
-#             print(np.where(~selection), "which is a fraction of", np.where(~selection)[0].size / selection.size)
-#             print("WARNING: Attempting to make a selection beyond the extents of the SimulationBox.")
+#             print(np.where(~selection), "which is a fraction of", np.where(~selection)[0].size / selection.size, flush=True)
+#             print("WARNING: Attempting to make a selection beyond the extents of the SimulationBox.", flush=True)
 # =============================================================================
         return selection
 
