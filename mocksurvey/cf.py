@@ -109,10 +109,10 @@ def RRrppi_periodic(N, boxsize, rpbins, pibins):
 
 # Returns the bias as a function of rp (rpbins must be given)
 # ===========================================================
-def bias_rp(data, rands, rpbins, wp_dms=None, pimax=50., suppress_warning=False):
+def bias_rp(data, rands, rpbins, boxsize=None, wp_dms=None, pimax=50., suppress_warning=False):
     rpbinses = np.asarray(rpbins)
     if len(rpbinses.shape) == 1:
-        rpbins = rpbinses.tolist()
+        rpbins = rpbinses
         rpbinses = []
         for i in range(len(rpbins)-1):
             rpbinses.append([rpbins[i],rpbins[i+1]])
@@ -121,22 +121,23 @@ def bias_rp(data, rands, rpbins, wp_dms=None, pimax=50., suppress_warning=False)
 
     biases = []
     for rpbins,wp_dm in zip(rpbinses, wp_dms):
+        rpbins = np.asarray(rpbins)
         if wp_dm is None:
-            r0, alpha = (41.437187675742656, -0.832326251664125) # best fits for MDR1 z=1 (pimax=50)
-            rpcens = 10**( (np.log10(rpbins[:-1]) + np.log10(rpbins[1:])) / 2. )
-            wp_dm = (rpcens/r0)**alpha
+            rpcens = np.sqrt(rpbins[:-1]*rpbins[1:])
+            wp_dm = wp_darkmatter(rpcens)
             if not suppress_warning:
-                print("Using default dark matter wp(rp=%.1f) = %s" %((rpbins[0]+rpbins[-1])/2., str(wp_dm)))
-        wp_gal = wp_rp(data, rands, rpbins, pimax)[0]
+                print(f"Using default dark matter wp(rp={rpcens}) = {wp_dm}")
+        wp_gal = wp_rp(data, rands, rpbins, pimax=pimax, boxsize=boxsize)[0]
         bias = np.sqrt(wp_gal/wp_dm)
         biases.append(bias)
+    
+    return hf.reduce_dim(biases)
 
-    if len(biases) == 1:
-        bias = biases[0]
-    else:
-        bias = np.asarray(biases)
-    return bias #/bias_field_solid_angle_1
 
+def wp_darkmatter(rp):
+    """best fit power-law for MDR1 z=1 (pimax=50)"""
+    r0, alpha = (41.437187675742656, -0.832326251664125)
+    return (rp/r0)**alpha
 
 
 # Returns the 2D correlation function xi(rp, pi) using Corrfunc

@@ -375,3 +375,18 @@ def factor_velocity(v, halo_v, halo_vel_factor=None, gal_vel_factor=None, inplac
         v += new_halo_v
     
     return v
+
+def reduce_dim(arr):
+    arr = np.asarray(arr)
+    shape = arr.shape
+    if not len(shape):
+        return arr.tolist()
+    
+    stup = ()
+    for i in range(len(shape)):
+        if shape[i] == 1:
+            stup += (0,)
+        else:
+            stup += (slice(None),)
+    
+    return arr[stup]

@@ -17,12 +17,16 @@ def plot_shade_err(x, y, err=None, color=None, label=None, alpha=0.8, saf=0.5, f
         ax.errorbar(x, y, yerr=(lower,upper), color=color, ecolor=color, alpha=alpha, **errorbar_kwa)
     return ax
 
-def plot_halo_mass(field, nbins=50, from_gals=False, fontsize=14, ax=None):
+def plot_halo_mass(simbox, nbins=50, from_gals=False, fontsize=14, ax=None):
     """Plot the halo mass function dN/dM_halo"""
+    try:
+        simbox = simbox.simbox
+    except AttributeError:
+        pass
     if from_gals:
-        mass = field.simbox.gals["halo_mvir"]
+        mass = simbox.gals["halo_mvir"]
     else:
-        mass = field.simbox.halos["halo_mvir"]
+        mass = simbox.halos["halo_mvir"]
     lims = np.log10(min(mass)), np.log10(max(mass))
     bins = np.logspace(lims[0], lims[1], nbins+1)
     
@@ -30,7 +34,7 @@ def plot_halo_mass(field, nbins=50, from_gals=False, fontsize=14, ax=None):
         ax = plt.gca()
     ax.hist(mass, bins=bins, density=True)
     ax.set_xlabel("$M_{\\rm halo}$ $(h^{-1} M_{\\ast})$", fontsize=fontsize)
-    ax.set_ylabel("$dN/dM_{\\rm halo}$", fontsize=fontsize)
+    ax.set_ylabel("$dP/dM_{\\rm halo}$", fontsize=fontsize)
     ax.loglog()
     return ax
 
@@ -55,6 +59,8 @@ def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, realspace=False, plot_v
 def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, **scatter_kwargs):
     data = field.get_data(rdz=True) * 180./np.pi
     rand = field.get_rands(rdz=True) * 180./np.pi
+    
+    
     s_rand = s / field.rand_density_factor
     
     if ax is None:
