@@ -319,7 +319,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
 
 # Calculate any of the above three correlation functions, estimating errors via the block jackknife/bootstrap method
 # ==================================================================================================================
-def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, func="xi_r", args=[], kwargs={}, rdz_distance=False, debugging_plots=False, give_jackknife_mean=False):
+def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, func="xi_r", args=[], kwargs={}, mean_answer=None, rdz_distance=False, debugging_plots=False):
     """
     Given a function which returns a statistic over an array of rbins,
     compute the statistic and its uncertainty.
@@ -342,17 +342,16 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
         func = wp_rp
     else:
         raise KeyError("Argument func=%s not valid. Must be one of: %s" %(func, '{<callable>, "xi_r", "wp_rp"}'))
-
+    
     N = np.product(nbins)
     if hf.is_arraylike(centers[0]):
         N *= len(centers)
     
     centers = np.asarray(centers)
     fieldshape = np.asarray(fieldshape)
-
+    
     ind_d, ind_r = _assign_block_indices(data_to_bin, rands_to_bin, centers, fieldshape, nbins, rdz_distance)
-
-    mean_answer = func(data, rands, *args, **kwargs)
+    
     answer_l = []
     for l in range(N):
         ind_d_sample = np.where(ind_d != l)[0]
@@ -366,18 +365,38 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
         if debugging_plots:
             import matplotlib.pyplot as plt
             if not rands is None: plt.scatter(rands_to_bin[ind_r_sample][:,0], rands_to_bin[ind_r_sample][:,1], s=.1)
-            plt.scatter(data_to_bin[ind_d_sample][:,0], data_to_bin[ind_d_sample][:,1], s=1)
+            plt.scatter(data_to_bin[ind_d_sample][:,0], data_to_bin[ind_d_sample][:,1], s=.5)
             plt.show()
         
-        answer_l.append(func(data_sample, rands_sample, *args, **kwargs))
+        ans = func(data_sample, rands_sample, *args, **kwargs)
+        answer_l.append(np.atleast_1d(ans))
         if np.any(np.isnan(answer_l[-1])):
+            print("block_jackknife: NAN encountered", flush=True)
             answer_l.pop()
             N -= 1
+    
+    # mean_answer/mean_jacks [rp]
+    jackknife_mean = np.mean(answer_l, axis=0)
+    if isinstance(mean_answer, dict):
+        mean_answer = func(data, rands, *args, **{**kwargs, **mean_answer})
+    elif isinstance(mean_answer, str):
+        mean_answer = func(data, rands, *args, **kwargs)
+    else:
+        mean_answer = jackknife_mean
+    
+    # Correction factor to account for the fact that jackknife mean
+    # may be systematically biased from the "true" mean answer
+    jackknife_bias = mean_answer[None,:]*mean_answer[:,None] / jackknife_mean[None,:]*jackknife_mean[:,None]
+    
+    # answer_l [l, rp]
     answer_l = np.asarray(answer_l)
-
-    covar = (N-1)/N * np.sum( (answer_l[:,:,None] - mean_answer[None,:,None]) * (answer_l[:,None,:] - mean_answer[None,None,:]), axis=0)
-
-    mean_answer = np.mean(answer_l, axis=0) if give_jackknife_mean else mean_answer
+    
+    # covar [rp_i, rp_j]
+    covar = (N-1)/N * jackknife_bias * np.sum( (answer_l[:,:,None] - jackknife_mean[None,:,None]) * (answer_l[:,None,:] - jackknife_mean[None,None,:]), axis=0)
+    
+    
+    
+    
     return mean_answer, covar
 
 

@@ -6,17 +6,17 @@ Some useful classes for coducting mock surveys of galaxies populated by `halotoo
 
 Classes
 -------
-SimBox:
+SimBox: (and subclasses HaloBox and GalBox)
    Contains information about the simulation box (e.g., the halo data), and populates galaxies given an HOD model available from `halotools`.
 
 BoxField:
-    Basic class used to select a rectangular prism of galaxies (or all galaxies by default) from the SimBox. Data can be accessed via convenient methods.
+    Basic class used to select a rectangular prism of galaxies (or all galaxies by default) populated by the SimBox. Data and randoms can be accessed via methods get_data and get_rands
 
 MockField:
-    A more sophisticated version of BoxField, with identical data access methods, in which galaxies are selected by celestial coordinates by a given scheme (shape) on the sky.
+    A more sophisticated version of BoxField, with identical data access methods, in which galaxies are selected by celestial coordinates by a given scheme (shape) on the sky. Data access methods work in the same way as BoxField.
 
 MockSurvey:
-    A collection of MockFields, centered at nearby places on the sky. Data access methods work in the same way as MockField.
+    A collection of MockFields, centered at nearby places on the sky. Data access methods work in the same way as BoxField.
 """
 
 from . import hf
@@ -99,25 +99,6 @@ class Observable:
         
         self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, **kwargs)
         return self.mean_jack, self.covar_jack
-    
-#    def jackknife_avg(self, field, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, nrealization=25, randomize_centers=False, jackknife_kwargs={}, **get_data_kw):
-#        data = field.get_data(**get_data_kw)
-#        rands = field.get_rands(**get_data_kw)
-#        samples = [self.jackknife(data, rands, centers, fieldshape, nbins,
-#                                  data_to_bin, rands_to_bin, **jackknife_kwargs)]
-#        if len(samples[0]) >= nrealization:
-#            print("`nrealization` should probably be greater than the number of observables", flush=True)
-#            
-#        field_kw = field._kwargs_.copy()
-#        for i in range(nrealization-1):
-#            field.simbox.populate_mock()
-#            if randomize_centers:
-#                c = hf.get_random_center(field.simbox.Lbox, field.shape)
-#                field_kw.update({"center":c})
-#            data = type(field)(**field_kw).get_data(**get_data_kw)
-#            samples.append(self.jackknife(data, rands, ))
-#        
-#        self.mean_jack, self.covar_jack = np.mean()
     
     def realization(self, rands, field, nrealization=25, **get_data_kw):
         data = field.get_data(**get_data_kw)

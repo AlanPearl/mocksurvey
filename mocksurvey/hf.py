@@ -2,6 +2,106 @@ import numpy as np
 from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
 
+def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
+    """
+    `func` must be a numpy-friendly function which accepts
+    an array as a positional argument and utilizes
+    an `axis` keyword argument
+    
+    This function is just a wrapper for rolling_window,
+    and is essentially implemented by the following code:
+    
+    >>> def apply_over_window(func, a, window):
+    >>>     return func(rolling_window(a, window), axis=-1)
+    
+    See rolling_window docstring for more info
+    """
+    return func(rolling_window(a, window, axis=axis, edge_case=edge_case), 
+                axis=-1, **kwargs)
+
+def rolling_window(a, window, axis=-1, edge_case=None):
+    """
+    Append a new axis of length `window` on `a` over which to roll over
+    the specified `axis` of `a`. The new window axis is always the LAST
+    axis in the returned array.
+    
+    WARNING: Memory usage for this function is O(a.size * window)
+    
+    Parameters
+    ----------
+    
+    a : array-like
+        Input array over which to add a new axis containing windows
+    
+    window : int
+        Number of elements in each window
+    
+    axis : int (default = -1)
+        The specified axis with which windows are drawn from
+    
+    edge_case : str (default = "replace")
+        We need to choose a scheme of how to deal with the ``window-1``
+        windows which contain entries beyond the edge of our specified axis.
+        The following options are supported:
+        
+        edge_case = None | "replace"
+            Windows containing entries beyond the edges will still exist, but
+            those entries will be replaced with the edge entry. The nth axis
+            element will be positioned in the ``window//2``th element of the 
+            nth window
+
+        edge_case = "wrap"
+            Windows containing entries beyond the edges will still exist, and
+            those entries will wrap around the axis. The nth axis element will
+            be positioned in the ``window//2``th element of the nth window
+
+        edge_case = "contract"
+            Windows containing entries beyond the edges will be removed 
+            entirely (e.g., if ``a.shape = (10, 10, 10)``, ``window = 4``,
+            and ``axis = 1`` then the output array will have shape 
+            ``(10, 7, 10, 4)`` because the specified axis will be reduced by
+            a length of ``window-1``). The nth axis element will be positioned
+            in the 0th element of the nth window.
+    """
+    # Input sanitization
+    a = np.asarray(a)
+    window = int(window)
+    axis = int(axis)
+    ndim = len(a.shape)
+    axis = axis + ndim if axis < 0 else axis
+    assert -1 < axis < ndim, "Invalid value for `axis`"
+    assert 1 < window < a.shape[axis], "Invalid value for `window`"
+    assert edge_case in [None, "replace", "contract", "wrap"], "Invalid value for `edge_case`"
+    
+    # Convenience function 'onaxes' maps smaller-dimensional arrays 
+    # along the desired axes of dimension of the output array
+    onaxes = lambda *axes: tuple(slice(None) if i in axes else None for i in range(ndim+1))
+    
+    # Repeat the input array `window` times, adding a new axis at the end
+    rep = np.repeat(a[...,None], window, axis=-1)
+    
+    # Create `window`-lengthed index arrays that increase by one 
+    # for each window (i.e., rolling indices)
+    ind = np.repeat(np.arange(a.shape[axis])[:,None], window, axis=-1)[onaxes(axis,ndim)]
+    ind += np.arange(window)[onaxes(ndim)]
+    
+    # Handle the edge cases
+    if (edge_case is None) or (edge_case == "replace"):
+        ind -= window//2
+        ind[ind<0] = 0
+        ind[ind>=a.shape[axis]] = a.shape[axis]-1
+    elif edge_case == "wrap":
+        ind -= window//2
+        ind %= a.shape[axis]
+    elif edge_case == "contract":
+        ind = ind[tuple(slice(1-window) if i==axis else slice(None) for i in range(ndim+1))]
+    
+    # Select the output array using our array of rolling indices `ind`
+    selection = tuple(ind if i==axis else np.arange(rep.shape[i])[onaxes(i)] for i in range(ndim+1))
+    return rep[selection]
+
+
+
 def auto_bootstrap(func, args, nbootstrap=50):
     results = [func(*args) for _ in range(nbootstrap)]
     results = np.array(results)
@@ -294,7 +394,7 @@ def logN(data, rands, njackknife=None, volume_factor=1):
         jackknife_factor = n/float(n-1)
     return np.log(volume_factor*jackknife_factor*len(data))
 
-def ln_density(data, rands, volume, njackknife=None):
+def logn(data, rands, volume, njackknife=None):
     if njackknife is None:
         jackknife_factor = 1
     else:
@@ -356,7 +456,7 @@ def unit_vector(theta, phi):
 def make_npoly(radius, n):
     import spherical_geometry.polygon as spoly
     phi1 = 2.*np.pi/float(n)
-    points = [unit_vector(radius, phi1*i) for i in range(n)]
+    points = [unit_vector(radius, phi1*i) for i in np.arange(n)+.5]
     inside = (0.,0.,1.)
     return spoly.SingleSphericalPolygon(points, inside)
 
@@ -379,14 +479,8 @@ def factor_velocity(v, halo_v, halo_vel_factor=None, gal_vel_factor=None, inplac
 def reduce_dim(arr):
     arr = np.asarray(arr)
     shape = arr.shape
-    if not len(shape):
+    if len(shape) == 0:
         return arr.tolist()
     
-    stup = ()
-    for i in range(len(shape)):
-        if shape[i] == 1:
-            stup += (0,)
-        else:
-            stup += (slice(None),)
-    
-    return arr[stup]
+    s = tuple(0 if shape[i]==1 else slice(None) for i in range(len(shape)))
+    return arr[s]
