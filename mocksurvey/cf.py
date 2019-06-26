@@ -164,21 +164,28 @@ def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='L
         if np.any((data > boxsize) | (data < 0)):
             data = data%boxsize
         
-        DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z)
-        DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
-        RR = RRrppi_periodic(len(data), boxsize, rpbins, pibins)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            
+            DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z)
+            DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
+            RR = RRrppi_periodic(len(data), boxsize, rpbins, pibins)
         return DD/RR - 1.
     else:
         xr,yr,zr = rands.T * array_factor
-        DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
-        DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
-    
-        DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z,
-                                                                                    X2=xr, Y2=yr, Z2=zr, periodic=False)
-        DR = np.reshape(DR['npairs'], (n_rpbins, n_pibins))
-    
-        RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
-        RR = np.reshape(RR['npairs'], (n_rpbins, n_pibins))
+        
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            
+            DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
+            DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
+        
+            DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z,
+                                                                                        X2=xr, Y2=yr, Z2=zr, periodic=False)
+            DR = np.reshape(DR['npairs'], (n_rpbins, n_pibins))
+        
+            RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
+            RR = np.reshape(RR['npairs'], (n_rpbins, n_pibins))
     
         factor = len(rands) / float(len(data))
         factor2 = factor**2
@@ -215,15 +222,17 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
     if not corrfunc_works:
         return mockobs.tpcf(data, rbins, randoms=rands, estimator=estimator, num_threads=nthreads)
     
-    DD_counts = Corrfunc.theory.DD(autocorr=True, nthreads=nthreads, binfile=rbins, X1=x, Y1=y, Z1=z, periodic=False)
-    DD_counts = DD_counts['npairs']
-
-    DR_counts = Corrfunc.theory.DD(autocorr=False, nthreads=nthreads, binfile=rbins, X1=x, Y1=y, Z1=z,
-                                                                    X2=xr, Y2=yr, Z2=zr, periodic=False)
-    DR_counts = DR_counts['npairs']
-
-    RR_counts = Corrfunc.theory.DD(autocorr=True, nthreads=nthreads, binfile=rbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
-    RR_counts = RR_counts['npairs']
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        
+        DD_counts = Corrfunc.theory.DD(autocorr=True, nthreads=nthreads, binfile=rbins, X1=x, Y1=y, Z1=z, periodic=False)
+        DD_counts = DD_counts['npairs']
+    
+        DR_counts = Corrfunc.theory.DD(autocorr=False, nthreads=nthreads, binfile=rbins, X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)
+        DR_counts = DR_counts['npairs']
+    
+        RR_counts = Corrfunc.theory.DD(autocorr=True, nthreads=nthreads, binfile=rbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
+        RR_counts = RR_counts['npairs']
 
     factor = len(rands) / float(len(data))
     factor2 = factor**2
@@ -305,14 +314,17 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
         return mockobs.wp(data, rpbins, pimax, randoms=rands, 
                           estimator="Landy-Szalay", num_threads=nthreads)
     
-    DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
-    DD = DD['npairs']
-
-    DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)
-    DR = DR['npairs']
-
-    RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
-    RR = RR['npairs']
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        
+        DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
+        DD = DD['npairs']
+    
+        DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)
+        DR = DR['npairs']
+    
+        RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
+        RR = RR['npairs']
 
     wp = convert_rp_pi_counts_to_wp(N, N, Nran, Nran, DD, DR, DR, RR, n_rpbins, pimax)
     return wp

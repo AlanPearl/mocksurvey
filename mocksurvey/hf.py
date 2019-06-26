@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.special as spec
 from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
 
@@ -100,7 +101,19 @@ def rolling_window(a, window, axis=-1, edge_case=None):
     selection = tuple(ind if i==axis else np.arange(rep.shape[i])[onaxes(i)] for i in range(ndim+1))
     return rep[selection]
 
-
+def unbiased_std_factor(n):
+    """
+    Returns 1/c4(n)
+    """
+    if is_arraylike(n):
+        wh = n < 343
+        ans = np.ones(np.shape(n))*(4.*n-3.)/(4.*n-4.)
+        n = n[wh]
+        ans[wh] = spec.gamma((n-1)/2)/np.sqrt(2/(n-1))/spec.gamma(n/2)
+        return ans
+    else:
+        ans = spec.gamma((n-1)/2)/np.sqrt(2/(n-1))/spec.gamma(n/2)
+        return ans if n < 343 else (4.*n-3.)/(4.*n-4.)
 
 def auto_bootstrap(func, args, nbootstrap=50):
     results = [func(*args) for _ in range(nbootstrap)]
