@@ -9,9 +9,9 @@ ___
 # Prerequisites
 ___
 ### for halotools:
-- numpy (check with `pip show numpy`)
 - g++ (check with `g++ --version`)
 ### for Corrfunc:
+- numpy >= 1.7 (check with `pip show numpy`)
 - gcc (check with `gcc --version`)
 - gsl (check with `gsl-config --version`)
 
