@@ -17,7 +17,6 @@ setup(name="mocksurvey",
 		"corner",
 #		"mpi4py",
         "schwimmbad",
-        "colossus",
       ],
       zip_safe=True,
 )
