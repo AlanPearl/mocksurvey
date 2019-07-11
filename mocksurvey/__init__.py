@@ -306,17 +306,17 @@ class CartesianSelector(FieldSelector):
         return b1 & b2 & b3 & b4 & b5 & b6
     
     def circle_fieldshape(self, rdz=False):
-        if rdz: raise ValueError("Why would you need to know the Celestial field shape of a Cartesian field?...")
+        if rdz: raise NotImplementedError("Why would you need to know the Celestial field shape of a Cartesian field?...")
         field_radius = self.circle_sqdeg2radius()
         return np.array([2.*field_radius]*2 + [self._z_length()], dtype=np.float32)
     
     def square_fieldshape(self, rdz=False):
-        if rdz: raise ValueError("Why would you need to know the Celestial field shape of a Cartesian field?...")
+        if rdz: raise NotImplementedError("Why would you need to know the Celestial field shape of a Cartesian field?...")
         field_apothem = self.square_sqdeg2apothem()
         return np.array([2.*field_apothem]*2 + [self._z_length()], dtype=np.float32)
 
     def hexagon_fieldshape(self, rdz=False):
-        if rdz: raise ValueError("Why would you need to know the Celestial field shape of a Cartesian field?...")
+        if rdz: raise NotImplementedError("Why would you need to know the Celestial field shape of a Cartesian field?...")
         field_apothem = self.hexagon_sqdeg2apothem()
         return np.array([4./math.sqrt(3.)*field_apothem, 2.*field_apothem, self._z_length()], dtype=np.float32)
 
