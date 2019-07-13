@@ -51,7 +51,7 @@ class Observable:
             self.kwargsdic = dict(zip(self.names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
         self.indexdic = {}
         self.lendic = {}
-        
+
         self.mean = None
         self.mean_jack = None
         self.covar_jack = None
@@ -62,13 +62,13 @@ class Observable:
 
     def get_jackknife(self, name=None):
         return self.get_data(name, method="jackknife")
-    
+
     def get_realization(self, name=None):
         return self.get_data(name, method="realization")
-    
+
     def get_random_realization(self, name=None):
         return self.get_data(name, method="random_realization")
-    
+
     def get_data(self, name=None, method=None):
         accepted = ["jackknife", "realization", "random_realization"]
         if not method is None and not (method in accepted):
@@ -86,7 +86,7 @@ class Observable:
                 raise ValueError("Must run this method first.\n"
                     f"Use <Observable object>.{method}(data,rands,...)")
 
-        
+
         if name is None:
             return mean if (method is None) else (mean, covar)
         else:
@@ -96,43 +96,45 @@ class Observable:
             return mean[s] if (method is None) else (mean[s], covar[s,s])
 
     def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, **kwargs):
-        
+
         self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, **kwargs)
         return self.mean_jack, self.covar_jack
-    
+
     def realization(self, rands, field, nrealization=25, **get_data_kw):
         data = field.get_data(**get_data_kw)
         samples = [self.obs_func(data, rands, store=False)]
         if len(samples[0]) >= nrealization:
             print("`nrealization` should probably be greater than the number of observables", flush=True)
-        
+
         for i in range(nrealization-1):
             field.simbox.populate_mock()
             data = type(field)(**field._kwargs_).get_data(**get_data_kw)
             samples.append(self.obs_func(data, rands, store=False))
-        
+
         samples = np.array(samples)
         self.mean_real = np.mean(samples, axis=0)
         self.covar_real = np.cov(samples, rowvar=False)
         return self.mean_real, self.covar_real
-    
+
     def random_realization(self, data, field, nrealization=25, **get_rands_kw):
         rands = field.get_rands(**get_rands_kw)
         samples = [self.obs_func(data, rands, store=False)]
         if len(samples[0]) >= nrealization:
             print("`nrealization` should probably be greater than the number of observables", flush=True)
-        
+
         for i in range(nrealization-1):
             field.make_rands()
             data = field.get_rands(**get_rands_kw)
             samples.append(self.obs_func(data, rands, store=False))
-        
+
         samples = np.array(samples)
         self.mean_real = np.mean(samples, axis=0)
         self.covar_real = np.cov(samples, rowvar=False)
         return self.mean_rand, self.covar_rand
-    
-    def obs_func(self, data, rands=None, store=True, param_dict={}):
+
+    def obs_func(self, data, rands=None, store=True, param_dict=None):
+        if param_dict is None:
+            param_dict = {}
         supported_params = {"icc"}
         if not set(param_dict.keys()).issubset(supported_params):
             raise ValueError(f"param_dict={param_dict} contains illegal keys."
@@ -143,21 +145,21 @@ class Observable:
             func = self.funcdic[name]
             args = self.argsdic[name]
             kwargs = self.kwargsdic[name]
-            
+
             ans = np.atleast_1d(func(data,rands,*args,**kwargs))
             # Integral constraint constant
             # ============================
             if "icc" in param_dict and name.lower().startswith("wp"):
                 ans -= param_dict["icc"]
-            
+
             answers.append(ans)
-            
+
             l = len(ans)
             if not name in self.indexdic:
                 self.indexdic[name] = i
                 self.lendic[name] = l
             i += l
-            
+
         answer = np.concatenate(answers)
         if store:
             self.mean = answer
@@ -168,7 +170,7 @@ class RedshiftSelector:
         self.mean_redshift = mockfield.simbox.redshift
         self.cosmo = mockfield.simbox.cosmo
         self.delta_z = mockfield.delta_z
-        
+
     def make_selection(self, redshift, convert_distance_to_redshift=False):
         upper, lower = self.mean_redshift + self.delta_z/2., self.mean_redshift - self.delta_z/2.
         if convert_distance_to_redshift:
@@ -185,7 +187,7 @@ class FieldSelector:
         self.delta_z = mockfield.delta_z
         self.scheme = mockfield.scheme
         self.make_selection, self.get_fieldshape = self.choose_selector()
-        
+
     def choose_selector(self):
         scheme = self.scheme
         if scheme.lower().startswith("cir"):
@@ -199,7 +201,7 @@ class FieldSelector:
             return self.npoly_selector, self.npoly_fieldshape
         else:
             raise ValueError("scheme = `%s` is invalid." %scheme)
-    
+
     def npoly_sqdeg2radius(self, n, return_angle=False):
         """
         Input: solid angle of entire field (in sq degrees)
@@ -207,15 +209,15 @@ class FieldSelector:
         """
         omega = self.sqdeg * np.pi**2 / 180.**2
         f = lambda angle: hf.make_npoly(angle, n).area() - omega
-        
+
         angle = scipy.optimize.brentq(f, 0, np.pi/2.)
-        
+
         if return_angle:
             return angle
         else:
             return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
-        
-    
+
+
     def circle_sqdeg2radius(self, return_angle=False):
         """
         Input: solid angle of entire field (in sq degrees)
@@ -223,12 +225,12 @@ class FieldSelector:
         """
         omega = self.sqdeg * np.pi**2 / 180.**2
         angle = math.acos(1 - omega/2./np.pi)
-        
+
         if return_angle:
             return angle
         else:
             return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
-    
+
     def square_sqdeg2apothem(self, return_angle=False):
         """
         Input: solid angle of entire field (in sq degrees)
@@ -242,12 +244,12 @@ class FieldSelector:
             angle = scipy.optimize.newton(f, fprime=fp, x0=angle0)/2.
         else:
             angle = scipy.optimize.brentq(f, 0, np.pi)/2.
-        
+
         if return_angle:
             return angle
         else:
             return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
-    
+
     def hexagon_sqdeg2apothem(self, return_angle=False):
         """
         Input: solid angle of entire field (in sq degrees)
@@ -262,26 +264,26 @@ class FieldSelector:
             angle = scipy.optimize.newton(f, fprime=fp, x0=angle0)
         else:
             angle = scipy.optimize.brentq(f, 0, np.pi/2.)
-        
+
         if return_angle:
             return angle
         else:
             return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
-        
+
     def _z_length(self):
         return hf.redshift_lim_to_dist(self.delta_z, self.mean_redshift, self.cosmo)
 
 class CartesianSelector(FieldSelector):
     def __init__(self, mockfield):
         FieldSelector.__init__(self, mockfield)
-    
+
     def circle_selector(self, xyz):
         """Select galaxies in a circle centered at ra,dec = (0,0) Mpc"""
         field_radius = self.circle_sqdeg2radius()
         xy = xyz[:,:2] - self.center[np.newaxis,:2]
         rad2 = np.sum(xy**2, axis=1)
         return rad2 < field_radius**2
-    
+
     def square_selector(self, xyz):
         """Select galaxies in a square centered at ra,dec = (0,0) Mpc"""
         field_apothem = self.square_sqdeg2apothem()
@@ -291,7 +293,7 @@ class CartesianSelector(FieldSelector):
         b3 = xy[:,1] < field_apothem
         b4 = xy[:,1] > -field_apothem
         return b1 & b2 & b3 & b4
-    
+
     def hexagon_selector(self, xyz):
         """Select galaxies in a hexagon centered at ra,dec = (0,0) Mpc"""
         field_apothem = self.hexagon_sqdeg2apothem()
@@ -304,12 +306,12 @@ class CartesianSelector(FieldSelector):
         b5 = xy[:,1] > -2*field_apothem - diagonal
         b6 = xy[:,1] > -2*field_apothem + diagonal
         return b1 & b2 & b3 & b4 & b5 & b6
-    
+
     def circle_fieldshape(self, rdz=False):
         if rdz: raise NotImplementedError("Why would you need to know the Celestial field shape of a Cartesian field?...")
         field_radius = self.circle_sqdeg2radius()
         return np.array([2.*field_radius]*2 + [self._z_length()], dtype=np.float32)
-    
+
     def square_fieldshape(self, rdz=False):
         if rdz: raise NotImplementedError("Why would you need to know the Celestial field shape of a Cartesian field?...")
         field_apothem = self.square_sqdeg2apothem()
@@ -323,7 +325,7 @@ class CartesianSelector(FieldSelector):
 class CelestialSelector(FieldSelector):
     def __init__(self, mockfield):
         FieldSelector.__init__(self, mockfield)
-    
+
     def circle_selector(self, rdz):
         """Select galaxies in a circle centered at ra,dec = (0,0) radans"""
         field_radius = self.circle_sqdeg2radius(return_angle=True)
@@ -333,8 +335,8 @@ class CelestialSelector(FieldSelector):
         x = -np.sin(rd[:,1])
         theta = np.arctan2(np.sqrt(x**2 + y**2), z)
         return theta < field_radius
-        
-    
+
+
     def square_selector(self, rdz):
         """Select galaxies in a square centered at ra,dec = (0,0) radians"""
         field_apothem = self.square_sqdeg2apothem(return_angle=True)
@@ -344,7 +346,7 @@ class CelestialSelector(FieldSelector):
         b3 = rd[:,1] < field_apothem
         b4 = rd[:,1] > -field_apothem
         return b1 & b2 & b3 & b4
-    
+
     def hexagon_selector(self, rdz):
         """Select galaxies in a hexagon centered at ra,dec = (0,0) radians"""
         field_apothem = self.hexagon_sqdeg2apothem(return_angle=True)
@@ -365,7 +367,7 @@ class CelestialSelector(FieldSelector):
         else:
             field_radius = hf.angle_lim_to_dist(field_radius, self.mean_redshift+self.delta_z/2., self.cosmo)
             return np.array([2.*field_radius]*2 + [self._z_length()], dtype=np.float32)
-    
+
     def square_fieldshape(self, rdz=False):
         field_apothem = self.square_sqdeg2apothem(return_angle=True)
         if rdz:
@@ -443,7 +445,7 @@ class BoxField:
     """
     def __init__(self, simbox, **kwargs):
         self._kwargs_ = {**kwargs, "simbox":simbox}
-        
+
         self.simbox = simbox
         self.center = self.simbox.Lbox/2.
         self.shape = None
@@ -454,21 +456,21 @@ class BoxField:
         self.zprec = 1e-3
         self.halo_vel_factor = None
         self.gal_vel_factor = None
-        
+
         hf.kwargs2attributes(self, kwargs)
-        
+
         self.center = np.asarray(self.center, dtype=np.float32)
         self.selection = slice(None)
         if (not self.shape is None) and (not self.empty):
             self.shape = np.atleast_1d(self.shape).astype(np.float32)
             if len(self.shape) == 1: self.shape = np.tile(self.shape, 3)
             self.selection = self._make_selection()
-            
+
         # For BoxField, Cartesian selection/distortion is ALWAYS true.
         self.center_rdz = np.array([0.,0.,simbox.redshift], dtype=np.float32)
         self.cartesian_distortion = True
         self.cartesian_selection = True
-        
+
         # Saved data
         dist = simbox.cosmo.comoving_distance(simbox.redshift).value * simbox.cosmo.h
         self.origin = self.center - np.array([0,0,dist])
@@ -479,8 +481,8 @@ class BoxField:
         self._rdz_real = None
         self._rdz_rands = None
         #gc.collect()
-        
-    def get_data(self, rdz=False, realspace=False):
+
+    def get_data(self, rdz= False, realspace= False) -> np.ndarray:
         """
         Returns the positions of all galaxies selected by this object.
         
@@ -509,7 +511,7 @@ class BoxField:
             xyz = self._get_gals(rdz=rdz, realspace=realspace)
             self._set_data(xyz, rdz=rdz, realspace=realspace)
         return xyz
-    
+
     def get_rands(self, rdz=False, realspace=True):
         """
         Returns the positions of uniform random data selected by this object.
@@ -531,12 +533,13 @@ class BoxField:
         realspace : boolean (default = True)
             This argument is IGNORED and only included for consistency between get_data() and get_rands()
         """
+        del realspace
         if self._xyz_rands is None:
             self.make_rands()
         if rdz and self._rdz_rands is None:
             self._rdz_rands = hf.ra_dec_z(self._xyz_rands-self.origin, np.zeros_like(self._xyz_rands), self.simbox.cosmo, self.zprec)
         return self._rdz_rands if rdz else self._xyz_rands
-    
+
     def get_vel(self, halo_vel_factor=None, gal_vel_factor=None):
         """
         Returns the velocity of each galaxy selected by this object.
@@ -554,18 +557,18 @@ class BoxField:
             halo_vel_factor = self.halo_vel_factor
         if gal_vel_factor is None:
             gal_vel_factor = self.gal_vel_factor
-        
+
         if (not halo_vel_factor is None) or (not gal_vel_factor is None):
             return hf.factor_velocity(
-                hf.xyz_array(self.simbox.gals, 
+                hf.xyz_array(self.simbox.gals,
                         ["vx","vy","vz"])[self.selection],
-                hf.xyz_array(self.simbox.gals, 
+                hf.xyz_array(self.simbox.gals,
                         ["halo_vx", "halo_vy", "halo_vz"])[self.selection],
                 halo_vel_factor=halo_vel_factor,
                 gal_vel_factor=gal_vel_factor,
                 inplace=True)
         else:
-            return hf.xyz_array(self.simbox.gals, 
+            return hf.xyz_array(self.simbox.gals,
                                 ["vx","vy","vz"])[self.selection]
 
     def get_redshift(self, realspace=False):
@@ -585,9 +588,9 @@ class BoxField:
         rdz = self._rdz_real if realspace else self._rdz
         if rdz is None:
             rdz = self.get_data(rdz=True, realspace=realspace)
-        
+
         return rdz[:,2]
-    
+
     def get_dist(self, realspace=False):
         """
         Returns the comoving distance of each galaxy selected by this object.
@@ -604,7 +607,7 @@ class BoxField:
         """
         xyz = self.get_data(realspace=realspace)
         return np.sqrt(np.sum(xyz**2, axis=1))
-        
+
 
     def get_mgid(self):
         """
@@ -616,7 +619,7 @@ class BoxField:
             Array containing a unique number for each galaxy, useful for cross-matching galaxies between fields
         """
         return np.asarray(self.simbox.gals["mgid"][self.selection])
-    
+
     def get_shape(self, rdz=False):
         """
         Returns the length along each dimension necessary to fully contain this field
@@ -637,7 +640,7 @@ class BoxField:
             return self.simbox.Lbox
         else:
             return self.shape
-    
+
     def make_rands(self, density_factor=None, seed=None):
         """
         Generate a uniform distribution of random data to trace the selection function of this object.
@@ -653,28 +656,28 @@ class BoxField:
         self._xyz_rands = self._rdz_rands = None
         if density_factor is None:
             density_factor = self.rand_density_factor
-        
+
         Nrand = int(density_factor * len(self.get_data()) + 0.5)
         lower = self.center - self.get_shape()/2.
-        
+
         if not seed is None: np.random.seed(seed)
         self._xyz_rands = (np.random.random((Nrand,3))*self.get_shape()[None,:] + lower[None,:]).astype(np.float32)
         if not seed is None: np.random.seed(None)
-        
+
     def _make_selection(self, xyz=None):
         if xyz is None:
             xyz = self._get_gals(realspace=self.realspace_selection)
-        
+
         lower, upper = self.center - self.get_shape()/2., self.center + self.get_shape()/2.
         selection = np.all((lower[None,:] <= xyz) & (xyz <= upper[None,:]), axis=1)
-        
+
         if self.collision_fraction > 0.:
             collisions = hf.sample_fraction(len(selection), self.collision_fraction)
             selection[collisions] = False
-        
+
         self._set_data(xyz[selection], realspace=self.realspace_selection)
         return selection
-    
+
     def _set_data(self, data, rdz=False, realspace=False):
         if realspace:
             if rdz:
@@ -686,7 +689,7 @@ class BoxField:
                 self._rdz = data
             else:
                 self._xyz = data
-    
+
     def _get_gals(self, rdz=False, realspace=False):
         if rdz:
             xyz = self.get_data(realspace=realspace)
@@ -694,7 +697,7 @@ class BoxField:
         else:
             xyz = hf.xyz_array(self.simbox.gals)[self.selection]
             if not realspace:
-                if (self.halo_vel_factor is None) and (self.gal_vel_factor is None):    
+                if (self.halo_vel_factor is None) and (self.gal_vel_factor is None):
                     vz = self.simbox.gals["vz"][self.selection]
                 else:
                     vz = hf.factor_velocity(self.simbox.gals["vz"]
@@ -706,7 +709,7 @@ class BoxField:
                                         inplace=False)
                 xyz = self._apply_distortion(xyz, vz)
         return xyz
-    
+
     def _apply_distortion(self, xyz, vz):
         return return_xyz_formatted_array(*xyz.T, self.simbox.Lbox, self.simbox.cosmo, self.simbox.redshift, velocity=vz, velocity_distortion_dimension="z")
 
@@ -807,8 +810,8 @@ class MockField:
         self.__dict__.update(self.defaults)
         self.halo_vel_factor = None
         self.gal_vel_factor = None
-        
-        
+
+
 #        self.cartesian_distortion = False
 #        self.cartesian_selection = False
 #        self.realspace_selection = False
@@ -818,36 +821,36 @@ class MockField:
 #        self.delta_z = 0.1
 #        self.zprec = 1e-3
 #        self.rand_density_factor = 20.
-        
+
         # Update default parameters with any keyword arguments
         hf.kwargs2attributes(self, kwargs)
-        
+
         self._gals = {}
         self._rands = {}
         self.origin, self.Lbox_rdz = self._centers_to_origin()
         self.field_selector, self.redshift_selector = self.get_selectors()
-        
+
         # Create field selection from FieldSelector, given sqdeg and scheme
         if not self.empty:
             self._initialize()
-    
+
     def _initialize(self):
         if hasattr(self.simbox, "gals"):
             self.selection = self._make_selection()
         else:
             self.selection = slice(None)
-        
+
         for key in self._gals:
             self._gals[key] = self._gals[key][self.selection]
         #gc.collect()
-    
+
     def get_selectors(self):
         if self.cartesian_selection:
             return CartesianSelector(self).make_selection, RedshiftSelector(self).make_selection
         else:
             return CelestialSelector(self).make_selection, RedshiftSelector(self).make_selection
-    
-    
+
+
 # Public member functions for data access
 # =======================================
     def get_data(self, rdz=False, realspace=False):
@@ -855,45 +858,46 @@ class MockField:
             return self._get_rdz(dataset=self._gals, realspace=realspace)
         else:
             return self._get_xyz(dataset=self._gals, realspace=realspace)
-    
+
     def get_rands(self, rdz=False, realspace=True):
+        del realspace
         if rdz:
             return self._get_rdz(dataset=self._rands)
         else:
             return self._get_xyz(dataset=self._rands)
 
-    def get_vel(self, halo_vel_factor=None, gal_vel_factor=None):        
-        return self._get_vel(halo_vel_factor=halo_vel_factor, 
+    def get_vel(self, halo_vel_factor=None, gal_vel_factor=None):
+        return self._get_vel(halo_vel_factor=halo_vel_factor,
                              gal_vel_factor=gal_vel_factor)
 
     def get_redshift(self, realspace=False):
         return self._get_redshift(realspace=realspace)
-    
+
     def get_dist(self, realspace=False):
         xyz = self.get_data(realspace=realspace)
         return np.sqrt(np.sum(xyz**2, axis=1))
-    
+
     def get_mgid(self):
         return np.asarray(self.simbox.gals["mgid"][self.selection])
-    
+
     def get_shape(self, rdz=False):
         if self.cartesian_selection:
             selector = CartesianSelector(self)
         else:
             selector = CelestialSelector(self)
-        
+
         return selector.get_fieldshape(rdz=rdz)
-    
+
     def get_lims(self, rdz=False, overestimation_factor=1.):
         shape = self.get_shape(rdz=rdz) * overestimation_factor
         center = self.center_rdz if rdz else self.center
-        
+
         xlim = [center[0]-shape[0]/2., center[0]+shape[0]/2.]
         ylim = [center[1]-shape[1]/2., center[1]+shape[1]/2.]
         zlim = [center[2]-shape[2]/2., center[2]+shape[2]/2.]
-        
+
         return np.array([xlim, ylim, zlim], dtype=np.float32)
-    
+
     def make_rands(self, density_factor=None, seed=None):
         if density_factor is None:
             density_factor = self.rand_density_factor
@@ -901,7 +905,7 @@ class MockField:
             self.rand_density_factor = density_factor
         density_gals = self.simbox.get_density()
         density_rands = density_factor * density_gals
-        
+
         if self.cartesian_selection:
             volume = np.product(self.get_shape(rdz=False))
             Nran = int(density_rands * volume + 0.5)
@@ -909,30 +913,30 @@ class MockField:
             if not seed is None:
                 np.random.seed(seed)
             rands = (np.random.random((Nran, 3)).astype(np.float32) - 0.5) * self.get_shape(rdz=False)[None,:] + self.center[None,:]
-        
+
         else:
             # Celestial (ra,dec) selection
             ralim, declim, _ = self.get_lims(rdz=True, overestimation_factor=1.02)
             zlim = self.get_lims(rdz=False, overestimation_factor=1.02)[2] - self.origin[2]
-            
+
             volume = hf.volume_rdz(ralim, declim, zlim)
             Nran = int(density_rands * volume + 0.5)
-            
+
             rands = hf.rand_rdz(Nran, ralim, declim, zlim, seed)
             rands = self.rdz2xyz(rands, input_distance=True)
-            
-            
+
+
         self._rands = {
             "x_real": rands[:,0],
             "y_real": rands[:,1],
             "z_real": rands[:,2]
         }
-        
+
         selection = self._make_selection(dataset='rands') & self._select_within_simbox(rands)
         for key in self._rands:
             self._rands[key] = self._rands[key][selection]
-    
-    
+
+
     get_data.__doc__ = BoxField.get_data.__doc__
     get_rands.__doc__ = BoxField.get_rands.__doc__
     get_vel.__doc__ = BoxField.get_vel.__doc__
@@ -941,14 +945,14 @@ class MockField:
     get_mgid.__doc__ = BoxField.get_mgid.__doc__
     get_shape.__doc__ = BoxField.get_shape.__doc__
     make_rands.__doc__ = BoxField.make_rands.__doc__
-    
+
     def xyz2rdz(self, xyz, vel=None):
         return hf.ra_dec_z(xyz-self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
-    
+
     def rdz2xyz(self, rdz, input_distance=False):
         cosmo = None if input_distance else self.simbox.cosmo
         return hf.rdz2xyz(rdz, cosmo=cosmo) + self.origin
-    
+
     def measure_volume(self, precision=1e-3):
         rdz_lims = self.get_lims(rdz=True, overestimation_factor=1.02)
         rdz_lims[2] = self.simbox.redshift2distance(rdz_lims[2])
@@ -958,24 +962,24 @@ class MockField:
         r = 0
         sigma = lambda: np.sqrt( (1-r)/(r*(N-1)) )
         get_Nmore = lambda: int( N0 - N + 1 + (1-r)/(r*precision**2) )
-        
+
         Nmore = N0
         i = 0
         while (not r) or (sigma() > precision):
             i += 1
             if i > 10:
-                raise RecursionError("sigma=%f > required=%f after 10 iterations" %(sigma, precision))
+                raise RecursionError("sigma=%f > required=%f after 10 iterations" %(sigma(), precision))
             rand_rdz = hf.rand_rdz(Nmore, *rdz_lims)
-            
+
             n += self._rdz_selection(rand_rdz, input_distance=True).sum()
             N += Nmore
-            
+
             r = n/N
-            
+
             Nmore = get_Nmore() if r else N0
-        
+
         return r * hf.volume_rdz(*rdz_lims)
-    
+
 # Private member functions
 # ========================
     def _get_rdz(self, dataset=None, realspace=False):
@@ -1039,7 +1043,7 @@ class MockField:
 
         xyz = hf.xyz_array(dataset, keys=[xkey, ykey, zkey])
         return xyz
-    
+
     def _get_vel(self, realspace=False, dataset=None, halo_vel_factor=None, gal_vel_factor=None):
         dataset, datanames, selection = self._get_dataset(dataset)
         if halo_vel_factor is None:
@@ -1055,24 +1059,24 @@ class MockField:
             return np.zeros((length, 3))
         else:
             return hf.factor_velocity(
-                hf.xyz_array(self.simbox.gals, 
+                hf.xyz_array(self.simbox.gals,
                              keys=['vx', 'vy', 'vz'])[selection],
-                hf.xyz_array(self.simbox.gals, 
+                hf.xyz_array(self.simbox.gals,
                              keys=['halo_vx', 'halo_vy', 'halo_vz'])[selection],
                 halo_vel_factor=halo_vel_factor,
                 gal_vel_factor=gal_vel_factor,
                 inplace=True)
-    
+
     def _get_redshift(self, realspace=False, dataset=None):
         dataset, datanames, selection = self._get_dataset(dataset)
         if dataset is self._rands:
             realspace = True
-        
+
         if realspace:
             zkey = 'redshift_real'
         else:
             zkey = 'redshift'
-        
+
         already_done = zkey in datanames
         if not already_done:
             xyz = self._get_xyz(realspace=realspace, dataset=dataset)
@@ -1080,7 +1084,7 @@ class MockField:
                 dist = xyz[:,2] - self.origin[None,2]
             else:
                 dist = np.sqrt(np.sum((xyz-self.origin[None,:])**2, axis=1))
-            
+
             vr = np.zeros(dist.shape)
             redshift = hf.distance2redshift(dist, vr, self.simbox.cosmo, self.zprec)
             hf.update_table(dataset, {zkey: redshift})
@@ -1094,22 +1098,22 @@ class MockField:
         else:
             data = self._get_rdz(realspace=self.realspace_selection, dataset=dataset)
         redshift = self._get_redshift(realspace=self.realspace_selection, dataset=dataset)
-        
+
         field_selector = self.field_selector
         redshift_selector = self.redshift_selector
-        
+
         selection = field_selector(data) & redshift_selector(redshift)
         collisions = hf.sample_fraction(len(selection), self.collision_fraction)
         selection[collisions] = False
         return selection
-    
+
     def _rdz_selection(self, data, input_distance=False):
         zlim = self.get_lims(rdz=not input_distance)[2]
         if input_distance: zlim -= self.origin[2]
-        
+
         red_select = (zlim[0] < data[:,2]) & (data[:,2] < zlim[1])
         field_select = self.field_selector(data[:,:2])
-        
+
         return field_select & red_select
 
     def _get_dataset_helper(self, dataset):
@@ -1151,10 +1155,10 @@ class MockField:
         """Construct boolean selection mask to ensure no data is outside the SimBox"""
         lower = np.array([0.,0.,0.])
         upper = self.simbox.Lbox - lower
-        
+
         select_lower = np.all(data >= lower[None,:], axis=1)
         select_upper = np.all(data <= upper[None,:], axis=1)
-        
+
         selection = select_lower & select_upper
 # =============================================================================
 #         if np.any(~selection):
@@ -1170,28 +1174,28 @@ class MockField:
             cosmology=self.simbox.cosmo, redshift=self.simbox.redshift, period=self.simbox.Lbox)
 
         return xyz_red.astype(np.float32)
-    
+
     def _redshift_distortion_rdz(self, realspace=False, dataset=None):
         xyz = self._get_xyz(realspace=True, dataset=dataset)
         vel = None if realspace else self._get_vel(dataset=dataset)
         return self.xyz2rdz(xyz, vel)
-    
+
     def _centers_to_origin(self):
         # Cast to numpy arrays
         self.center = np.asarray(self.center, dtype=np.float32)
         self.center_rdz = np.array([*self.center_rdz[:2], self.simbox.redshift], dtype=np.float32)
-        
+
         # Set the (cartesian) center as if center_rdz = [0,0,redshift]
         close_dist = self.simbox.cosmo.comoving_distance(self.simbox.redshift - self.delta_z/2.).value * self.simbox.cosmo.h
         center_dist = close_dist + self.get_shape()[2]/2.
         origin = self.center - np.array([0., 0., center_dist], dtype=np.float32)
-        
+
         points = np.array([ [0.,0.,0.], [self.simbox.Lbox[0], 0., 0.] ]) + origin
         ra = hf.ra_dec_z(points, np.zeros_like(points), self.simbox.cosmo)[:,0]
         ra = abs(ra[1]-ra[0]) * math.sqrt(2.)
-        
+
         Lbox_rdz = np.array([ra, ra, self.delta_z], dtype=np.float32)
-        
+
         return origin, Lbox_rdz
 
 
@@ -1214,47 +1218,49 @@ class MockSurvey:
     def __init__(self, simbox, rdz_centers, **kwargs):
         self._kwargs_ = {**kwargs, "simbox":simbox,
                          "rdz_centers":rdz_centers}
-        
+
         # Initialize the MockFields in their specified positions
         self.fields = [simbox.field(center_rdz=c, **kwargs) for c in rdz_centers]
-        
+
         # Create selection function that only counts each galaxy ONCE
         mgid = []
         for field in self.fields: mgid += field.get_mgid().tolist()
         self.mgid, self.selection = np.unique(np.asarray(mgid), return_index=True)
-        
+
         # Hacky/lazy way of defining the methods get_data, get_vel, etc.
         # using the corresponding MockField methods
-        accessors = [x for x in dir(MockField) if ((not x.startswith("_")) and (not x in ["make_rands","get_shape","get_rands"]))]
+        # accessors = [x for x in dir(MockField) if ((not x.startswith("_")) and (not x in ["make_rands","get_shape","get_rands"]))]
+        accessors = ["get_data", "get_dist", "get_mgid", "get_redshift", "get_vel"]
         for accessor in accessors:
             unbound = (lambda accessor: lambda self, rdz=False, realspace=False: self._field2survey(accessor, rdz, realspace))(accessor)
             unbound.__doc__ = self.fields[0].__getattribute__(accessor).__doc__
+            # noinspection PyArgumentList
             self.__setattr__(accessor, unbound.__get__(self))
-        
+
         self.simbox = simbox
         self.rand_density_factor = self.fields[0].rand_density_factor
         self.origin = self.fields[0].origin
-        
+
         self.center = kwargs.get("center", simbox.Lbox/2.)
         self.center_rdz = np.array([0., 0., simbox.redshift], dtype=np.float32)
-    
+
     def field_selector(self, rdz):
         s = [field.field_selector(rdz) for field in self.fields]
         return np.any(s, axis=0)
-        
+
     def redshift_selector(self, redshift):
         s = [field.redshift_selector(redshift) for field in self.fields]
         return np.any(s, axis=0)
-    
+
     def get_rands(self, rdz=False):
         if not hasattr(self, "rand_rdz"):
             self.make_rands()
-        
+
         if rdz:
             return self.rand_rdz
         else:
             return self.rand_xyz
-    
+
     def get_shape(self, rdz=False, return_lims=False):
         centers = np.array([field.center_rdz if rdz else field.center for field in self.fields])
         shapes = np.array([field.get_shape(rdz=rdz) for field in self.fields])
@@ -1264,25 +1270,25 @@ class MockSurvey:
             return lower,upper
         else:
             return upper - lower
-    
+
     def make_rands(self, density_factor=None, seed=None):
         if density_factor is None:
             density_factor = self.rand_density_factor
-        
+
         density = density_factor * self.simbox.get_density()
         lims = np.asarray(self.get_shape(rdz=True, return_lims=True)).T
         lims[2] = np.asarray(self.get_shape(rdz=False, return_lims=True)).T[2]
-        
+
         N = density * hf.volume_rdz(*lims)
         self.rand_rdz = hf.rand_rdz(N, *lims, seed=seed).astype(np.float32)
-        
+
         selections = [field._rdz_selection(self.rand_rdz, input_distance=True) for field in self.fields]
         selection = np.any(selections, axis=0)
-        
+
         self.rand_rdz = self.rand_rdz[selection]
         self.rand_xyz = self.rdz2xyz(self.rand_rdz, input_distance=True)
-        
-    
+
+
     def _field2survey(self, funcstring, rdz, realspace):
         ans = []
         kwargs = [("rdz", rdz), ("realspace", realspace)]
@@ -1292,35 +1298,35 @@ class MockSurvey:
         return ans
 
 class PFSSurvey(MockSurvey):
-    def __init__(self, simbox=None, center=None, threshold=10.5):
-        
+    def __init__(self, simbox=None, center=None, threshold=-21):
+
         simname = "smdpl"
         redshift = 1.35
         Nbox = (1,1,3)
         threshold = threshold
-        
+
         scheme = "hexagon"
         delta_z = 0.7
         sqdeg_total = 15.
         collision_fraction = 0.3
         numfield = 10
         sqdeg_each = sqdeg_total / numfield
-        
+
         if simbox is None:
             simbox = SimBox(simname=simname, redshift=redshift, Nbox=Nbox, threshold=threshold)
         if center is None:
             center = simbox.Lbox/2.
-        
+
         emptyfield = simbox.field(delta_z=delta_z, sqdeg=sqdeg_each, scheme=scheme, empty=True)
         w,h,_ = emptyfield.get_shape(rdz=True)
         w *= 3./4.; h *= 0.5
         centers = [[-3*w,0], [-2*w,h], [-2*w,-h], [-w,0], [0,h], [0,-h],
                    [w,0], [2*w,h], [2*w,-h], [3*w,0]]
-        
+
         assert(len(centers) == numfield)
-        
+
         MockSurvey.__init__(self, simbox, scheme=scheme, rdz_centers=centers, center=center, delta_z=delta_z, sqdeg=sqdeg_each, collision_fraction=collision_fraction)
-        
+
     def wp_jackknife(self):
         data = self.get_data()
         rands = self.get_rands()
@@ -1330,10 +1336,10 @@ class PFSSurvey(MockSurvey):
         boxshape = self.fields[0].get_shape(1)
         nbins = (2,2,1)
         func = cf.wp_rp
-        args = rpbins, pimax = np.logspace(-0.87, 1.73, 14), 50.
-        
+        args = np.logspace(-0.87, 1.73, 14), 50. # rpbins, pimax
+
         wp,covar = cf.block_jackknife(data, rands, centers, boxshape, nbins, data2b, rand2b, func, args, rdz_distance=False, debugging_plots=True)
-        
+
         return wp,covar
 
 MockSurvey.__doc__ += MockField.__doc__
@@ -1450,10 +1456,10 @@ class SimBox:
         else:
             raise ValueError("dataset=%s invalid. Must be in {`gal*`, `halo*`}"%dataset)
         return number/volume
-    
+
     def get_volume(self):
         return np.product(self.Lbox) if self.volume is None else self.volume
-    
+
     def redshift2distance(self, redshift):
         dist = self.cosmo.comoving_distance(redshift).value * self.cosmo.h
         return dist.astype(redshift.dtype)
@@ -1464,10 +1470,10 @@ class SimBox:
         """
         Returns a MockField object from this simbox (**see MockField documentation below**)
         """
-        
+
         field = MockField(self, **kwargs)
         return field
-    
+
     def survey(self, rdz_centers, **kwargs):
         """
         Returns a MockSurvey object from this simbox (**see MockSurvey documentation below**)
@@ -1481,7 +1487,7 @@ class SimBox:
         """
         field = BoxField(self, **kwargs)
         return field
-    
+
     field.__doc__ += MockField.__doc__
     survey.__doc__ += MockSurvey.__doc__
     boxfield.__doc__ += BoxField.__doc__
@@ -1500,7 +1506,7 @@ class SimBox:
                 self._populate_periodically(Nbox, seed, masking_function)
             else:
                 self._populate(seed, masking_function)
-        
+
         if rotation is None:
             rotation = self.rotation
         if rotation is None:
@@ -1508,7 +1514,7 @@ class SimBox:
         if rotation:
             k0 = [["x","y","z"], ["vx","vy","vz"],
             ["halo_x","halo_y","halo_z"], ["halo_vx","halo_vy","halo_vz"]]
-            
+
             k1 = [[s+"_tmp" for s in keys] for keys in k0]
             k2 = [np.roll(a,rotation).tolist() for a in k0]
             keys = [np.ravel(k).tolist() for k in [k0,k1,k2]]
@@ -1525,10 +1531,10 @@ class SimBox:
         self._set_version_name()
         def get_halos():
             self.halocat = sim_manager.CachedHaloCatalog(
-                simname=self.simname, redshift=self.redshift, 
-                halo_finder='rockstar', dz_tol=self.dz_tol, 
+                simname=self.simname, redshift=self.redshift,
+                halo_finder='rockstar', dz_tol=self.dz_tol,
                 version_name=self.version_name)
-            
+
         # if at first you don't succeed . . .
         try:
             try:
@@ -1540,9 +1546,9 @@ class SimBox:
                 get_halos()
         except OSError:
             raise
-        
+
         self.halos = self.halocat.halo_table
-        
+
         # Set the side lengths of the box
         if self.Nbox is None:
             self.Lbox = self.halocat.Lbox.astype(np.float32)
@@ -1562,15 +1568,15 @@ class SimBox:
     def construct_model(self):
         """Use HOD Model to construct mock galaxy sample"""
         self.model = empirical_models.PrebuiltHodModelFactory(self.hodname, redshift=self.redshift, cosmo=self.cosmo, threshold=self.threshold)
-    
+
     def get_halo_mass(self):
         return self.halos["halo_mvir"]
-        
+
     def get_halo_occupation(self, galaxy_type="all"):
         if not self.populated:
             self.populate_mock()
         halos = self.model.mock.halo_table
-        
+
         if galaxy_type.lower() == "all":
             n = halos["halo_num_centrals"] + halos["halo_num_satellites"]
         elif galaxy_type.lower().startswith("cen"):
@@ -1579,9 +1585,9 @@ class SimBox:
             n = halos["halo_num_satellites"]
         else:
             raise ValueError(f"galaxy_type={galaxy_type} not understood. Must be one of {'both', 'central', 'satellite'}")
-        
+
         return n
-    
+
     def get_halo_moments(self, prim_haloprop, galaxy_type="all", **kwargs):
         if galaxy_type.lower() == "all":
             n = lambda **k: (self.model.mean_occupation_centrals(**k)
@@ -1592,13 +1598,14 @@ class SimBox:
             n = self.model.mean_occupation_satellites
         else:
             raise ValueError(f"galaxy_type={galaxy_type} not understood. Must be one of {'both', 'cen*', 'sat*'}")
-        
+
         return n(prim_haloprop=prim_haloprop, **kwargs)
 
 
 # Generate a function to select halos before population, if performance is crucial
 # ================================================================================
-    def get_halo_selection_function(self, field):
+    @staticmethod
+    def get_halo_selection_function(field):
         selection_function = field.field_selector
         def halo_selection_function(halos):
             xyz = hf.xyz_array(halos, ["halo_x", "halo_y", "halo_z"])
@@ -1616,7 +1623,7 @@ class SimBox:
         else:
             self.model.populate_mock(self.halocat, seed=seed, masking_function=masking_function)
             self.populated = True
-        
+
         # Assign variables
         self.gals = self.model.mock.galaxy_table  # galaxy table
         stop = self.mgid_counter + len(self.gals)
@@ -1635,15 +1642,15 @@ class SimBox:
                 for iz in range(nz):
                     self._populate(seed, masking_function=masking_function)
                     xadd, yadd, zadd = ix*sim_x, iy*sim_y, iz*sim_z
-                    
+
                     dup = self.gals
                     dup["x"] += xadd; dup["y"] += yadd; dup["z"] += zadd
                     duplications.append(dup)
-        
+
         self.gals = astropy_table.vstack(duplications)
         self.Lbox = (self.halocat.Lbox * Nbox).astype(np.float32)
-    
-    
+
+
 
     def _set_version_name(self):
         if self.version_name is None:
@@ -1674,10 +1681,12 @@ class HaloBox(SimBox):
     See SimBox documentation below
     """
     accepted_kwargs = ["simname", "version_name", "cosmo", "redshift", "dz_tol", "Nbox", "Lbox", "empty"]
+
+    # noinspection PyMissingConstructor
     def __init__(self, **kwargs):
         self._kwargs_ = kwargs.copy()
         self.__dict__.update({s:self.defaults[s] for s in self.accepted_kwargs})
-        
+
 
         # Update default parameters with any keyword arguments
         hf.kwargs2attributes(self, kwargs)
@@ -1710,22 +1719,24 @@ class GalBox(SimBox):
     See SimBox documentation below
     """
     accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox", "rotation"]
+
+    # noinspection PyMissingConstructor
     def __init__(self, halobox=None, **kwargs):
         self._kwargs_ = kwargs.copy()
         self.halobox = HaloBox(empty=True) if halobox is None else halobox
         self.__dict__.update({s:self.defaults[s] for s in self.accepted_kwargs})
-        
+
         self.empty = self.halobox.empty
         self.Nbox = self.halobox.Nbox
-        
+
         hf.kwargs2attributes(self, kwargs)
-        
+
         self.halos = None if self.empty else self.halobox.halos
         self.halocat = None if self.empty else self.halobox.halocat
         self.redshift = self.halobox.redshift
         self.Lbox = self.halobox.Lbox
         self.cosmo = self.halobox.cosmo
-        
+
         self.populated = False
         self.construct_model()
         # Populate galaxies inside halos

@@ -2,6 +2,7 @@ import numpy as np
 import scipy.special as spec
 from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
+import collections
 
 def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     """
@@ -152,11 +153,11 @@ def get_N_subsamples_len_M(sample, N, M, norepeats=False, suppress_warning=False
         return sample[:newsize].reshape(newshape)
     
     if isinstance(sample, np.ndarray):
-        return get_N_subsamples_len_M_numpy(sample, N, M, maxN, maxM, seed)
+        return get_N_subsamples_len_M_numpy(sample, N, M, maxM, seed)
     else:
-        return get_N_subsamples_len_M_list(sample, N, M, maxN, maxM, seed)
+        return get_N_subsamples_len_M_list(sample, N, M, maxM, seed)
 
-def get_N_subsamples_len_M_list(sample, N, M, maxN, maxM, seed=None):
+def get_N_subsamples_len_M_list(sample, N, M, maxM, seed=None):
     i = 0
     subsamples = []
     while i < N:
@@ -172,7 +173,7 @@ def get_N_subsamples_len_M_list(sample, N, M, maxN, maxM, seed=None):
     
     return subsamples
 
-def get_N_subsamples_len_M_numpy(sample, N, M, maxN, maxM, seed=None):
+def get_N_subsamples_len_M_numpy(sample, N, M, maxM, seed=None):
     i = 0
     subsamples = np.zeros((N,maxM), dtype=bool)
     while i < N:
@@ -190,7 +191,9 @@ def get_N_subsamples_len_M_numpy(sample, N, M, maxN, maxM, seed=None):
     return subset
 
 def is_arraylike(a):
-    return isinstance(a, (tuple, list, np.ndarray))
+    # return isinstance(a, (tuple, list, np.ndarray))
+    return isinstance(a, collections.abc.Container
+                     ) and not isinstance(a, str)
 
 def angular_separation(ra1, dec1, ra2=0, dec2=0):
     """All angles (ra1, dec1, ra2=0, dec2=0) must be given in radians"""
@@ -236,6 +239,8 @@ def get_random_gridded_center(Lbox, fieldshape, numcenters=None, pad=None, repla
     if numcenters is None:
         numcenters = 1
         one_dim = True
+    else:
+        one_dim = False
         
     centers = grid_centers(Lbox, fieldshape, pad)
     if not replace and numcenters > len(centers):
@@ -390,7 +395,9 @@ def update_table(table, coldict):
     for key in coldict:
         table[key] = coldict[key]
 
-def xyz_array(struc_array, keys=['x', 'y', 'z'], attributes=False):
+def xyz_array(struc_array, keys=None, attributes=False):
+    if keys is None:
+        keys = ['x', 'y', 'z']
     if attributes:
         struc_array = struc_array.__dict__
 
@@ -400,6 +407,7 @@ def xyz_array(struc_array, keys=['x', 'y', 'z'], attributes=False):
     return np.vstack([x, y, z]).T
 
 def logN(data, rands, njackknife=None, volume_factor=1):
+    del rands
     if njackknife is None:
         jackknife_factor = 1
     else:
@@ -408,6 +416,7 @@ def logN(data, rands, njackknife=None, volume_factor=1):
     return np.log(volume_factor*jackknife_factor*len(data))
 
 def logn(data, rands, volume, njackknife=None):
+    del rands
     if njackknife is None:
         jackknife_factor = 1
     else:
@@ -479,7 +488,7 @@ def factor_velocity(v, halo_v, halo_vel_factor=None, gal_vel_factor=None, inplac
     if not halo_vel_factor is None:
         new_halo_v = halo_vel_factor * halo_v
         v += new_halo_v - halo_v
-    elif not gal_vel_factor is None:
+    else:
         new_halo_v = halo_v
     
     if not gal_vel_factor is None:
@@ -497,3 +506,114 @@ def reduce_dim(arr):
     
     s = tuple(0 if shape[i]==1 else slice(None) for i in range(len(shape)))
     return arr[s]
+
+
+def logggnfw(x, x0, y0, m1, m2, alpha):
+    """
+    LOGarithmic Generalized Generalized NFW profile
+    ====================================================================
+    log_{base}((base**(x-x0))**m1 * (1 + base**(x-x0)**(m2-m1))) + const
+    ====================================================================
+    Every parameter is allowed to range from -inf to +inf
+    m1 is the slope far left of x0 and m2 is the slope far right
+    of x0, with a smooth transition. The smaller alpha, the
+    smoother the transition.
+
+    Warning: Large magnitudes of m1 and m2 and large positive
+    values of alpha may prevent the exact solution from being
+    solved, in which case, approximations will be made automatically
+
+    Parameters
+    ----------
+    x : float
+        This is not a parameter, this is the abscissa
+
+    x0 : float
+        The characteristic position where the slope changes
+
+    y0 : float
+        The value of f(x0)
+
+    m1 : float
+        The slope at x << x0
+
+    m2 : float
+        The slope as x >> x0
+
+    alpha : float
+        The sharpness of the slope transition from m1 to m2
+
+    Returns
+    -------
+    y : float
+        >>> log_{base}((base**(x-x0))**m1 *
+        >>>           (1 + base**(x-x0)**(m2-m1))
+        >>>          ) + const
+
+        where ``base = 1 + exp(alpha)``
+        and   ``const = `y0 + (m1 - m2) / np.log2(base)`
+
+    """
+    x = np.asarray(x)
+    scalar = len(x.shape) == 0
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ans = logggnfw_exact(x, x0, y0, m1, m2, alpha)
+
+    fixthese = ~ np.isfinite(ans)
+    x = x[fixthese]
+    ans[fixthese] = logggnfw_approx(x, x0, y0, m1, m2, alpha)
+
+    return ans.reshape(()).tolist() if scalar else ans
+
+
+def logggnfw_exact(x, x0, y0, m1, m2, alpha):
+    """
+    exact form, inspired by gNFW potential
+    OverFlow warning is easily raised by somewhat
+    large values of m1, m2, and base
+    """
+    base = 1. + np.exp(alpha)
+    x = x - x0
+    return np.log((base ** x) ** m1 *
+                  (1 + base ** x) ** (m2 - m1)
+                  ) / np.log(base) + y0 + (m1 - m2) / np.log2(base)
+
+
+def logggnfw_approx(x, x0, y0, m1, m2, alpha):
+    """
+    Depending on value of x, either Taylor expand around x0 or
+    use the linear when sufficiently far from x0.
+    It does a pretty good job of being continuous, but may
+    drift far from the exact form at intermediate x-x0 values
+    """
+    base = 1. + np.exp(alpha)
+    x = np.asarray(x)
+    scalar = len(x.shape) == 0
+
+    # Convergence value chosen to make this
+    # function as continuous as possible
+    blackmagic = 4.2 / np.log2(base)
+    is_line1 = x - x0 < -blackmagic
+    is_line2 = x - x0 > blackmagic
+    is_curve = ~ (is_line1 | is_line2)
+
+    ans = np.zeros_like(x)
+    const = (m1 - m2) / np.log2(base) + y0
+    ans[is_line1] = m1 * (x[is_line1] - x0) + const
+    ans[is_line2] = m2 * (x[is_line2] - x0) + const
+
+    x = x[is_curve]
+    ans[is_curve] = logggnfw_taylor(x, x0, y0, m1, m2, base)
+
+    return ans.reshape(()).tolist() if scalar else ans
+
+
+def logggnfw_taylor(x, x0, y0, m1, m2, base):
+    x = x - x0
+    return (y0 + 0.5 * (m1 + m2) * x +
+            np.log(base) / 8. * (m2 - m1) * x ** 2 +
+            np.log(base) ** 3 / 192. * (m1 - m2) * x ** 4 +
+            np.log(base) ** 5 / 2880. * (m2 - m1) * x ** 6 +
+            17. * np.log(base) ** 7 / 645120. * (m1 - m2) * x ** 8)
