@@ -3,6 +3,7 @@ import scipy.special as spec
 from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
 import collections
+import warnings
 
 def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     """
@@ -546,9 +547,9 @@ def logggnfw(x, x0, y0, m1, m2, alpha):
     Returns
     -------
     y : float
-        >>> log_{base}((base**(x-x0))**m1 *
+        >>> log((base**(x-x0))**m1 *
         >>>           (1 + base**(x-x0)**(m2-m1))
-        >>>          ) + const
+        >>>          )/log(base) + const
 
         where ``base = 1 + exp(alpha)``
         and   ``const = `y0 + (m1 - m2) / np.log2(base)`
