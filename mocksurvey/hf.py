@@ -526,7 +526,7 @@ def logggnfw(x, x0, y0, m1, m2, alpha):
 
     Parameters
     ----------
-    x : float
+    x : float | array of floats
         This is not a parameter, this is the abscissa
 
     x0 : float
@@ -546,7 +546,7 @@ def logggnfw(x, x0, y0, m1, m2, alpha):
 
     Returns
     -------
-    y : float
+    y : float | array of floats
         >>> log((base**(x-x0))**m1 *
         >>>           (1 + base**(x-x0)**(m2-m1))
         >>>          )/log(base) + const
