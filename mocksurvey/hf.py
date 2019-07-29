@@ -526,7 +526,12 @@ def logggnfw(x, x0, y0, m1, m2, alpha):
 
     Parameters
     ----------
-    x : float | array of floats
+    x : float | array of floatsp at Pitt
+Holidays in United States
+Physics Colloquia
+
+
+
         This is not a parameter, this is the abscissa
 
     x0 : float
@@ -560,7 +565,7 @@ def logggnfw(x, x0, y0, m1, m2, alpha):
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        ans = logggnfw_exact(x, x0, y0, m1, m2, alpha)
+        ans = np.asarray(logggnfw_exact(x, x0, y0, m1, m2, alpha))
 
     fixthese = ~ np.isfinite(ans)
     x = x[fixthese]
