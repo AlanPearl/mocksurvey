@@ -11,8 +11,8 @@ from . import hf
 
 class PairCounts:
     def __init__(self, Ndata, Nrand, DD, DR, RR, n_rpbins, pimax=None):
-        """Class used to store information about the pair counts DD, DR, and RR
-           needed for calculating correlation functions"""
+        """Class used to store information about the pair counts DD,
+        DR, and RR needed for calculating correlation functions"""
         self.Ndata = Ndata
         self.Nrand = Nrand
         self.DD = np.asarray(DD)
@@ -40,7 +40,11 @@ class PairCounts:
 # Count pairs in 3D r bins
 # ========================
 def paircount_r(data, rands, rbins, nthreads=1, pair_counter_func="DD",
-                kwargs={}, pc_kwargs={}, precomputed=(None,None,None)):
+                kwargs=None, pc_kwargs=None, precomputed=(None, None, None)):
+    if kwargs is None:
+        kwargs = {}
+    if pc_kwargs is None:
+        pc_kwargs = {}
     x,y,z = data.T
     xr,yr,zr = rands.T
     
@@ -165,6 +169,7 @@ def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='L
             data = data%boxsize
         
         with warnings.catch_warnings():
+          with hf.suppress_stdout():
             warnings.simplefilter("ignore")
             
             DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z)
@@ -175,6 +180,7 @@ def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='L
         xr,yr,zr = rands.T * array_factor
         
         with warnings.catch_warnings():
+          with hf.suppress_stdout():
             warnings.simplefilter("ignore")
             
             DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
@@ -212,6 +218,7 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
             data = data%boxsize
         
         with warnings.catch_warnings():
+          with hf.suppress_stdout():
             warnings.simplefilter("ignore")
             return Corrfunc.theory.xi(boxsize, nthreads, rbins, *data.T)["xi"]
     x,y,z = data.T
@@ -223,6 +230,7 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
         return mockobs.tpcf(data, rbins, randoms=rands, estimator=estimator, num_threads=nthreads)
     
     with warnings.catch_warnings():
+      with hf.suppress_stdout():
         warnings.simplefilter("ignore")
         
         DD_counts = Corrfunc.theory.DD(autocorr=True, nthreads=nthreads, binfile=rbins, X1=x, Y1=y, Z1=z, periodic=False)
@@ -298,8 +306,10 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
                         estimator="Landy-Szalay", num_threads=nthreads)
         
         with warnings.catch_warnings():
+          with hf.suppress_stdout():
             warnings.simplefilter("ignore")
-            return Corrfunc.theory.wp(boxsize, pimax, nthreads, rpbins, *data.T)["wp"]
+            return Corrfunc.theory.wp(boxsize, pimax, nthreads,
+                                      rpbins, *data.T)["wp"]
     n_rpbins = len(rpbins) - 1
 
     x,y,z = data.T
@@ -311,10 +321,12 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
         return np.array([np.nan]*n_rpbins)
     
     if not corrfunc_works:
+        import halotools.mock_observables as mockobs
         return mockobs.wp(data, rpbins, pimax, randoms=rands, 
                           estimator="Landy-Szalay", num_threads=nthreads)
     
     with warnings.catch_warnings():
+      with hf.suppress_stdout():
         warnings.simplefilter("ignore")
         
         DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
@@ -331,7 +343,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
 
 # Calculate any of the above three correlation functions, estimating errors via the block jackknife/bootstrap method
 # ==================================================================================================================
-def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, func="xi_r", args=[], kwargs={}, mean_answer=None, rdz_distance=False, debugging_plots=False):
+def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, func="xi_r", args=None, kwargs=None, mean_answer=None, rdz_distance=False, debugging_plots=False):
     """
     Given a function which returns a statistic over an array of rbins,
     compute the statistic and its uncertainty.
@@ -342,6 +354,10 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
     - statistic [rp]
     - covariance matrix [rp_i, rp_j]
     """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
     if data_to_bin is None:
         assert(rands_to_bin is None)
         data_to_bin = data
@@ -412,7 +428,11 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
     return mean_answer, covar
 
 
-def block_bootstrap(data, rands, data_to_bin=None, rands_to_bin=None, func='xi_r', args=[], kwargs={}, nbootstrap=10, bins=50., plot_blocks=False, alpha=.5, Lbox=400., return_better_answer=False):
+def block_bootstrap(data, rands, data_to_bin=None, rands_to_bin=None, func='xi_r', args=None, kwargs=None, nbootstrap=10, bins=50., plot_blocks=False, alpha=.5, Lbox=400., return_better_answer=False):
+    if args is None:
+        args = []
+    if kwargs is None:
+        kwargs = {}
     if data_to_bin is None:
         assert(rands_to_bin is None)
         data_to_bin = data
@@ -492,7 +512,7 @@ def _blockbootstrap_subsample(data, rands, Nblock, ind_d, ind_r, nbootstrap, fun
             plt.plot(xr, yr, 'g.', alpha=alpha)
             plt.show()
 
-        # Compute correlation function using this particular resample
+        # Compute correlation function using resampled data
         xi_resample = np.asarray(func(data_resample, rands_resample, *args, **kwargs))
         if i==0:
             results = np.ones((nbootstrap, *xi_resample.shape), dtype=xi_resample.dtype)
@@ -526,6 +546,7 @@ def _blockbootstrap_subsample(data, rands, Nblock, ind_d, ind_r, nbootstrap, fun
     xi_err = np.asarray(xi_err)
     xi_err_err = np.asarray(xi_err_err)
     if plot_blocks:
+        import matplotlib.pyplot as plt
         x = np.arange(len(xi))
         for result in results:
             plt.plot(x, result, 'g-', alpha=alpha)
@@ -583,7 +604,7 @@ def _setupblockbins(rands, bins):
 
     return bins, nx, ny, nz
 
-def _assignblocks(data, rands, bins_info, field_centers=None, rdz_distance=False):
+def _assignblocks(data, rands, bins_info):
     if data is None or rands is None or len(data) == 0 or len(rands) == 0:
         raise ValueError('data_to_bin: %s \nrands_to_bin: %s' %(str(data),str(rands)))
     xbins, ybins, zbins, nx, ny, nz = bins_info
@@ -653,4 +674,4 @@ def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=
         
         ind_data_rands += ind,
     
-    return ind_data_rands
+    return ind_data_rands[0], ind_data_rands[1]

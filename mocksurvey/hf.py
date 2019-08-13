@@ -4,6 +4,18 @@ from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
 import collections
 import warnings
+from contextlib import contextmanager
+import sys, os
+
+@contextmanager
+def suppress_stdout():
+    with open(os.devnull, "w") as devnull:
+        old_stdout = sys.stdout
+        sys.stdout = devnull
+        try:
+            yield
+        finally:
+            sys.stdout = old_stdout
 
 def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     """
@@ -14,8 +26,8 @@ def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     This function is just a wrapper for rolling_window,
     and is essentially implemented by the following code:
     
-    >>> def apply_over_window(func, a, window):
-    >>>     return func(rolling_window(a, window), axis=-1)
+    >>> def apply_over_window(func, a, window, **kw):
+    >>>     return func(rolling_window(a, window, **kw), axis=-1)
     
     See rolling_window docstring for more info
     """
@@ -527,11 +539,6 @@ def logggnfw(x, x0, y0, m1, m2, alpha):
     Parameters
     ----------
     x : float | array of floatsp at Pitt
-Holidays in United States
-Physics Colloquia
-
-
-
         This is not a parameter, this is the abscissa
 
     x0 : float
