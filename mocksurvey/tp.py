@@ -42,14 +42,14 @@ def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, realspace=False, plot_v
     data = field.get_data(realspace=realspace)
     rand = field.get_rands()
     
-    s_rand = s / field.rand_density_factor
+    s_rand = s #/ field.rand_density_factor
     
     if ax is None:
         ax = plt.gca()
     if plot_vel:
         vel = field.get_vel()
         ax.quiver(data[:,axes[0]], data[:,axes[1]], vel[:,axes[0]], vel[:,axes[1]])
-    ax.scatter(rand[:,axes[0]], rand[:,axes[1]], s=s_rand, **scatter_kwargs)
+    ax.scatter(rand[:,axes[0]], rand[:,axes[1]], s=s_rand, **{**scatter_kwargs,"alpha":1})
     ax.scatter(data[:,axes[0]], data[:,axes[1]], s=s, **scatter_kwargs)
     axstr = ["x","y","z"]
     ax.set_xlabel("$%s$ ($h^{-1}$ Mpc)" %axstr[axes[0]], fontsize=fontsize)
@@ -61,11 +61,11 @@ def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, **scatter_kwargs):
     rand = field.get_rands(rdz=True) * 180./np.pi
     
     
-    s_rand = s / field.rand_density_factor
+    s_rand = s #/ field.rand_density_factor
     
     if ax is None:
         ax = plt.gca()
-    ax.scatter(rand[:,0], rand[:,1], s=s_rand, **scatter_kwargs)
+    ax.scatter(rand[:,0], rand[:,1], s=s_rand, **{**scatter_kwargs,"alpha":1})
     ax.scatter(data[:,0], data[:,1], s=s, **scatter_kwargs)
     ax.set_xlabel("$\\alpha$ (deg)", fontsize=fontsize)
     ax.set_ylabel("$\\delta$ (deg)", fontsize=fontsize)
@@ -133,21 +133,23 @@ def plot_hod_occupation(simbox, mass=None, **haloprop_kwargs):
     ntot_q = ncen_q + nsat_q
     
     ns = {"scatter_kwa": {"s":0}, "errorbar_kwa": {"lw":0}}
-    fig,ax = plt.subplots(figsize=(16,4), ncols=3)
+    fig,ax = plt.subplots(figsize=(17,4), ncols=3)
     lab = lambda string: "$\\langle N_{\\rm %s} \\rangle$"%string
+    types = ["centrals", "satellites", "total"]
 
     plot_shade_err(mass, np.array(ncen_q)[1], np.diff(np.array(ncen_q), axis=0), color="k", ax=ax[0], line_kwa={"lw":0}, **ns)
-    plot_shade_err(mass, ncen, color="b", ax=ax[0], line_kwa={"label":lab("cen"), "lw":2}, **ns)
+    plot_shade_err(mass, ncen, color="b", ax=ax[0], line_kwa={"label":lab(types[0]), "lw":2}, **ns)
     ax[0].semilogx()
 
     plot_shade_err(mass, np.array(nsat_q)[1], np.diff(np.array(nsat_q), axis=0), color="k", ax=ax[1], line_kwa={"lw":0},  **ns)
-    plot_shade_err(mass, nsat, color="b", ax=ax[1], line_kwa={"label":lab("sat"), "lw":2},**ns)
+    plot_shade_err(mass, nsat, color="b", ax=ax[1], line_kwa={"label":lab(types[1]), "lw":2},**ns)
     ax[1].loglog()
 
     plot_shade_err(mass, np.array(ntot_q)[1], np.diff(np.array(ntot_q), axis=0), color="k", ax=ax[2], line_kwa={"lw":0},  **ns)
-    plot_shade_err(mass, ntot, color="b", ax=ax[2], line_kwa={"label":lab("tot"), "lw":2},**ns)
+    plot_shade_err(mass, ntot, color="b", ax=ax[2], line_kwa={"label":lab(types[2]), "lw":2},**ns)
     ax[2].loglog()
 
-    [a.legend(loc=4 if a is ax[0] else 2, fontsize=14) for a in ax]
+    # [a.legend(loc=4 if a is ax[0] else 2, fontsize=14) for a in ax]
+    [a.set_ylabel(lab(s), fontsize=14) for (a,s) in zip(ax,types)]
     [a.set_ylim([1e-2,50]) for a in ax[1:]]
     [a.set_xlabel("$M_{\\rm halo} \\;(M_\\odot)$", fontsize=14) for a in ax]

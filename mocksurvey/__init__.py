@@ -482,6 +482,23 @@ class BoxField:
         self._rdz_rands = None
         #gc.collect()
 
+    def get(self, key):
+        """
+        Catch-all function for returning a column from simbox.gals under
+        the selection function of this field.
+        
+        Returns
+        -------
+        data : ndarray/astropy column of shape (N,)
+            Array containing the column specified by `key`.
+        
+        Parameters
+        ----------
+        key : string
+            String of the key specifying the column we want to grab
+        """
+        return self.simbox.gals[key][self.selection]
+
     def get_data(self, rdz= False, realspace= False) -> np.ndarray:
         """
         Returns the positions of all galaxies selected by this object.
@@ -853,6 +870,7 @@ class MockField:
 
 # Public member functions for data access
 # =======================================
+
     def get_data(self, rdz=False, realspace=False):
         if rdz:
             return self._get_rdz(dataset=self._gals, realspace=realspace)
@@ -936,7 +954,7 @@ class MockField:
         for key in self._rands:
             self._rands[key] = self._rands[key][selection]
 
-
+    get = BoxField.get
     get_data.__doc__ = BoxField.get_data.__doc__
     get_rands.__doc__ = BoxField.get_rands.__doc__
     get_vel.__doc__ = BoxField.get_vel.__doc__
@@ -1058,14 +1076,18 @@ class MockField:
                 length = len(dataset[ list(datanames)[0] ])
             return np.zeros((length, 3))
         else:
-            return hf.factor_velocity(
-                hf.xyz_array(self.simbox.gals,
-                             keys=['vx', 'vy', 'vz'])[selection],
-                hf.xyz_array(self.simbox.gals,
-                             keys=['halo_vx', 'halo_vy', 'halo_vz'])[selection],
-                halo_vel_factor=halo_vel_factor,
-                gal_vel_factor=gal_vel_factor,
-                inplace=True)
+            if not(halo_vel_factor is None) or not(gal_vel_factor is None):
+                return hf.factor_velocity(
+                    hf.xyz_array(self.simbox.gals,
+                                 keys=['vx', 'vy', 'vz'])[selection],
+                    hf.xyz_array(self.simbox.gals,
+                                 keys=['halo_vx', 'halo_vy', 'halo_vz'])[selection],
+                    halo_vel_factor=halo_vel_factor,
+                    gal_vel_factor=gal_vel_factor,
+                    inplace=True)
+            else:
+                return hf.xyz_array(self.simbox.gals,
+                                    keys=['vx', 'vy', 'vz'])[selection]
 
     def _get_redshift(self, realspace=False, dataset=None):
         dataset, datanames, selection = self._get_dataset(dataset)
@@ -1494,7 +1516,23 @@ class SimBox:
 
 # Helper member functions
 # =======================
+    
+    def rotate(self, rotation, gals=None):
+        if rotation is None:
+            rotation = np.random.randint(3)
+        if rotation:
+            gals = self.gals if gals is None else gals
+            k0 = [["x","y","z"], ["vx","vy","vz"],
+            ["halo_x","halo_y","halo_z"], ["halo_vx","halo_vy","halo_vz"]]
 
+            k1 = [[s+"_tmp" for s in keys] for keys in k0]
+            k2 = [np.roll(a,rotation).tolist() for a in k0]
+            keys = [np.ravel(k).tolist() for k in [k0,k1,k2]]
+
+            for olds,news in [[keys[0],keys[1]],[keys[1],keys[2]]]:
+                for old,new in zip(olds,news):
+                    gals.rename_column(old,new)
+    
     def populate_mock(self, seed=None, masking_function=None, rotation=None, Nbox=None):
         """Implement HOD model over halos to populate mock galaxy sample"""
         gc.collect()
@@ -1506,22 +1544,10 @@ class SimBox:
                 self._populate_periodically(Nbox, seed, masking_function)
             else:
                 self._populate(seed, masking_function)
-
+        
         if rotation is None:
             rotation = self.rotation
-        if rotation is None:
-            rotation = np.random.randint(3)
-        if rotation:
-            k0 = [["x","y","z"], ["vx","vy","vz"],
-            ["halo_x","halo_y","halo_z"], ["halo_vx","halo_vy","halo_vz"]]
-
-            k1 = [[s+"_tmp" for s in keys] for keys in k0]
-            k2 = [np.roll(a,rotation).tolist() for a in k0]
-            keys = [np.ravel(k).tolist() for k in [k0,k1,k2]]
-
-            for olds,news in [[keys[0],keys[1]],[keys[1],keys[2]]]:
-                for old,new in zip(olds,news):
-                    self.gals.rename_column(old,new)
+        self.rotate(rotation, self.gals)
 
         # TODO: make this assertion work. And then set gals["mgid"] here instead of asserting it
         # assert(np.all(self.gals["mgid"] == np.arange(len(self.gals))))
