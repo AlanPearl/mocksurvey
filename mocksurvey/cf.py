@@ -278,6 +278,9 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
     
     nthreads : int (default = 2)
         Number of CPU cores to be used for multiprocessing.
+
+    use_halotools_version : bool (default = False)
+        Set to True if you don't have Corrfunc installed
     
     Returns
     -------
@@ -381,6 +384,7 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
     ind_d, ind_r = _assign_block_indices(data_to_bin, rands_to_bin, centers, fieldshape, nbins, rdz_distance)
     
     answer_l = []
+    ind_r_sample = None
     for l in range(N):
         ind_d_sample = np.where(ind_d != l)[0]
         data_sample = data[ind_d_sample]
@@ -429,6 +433,8 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
 
 
 def block_bootstrap(data, rands, data_to_bin=None, rands_to_bin=None, func='xi_r', args=None, kwargs=None, nbootstrap=10, bins=50., plot_blocks=False, alpha=.5, Lbox=400., return_better_answer=False):
+    if Lbox is Lbox:
+        raise NotImplementedError("block_bootstrap is deprecated")
     if args is None:
         args = []
     if kwargs is None:
@@ -470,6 +476,9 @@ def block_bootstrap(data, rands, data_to_bin=None, rands_to_bin=None, func='xi_r
 # Helper functions for jackknife / bootstrapping
 # ==============================================
 def _blockbootstrap_subsample(data, rands, Nblock, ind_d, ind_r, nbootstrap, func, args, kwargs, plot_blocks, alpha, seed=None):
+    results = None
+    if results is results:
+        raise NotImplementedError("bootstrapping is deprecated")
     for i in range(nbootstrap):
         # Choose blocks in resample
         if not seed is None: np.random.seed(seed)

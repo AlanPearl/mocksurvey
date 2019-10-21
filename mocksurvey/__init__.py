@@ -170,11 +170,11 @@ class RedshiftSelector:
         self.mean_redshift = mockfield.simbox.redshift
         self.cosmo = mockfield.simbox.cosmo
         self.delta_z = mockfield.delta_z
+        self.zlim = self.mean_redshift + np.array([-.5,.5])*self.delta_z
+        self.dlim = hf.comoving_disth(self.zlim, self.cosmo)
 
-    def make_selection(self, redshift, convert_distance_to_redshift=False):
-        upper, lower = self.mean_redshift + self.delta_z/2., self.mean_redshift - self.delta_z/2.
-        if convert_distance_to_redshift:
-            redshift = hf.distance2redshift(redshift, 0, self.cosmo)
+    def make_selection(self, redshift, input_is_distance=False):
+        lower, upper = self.dlim if input_is_distance else self.zlim
         return (lower < redshift) & (redshift < upper)
 
 class FieldSelector:
@@ -277,16 +277,28 @@ class CartesianSelector(FieldSelector):
     def __init__(self, mockfield):
         FieldSelector.__init__(self, mockfield)
 
+        zlim = (self.mean_redshift - self.delta_z/2.,
+                self.mean_redshift + self.delta_z/2.)
+        omega = self.sqdeg * (np.pi / 180.)**2
+        d1,d2 = hf.comoving_disth(zlim, self.cosmo)
+
+        volume = omega/3. * (d2**3 - d1**3)
+        depth = d2-d1
+
+        # Calculate area such that volume is preserved in
+        # the conversion from Celestial -> Cartesian
+        self.area = volume / depth
+
     def circle_selector(self, xyz):
-        """Select galaxies in a circle centered at ra,dec = (0,0) Mpc"""
-        field_radius = self.circle_sqdeg2radius()
+        """Select galaxies in a circle centered at x,y = field.center"""
+        field_radius = np.sqrt(self.area / np.pi)
         xy = xyz[:,:2] - self.center[np.newaxis,:2]
         rad2 = np.sum(xy**2, axis=1)
         return rad2 < field_radius**2
 
     def square_selector(self, xyz):
-        """Select galaxies in a square centered at ra,dec = (0,0) Mpc"""
-        field_apothem = self.square_sqdeg2apothem()
+        """Select galaxies in a square centered at x,y = field.center"""
+        field_apothem = np.sqrt(self.area / 4.)
         xy = xyz[:,:2] - self.center[np.newaxis,:2]
         b1 = xy[:,0] < field_apothem
         b2 = xy[:,0] > -field_apothem
@@ -295,8 +307,8 @@ class CartesianSelector(FieldSelector):
         return b1 & b2 & b3 & b4
 
     def hexagon_selector(self, xyz):
-        """Select galaxies in a hexagon centered at ra,dec = (0,0) Mpc"""
-        field_apothem = self.hexagon_sqdeg2apothem()
+        """Select galaxies in a hexagon centered at x,y = field.center"""
+        field_apothem = np.sqrt(self.area / (2*np.sqrt(3)))
         xy = xyz[:,:2] - self.center[np.newaxis,:2]
         diagonal = math.sqrt(3.) * xy[:,0]
         b1 = xy[:,1] < field_apothem
@@ -941,7 +953,7 @@ class MockField:
             Nran = int(density_rands * volume + 0.5)
 
             rands = hf.rand_rdz(Nran, ralim, declim, zlim, seed)
-            rands = self.rdz2xyz(rands, input_distance=True)
+            rands = self.rdz2xyz(rands, input_is_distance=True)
 
 
         self._rands = {
@@ -967,13 +979,22 @@ class MockField:
     def xyz2rdz(self, xyz, vel=None):
         return hf.ra_dec_z(xyz-self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
 
-    def rdz2xyz(self, rdz, input_distance=False):
-        cosmo = None if input_distance else self.simbox.cosmo
+    def rdz2xyz(self, rdz, input_is_distance=False):
+        cosmo = None if input_is_distance else self.simbox.cosmo
         return hf.rdz2xyz(rdz, cosmo=cosmo) + self.origin
 
-    def measure_volume(self, precision=1e-3):
-        rdz_lims = self.get_lims(rdz=True, overestimation_factor=1.02)
-        rdz_lims[2] = self.simbox.redshift2distance(rdz_lims[2])
+    def volume(self):
+        (_,_,(d1,d2)),v,_ = self._measure_volume_setup(1)
+        if self.cartesian_selection:
+            return v
+        else:
+            omega = self.sqdeg * (np.pi/180.)**2
+            return omega/3. * (d2**3 - d1**3)
+
+
+    def measure_volume(self, precision=1e-3, recursion_lim=10):
+        lims, volume, rand_generator = self._measure_volume_setup()
+
         N0 = 10000
         N = 0
         n = 0
@@ -985,21 +1006,45 @@ class MockField:
         i = 0
         while (not r) or (sigma() > precision):
             i += 1
-            if i > 10:
-                raise RecursionError("sigma=%f > required=%f after 10 iterations" %(sigma(), precision))
-            rand_rdz = hf.rand_rdz(Nmore, *rdz_lims)
+            if i > recursion_lim:
+                raise RecursionError(f"After {recursion_lim} "
+                f"iterations, {N} randoms were generated. " 
+                f"precision={sigma()}, short of the required "
+                f"precision (={precision}).")
+            rand = rand_generator(Nmore, *lims)
 
-            n += self._rdz_selection(rand_rdz, input_distance=True).sum()
+            n += self.apply_selection(rand, input_is_distance=True).sum()
             N += Nmore
 
             r = n/N
 
             Nmore = get_Nmore() if r else N0
 
-        return r * hf.volume_rdz(*rdz_lims)
+        return r * volume
+
+    def apply_selection(self, data, input_is_distance=False):
+        return (self.field_selector(data[:,:2]) &
+                self.redshift_selector(data[:,2], input_is_distance))
 
 # Private member functions
 # ========================
+    def _measure_volume_setup(self, oef=1.02):
+        if self.cartesian_selection:
+            lims = self.get_lims(rdz=False, overestimation_factor=oef)
+            lims[-1] -= self.origin[-1]
+            volume = np.product(np.diff(lims, axis=1))
+            rand_generator = (lambda N, xlim, ylim, zlim:
+                              (np.random.random((N,3)) *
+                              np.diff(lims, axis=1).T) +
+                              lims[:,:1].T)
+        else:
+            lims = self.get_lims(rdz=True, overestimation_factor=oef)
+            lims[2] = self.simbox.redshift2distance(lims[2])
+            volume = hf.volume_rdz(*lims)
+            rand_generator = hf.rand_rdz
+
+        return lims, volume, rand_generator
+
     def _get_rdz(self, dataset=None, realspace=False):
         dataset, datanames, _ = self._get_dataset(dataset)
         if dataset is self._rands:
@@ -1119,24 +1164,16 @@ class MockField:
             data = self._get_xyz(realspace=self.realspace_selection, dataset=dataset)
         else:
             data = self._get_rdz(realspace=self.realspace_selection, dataset=dataset)
-        redshift = self._get_redshift(realspace=self.realspace_selection, dataset=dataset)
 
-        field_selector = self.field_selector
-        redshift_selector = self.redshift_selector
+        # redshift = self._get_redshift(realspace=self.realspace_selection, dataset=dataset)
+        # field_selector = self.field_selector
+        # redshift_selector = self.redshift_selector
+        # selection = field_selector(data) & redshift_selector(redshift)
 
-        selection = field_selector(data) & redshift_selector(redshift)
+        selection = self.apply_selection(data, input_is_distance=self.cartesian_selection)
         collisions = hf.sample_fraction(len(selection), self.collision_fraction)
         selection[collisions] = False
         return selection
-
-    def _rdz_selection(self, data, input_distance=False):
-        zlim = self.get_lims(rdz=not input_distance)[2]
-        if input_distance: zlim -= self.origin[2]
-
-        red_select = (zlim[0] < data[:,2]) & (data[:,2] < zlim[1])
-        field_select = self.field_selector(data[:,:2])
-
-        return field_select & red_select
 
     def _get_dataset_helper(self, dataset):
         if not isinstance(dataset, str):
@@ -1304,11 +1341,11 @@ class MockSurvey:
         N = density * hf.volume_rdz(*lims)
         self.rand_rdz = hf.rand_rdz(N, *lims, seed=seed).astype(np.float32)
 
-        selections = [field._rdz_selection(self.rand_rdz, input_distance=True) for field in self.fields]
+        selections = [field.apply_selection(self.rand_rdz, input_is_distance=True) for field in self.fields]
         selection = np.any(selections, axis=0)
 
         self.rand_rdz = self.rand_rdz[selection]
-        self.rand_xyz = self.rdz2xyz(self.rand_rdz, input_distance=True)
+        self.rand_xyz = self.rdz2xyz(self.rand_rdz, input_is_distance=True)
 
 
     def _field2survey(self, funcstring, rdz, realspace):
@@ -1483,8 +1520,7 @@ class SimBox:
         return np.product(self.Lbox) if self.volume is None else self.volume
 
     def redshift2distance(self, redshift):
-        dist = self.cosmo.comoving_distance(redshift).value * self.cosmo.h
-        return dist.astype(redshift.dtype)
+        return hf.comoving_disth(redshift, self.cosmo)
 # Conduct a mock observation (a single field or a multi-field survey)
 # =========================================
 

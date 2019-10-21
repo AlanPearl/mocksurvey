@@ -217,13 +217,13 @@ def angle_lim_to_dist(angle, mean_redshift, cosmo, deg=False):
     if deg:
         angle *= np.pi/180.
     angle = min([angle, np.pi/2.])
-    z = cosmo.comoving_distance(mean_redshift).value * cosmo.h
+    z = comoving_disth(mean_redshift, cosmo)
     dist = z * 2*np.tan(angle/2.)
     return dist
 
 def redshift_lim_to_dist(delta_redshift, mean_redshift, cosmo):
     redshifts = np.asarray([mean_redshift - delta_redshift/2., mean_redshift + delta_redshift/2.])
-    distances = cosmo.comoving_distance(redshifts).value.astype(np.float32) * cosmo.h
+    distances = comoving_disth(redshifts, cosmo)
     dist = distances[1] - distances[0]
     return dist
 
@@ -315,12 +315,18 @@ def rdz2xyz(rdz, cosmo):
     if cosmo is None:
         dist = rdz[:,2]
     else:
-        dist = (cosmo.comoving_distance(rdz[:,2]) * cosmo.h).value.astype(np.float32)
+        dist = comoving_disth(rdz[:,2], cosmo)
+
     z = (dist * np.cos(rdz[:,1]) * np.cos(rdz[:,0])).astype(np.float32)
     x = (dist * np.cos(rdz[:,1]) * np.sin(rdz[:,0])).astype(np.float32)
     y = (dist * np.sin(rdz[:,1])).astype(np.float32)
     return np.vstack([x,y,z]).T # in Mpc/h
 
+def comoving_disth(redshifts, cosmo):
+    dist = (cosmo.comoving_distance(redshifts)
+            * cosmo.h).value
+    return (dist.astype(redshifts.dtype)
+            if is_arraylike(dist) else dist)
 
 def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
     redshift_hard_max = 10.
@@ -461,7 +467,7 @@ def volume_rdz(ralim, declim, zlim, cosmo=None):
     z is interpreted as distance unless cosmo is given
     """
     if not cosmo is None:
-        zlim = cosmo.comoving_distance(zlim).value * cosmo.h
+        zlim = comoving_disth(zlim, cosmo)
     return 2./3. * (ralim[1]-ralim[0]) * np.sin((declim[1]-declim[0])/2.) * (zlim[1]**3-zlim[0]**3)
 
 def rdz_distance(rdz, rdz_prime, cosmo=None):
@@ -472,7 +478,7 @@ def rdz_distance(rdz, rdz_prime, cosmo=None):
     Returns the distance of each rdz coordinate from rdz_prime
     """
     if not cosmo is None:
-        rdz[:,2] = (cosmo.comoving_distance(rdz[:,2]).value * cosmo.h).astype(np.float32)
+        rdz[:,2] = comoving_disth(rdz[:,2], cosmo)
     r,d,z = rdz.T
     rp,dp,zp = rdz_prime
     return np.sqrt( r**2 + rp**2 - 2.*r*rp*(np.cos(d)*np.cos(dp)*np.cos(r-rp) + np.sin(d)*np.sin(dp)) )
