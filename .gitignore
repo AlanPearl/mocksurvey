@@ -107,8 +107,9 @@ venv.bak/
 .mypy_cache/
 
 
-# ignore the build
-# /build
-# /dist
-# /mocksurvey.egg*
+# CUSTOM IGNORES
+# ==============
+
+# UniverseMachine Cache Config 
+.um-cache/
 

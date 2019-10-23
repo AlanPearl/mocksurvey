@@ -23,11 +23,13 @@ from . import hf
 from . import cf
 from . import tp
 
+import os
 import gc
 import warnings
 import math
 import scipy
 import numpy as np
+import pandas as pd
 from inspect import getfullargspec
 from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
@@ -984,7 +986,7 @@ class MockField:
         return hf.rdz2xyz(rdz, cosmo=cosmo) + self.origin
 
     def volume(self):
-        (_,_,(d1,d2)),v,_ = self._measure_volume_setup(1)
+        (_,_,(d1,d2)),v,_ = self._measure_volume_setup(oef=1)
         if self.cartesian_selection:
             return v
         else:
@@ -999,18 +1001,22 @@ class MockField:
         N = 0
         n = 0
         r = 0
+        # order of magnitude estimation only
         sigma = lambda: np.sqrt( (1-r)/(r*(N-1)) )
-        get_Nmore = lambda: int( N0 - N + 1 + (1-r)/(r*precision**2) )
+        get_Nmore = lambda: min([
+            int( N0 - N + 1 + (1-r)/(r*precision**2) ),
+            2**24])
 
         Nmore = N0
         i = 0
         while (not r) or (sigma() > precision):
             i += 1
             if i > recursion_lim:
+                s = sigma() if r else np.inf
                 raise RecursionError(f"After {recursion_lim} "
                 f"iterations, {N} randoms were generated. " 
-                f"precision={sigma()}, short of the required "
-                f"precision (={precision}).")
+                f"precision={s:e}, short of the required "
+                f"precision of {precision:e}.")
             rand = rand_generator(Nmore, *lims)
 
             n += self.apply_selection(rand, input_is_distance=True).sum()
@@ -1028,7 +1034,7 @@ class MockField:
 
 # Private member functions
 # ========================
-    def _measure_volume_setup(self, oef=1.02):
+    def _measure_volume_setup(self, oef=1.5):
         if self.cartesian_selection:
             lims = self.get_lims(rdz=False, overestimation_factor=oef)
             lims[-1] -= self.origin[-1]
@@ -1400,7 +1406,6 @@ class PFSSurvey(MockSurvey):
         wp,covar = cf.block_jackknife(data, rands, centers, boxshape, nbins, data2b, rand2b, func, args, rdz_distance=False, debugging_plots=True)
 
         return wp,covar
-
 MockSurvey.__doc__ += MockField.__doc__
 
 
@@ -1722,7 +1727,6 @@ class SimBox:
                 self.version_name = "my_cosmosim_halos"
 
 
-
 class HaloBox(SimBox):
     """
     HaloBox(**kwargs)
@@ -1806,5 +1810,414 @@ class GalBox(SimBox):
         if not self.empty and self.populate_on_instantiation:
             if self.populate_on_instantiation:
                 self.populate_mock()
-
 HaloBox.__doc__ = GalBox.__doc__ = SimBox.__doc__
+
+
+class BaseCache:
+    def __init__(self, config_dir, config_file, cache_dir=None):
+        self._read_config(config_dir, config_file)
+        if not cache_dir is None:
+            self.config["cache_dir"] = cache_dir
+        elif not "cache_dir" in self.config:
+            raise ValueError("Your first time running this, you "
+                             "must provide the path to where you "
+                             "will be storing the files.")
+
+        if not "files" in self.config:
+            self.config["files"] = []
+
+    def get_filepath(self, filename):
+        return os.path.join(self.config["cache_dir"], filename)
+
+    def auto_add(self):
+        """
+        Automatically try to add all binary files contained in the cache directory.
+
+        Takes no arguments and returns None.
+        """
+        d = self.config["cache_dir"]
+        files = [f for f in os.listdir(d)
+                 if os.path.isfile(os.path.join(d,f))]
+
+        n = len(files)
+        for f in files:
+            try:
+                self.add(f)
+            except ValueError:
+                n -= 1
+
+        print(f"Successfully cached {n} files")
+
+    def update(self):
+        """
+        Update the config file to account for any changes that have been made to this object. For example:
+            -Files could be added via UMCache.add()
+            -Files could be removed via UMCache.remove()
+            -Cache directory could be changed by instantiating this object via UMCache(cache_dir="path/to/new/dir")
+
+        Takes no arguments and returns None.
+        """
+        lines = []
+        for key in self.config:
+            val = self.config[key]
+            line = f"{key} = {repr(val)}"
+            lines.append(line)
+
+        with open(self.filename, "w") as f:
+            f.write("\n".join(lines))
+
+    def add(self, filename):
+        """
+        Add a new file to cache
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file (do not include path)
+
+        Returns
+        -------
+        None
+        """
+        if filename in self.config["files"]:
+            raise ValueError("That file is already cached")
+
+        fullpath = os.path.join(self.config["cache_dir"], filename)
+        if not os.path.isfile(fullpath):
+            raise FileNotFoundError(f"{fullpath} does not exist.")
+
+        self.config["files"].append(filename)
+
+    def remove(self, filename):
+        """
+        Remove a binary file from our records. Note this does NOT delete the file.
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file (do not include path)
+
+        Returns
+        -------
+        i : int
+            The index of the file being removed
+        """
+        try:
+            i = self.config["files"].index(filename)
+        except ValueError:
+            raise ValueError(f"Cannot remove {filename}, as it is not"
+                              " currently stored. Currently stored "
+                             f"files: {self.config['files']}")
+
+        del self.config["files"][i]
+        return i
+
+    def _read_config(self, dirname, filename):
+        dirpath = os.path.join(os.path.dirname(
+                os.path.realpath(__file__)), dirname)
+        filepath = os.path.join(dirpath, filename)
+
+        if not os.path.isdir(dirpath):
+            os.mkdir(dirpath)
+        if not os.path.isfile(filepath):
+            open(filepath, "a").close()
+
+        with open(filepath) as f:
+            code = f.read()
+
+        config, empty = {}, {}
+        exec(code, config)
+        exec("", empty); [config.pop(i) for i in empty]
+
+        self.config = config.copy()
+        self.filename = filepath
+
+class UMCache(BaseCache):
+    """
+    Keeps track of the locations of locally saved binary files that come from the UniverseMachine data release.
+
+    Parameters
+    ----------
+    cache_dir : str (required on first run)
+        The path to the directory where you plan on saving all of the binary files. If the directory is moved, then you must provide this argument again.
+    """
+    def __init__(self, cache_dir=None):
+        config_dir, config_file = ".um-cache", "um-config.py"
+        BaseCache.__init__(self, config_dir, config_file, cache_dir)
+
+        if not "z" in self.config:
+            self.config["z"] = []
+
+    def load(self, redshift=0, thresh=None, ztol=0.05):
+        """
+        Load a halo table into memory, at a given snapshot in redshift.
+
+        Parameters
+        ----------
+        redshift : float (default = 0)
+            Desired redshift of the snapshot
+
+        thresh : callable, None, or "none" (optional)
+            Callable which takes a halo catalog as input and returns a boolean array to select the halos on before loading them into memory. By default, ``thresh = lambda cat: cat["sm"] > 3e9``. "none" loads the entire table and is equivalent to ``thresh = lambda cat: slice(None)``
+
+        ztol : float (default = 0.05)
+            A match must be within redshift +/- ztol
+
+        Returns
+        -------
+        halos : np.ndarray
+            Structured array of the requested halo catalog
+        """
+        if thresh is None:
+            thresh = lambda cat: cat["sm"] > 3e9
+        dtype = np.dtype([('id','i8'),('descid','i8'),('upid','i8'),
+                          ('flags','i4'),('uparent_dist','f4'),
+                          ('pos','f4',(6)),('vmp','f4'),('lvmp','f4'),
+                          ('mp','f4'),('m','f4'),('v','f4'),('r','f4'),
+                          ('rank1','f4'),('rank2','f4'),('ra','f4'),
+                          ('rarank','f4'),('A_UV','f4'),('sm','f4'),
+                          ('icl','f4'),('sfr','f4'),('obs_sm','f4'),
+                          ('obs_sfr','f4'),('obs_uv','f4'),
+                          ('empty','f4')], align=True)
+
+        filename, true_z = self._get_file_at_redshift(redshift, ztol)
+        fullpath = self.get_filepath(filename)
+
+        if isinstance(thresh, str) and thresh.lower() == "none":
+            # all 12 million halos
+            return np.fromfile(fullpath, dtype=dtype), true_z
+        else:
+            # don't load halos into memory until after the selection
+            mm = np.memmap(fullpath, dtype=dtype)
+            return np.array(mm[thresh(mm)]), true_z
+
+    def add(self, filename, redshift=None):
+        """
+        Add a new binary file containing a UniverseMachine snapshot
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file (do not include path)
+        redshift : float (optional)
+            If given, the redshift of this snapshot. If not given, redshift will be inferred from the filename, by assuming that the filename is of form "*_{scalefactor}.bin"
+
+        Returns
+        -------
+        None
+        """
+        BaseCache.add(self, filename)
+
+        if redshift is None:
+            redshift = self._infer_redshift(filename)
+        self.config["z"].append(redshift)
+
+        self.update()
+
+    def remove(self, filename):
+        """
+        Remove a binary file from our records. Note this does NOT delete the file.
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file (do not include path)
+
+        Returns
+        -------
+        i : int
+            The index of the file being removed
+        """
+        i = BaseCache.remove(self, filename)
+        del self.config["z"][i]
+        self.update()
+        return i
+
+    def _get_file_at_redshift(self, redshift, ztol):
+        wh = np.where(np.isclose(self.config["z"], redshift,
+                                 rtol=0, atol=ztol))[0]
+        if len(wh) < 1:
+            raise ValueError(f"No redshifts matching {redshift}. Try "
+                             f"increasing ztol from {ztol}. Available "
+                             f"redshifts: {self.config['z']}")
+        if len(wh) > 1:
+            raise ValueError("Multiple matching redshifts:" 
+                             f"{self.config['z'][wh]}")
+        return self.config["files"][wh[0]], self.config["z"][wh[0]]
+
+    @staticmethod
+    def _infer_redshift(filename):
+        a = ".".join(filename.split("_")[-1].split(".")[:-1])
+        try:
+            a = float(a)
+            return (1 - a) / a
+        except ZeroDivisionError:
+            return np.inf
+        except (SystemExit, KeyboardInterrupt):
+            raise
+        except:
+            raise ValueError("Cannot infer a redshift from this filename.")
+
+class UVISTACache(BaseCache):
+    """
+    Keeps track of the locations of locally saved UVISTA files.
+
+    Parameters
+    ----------
+    cache_dir : str (required on first run)
+        The path to the directory where you plan on saving all of the files. If the directory is moved, then you must provide this argument again.
+    """
+    def __init__(self, cache_dir=None):
+        config_dir, config_file = ".um-cache", "uvista-config.py"
+        BaseCache.__init__(self, config_dir, config_file, cache_dir)
+        self.UVISTAfiles = {
+            "p": "UVISTA_final_v4.1.cat", # photometric catalog
+            "z": "UVISTA_final_v4.1.zout", # EAZY output
+            "f": "UVISTA_final_BC03_v4.1.fout", # FAST output
+        }
+
+    def get_filepath(self, filetype):
+        filename = self.UVISTAfiles[filetype]
+        return BaseCache.get_filepath(self, filename)
+
+    def add(self, filename):
+        if not filename in self.UVISTAfiles.values():
+            raise ValueError("That's not a UVISTA file")
+
+        BaseCache.add(self, filename)
+        self.update()
+
+    def remove(self, filename):
+        BaseCache.remove(self, filename)
+        self.update()
+
+    @staticmethod
+    def get_names(filetype):
+        if filetype == "p":
+         return ['id','ra','dec','xpix','ypix','Ks_tot','eKs_tot','Ks',
+         'eKs', 'H', 'eH', 'J', 'eJ', 'Y', 'eY', 'ch4', 'ech4', 'ch3',
+         'ech3', 'ch2', 'ech2', 'ch1', 'ech1', 'zp', 'ezp', 'ip', 'eip',
+         'rp', 'erp', 'V', 'eV', 'gp', 'egp', 'B', 'eB', 'u', 'eu',
+         'IA484', 'eIA484', 'IA527', 'eIA527', 'IA624', 'eIA624',
+         'IA679', 'eIA679', 'IA738', 'eIA738', 'IA767', 'eIA767',
+         'IB427', 'eIB427', 'IB464', 'eIB464', 'IB505', 'eIB505', 'IB574',
+         'eIB574', 'IB709', 'eIB709', 'IB827', 'eIB827', 'fuv', 'efuv',
+         'nuv', 'enuv', 'mips24', 'emips24', 'K_flag', 'K_star',
+         'K_Kron', 'apcor', 'z_spec', 'z_spec_cc', 'z_spec_id', 'star',
+         'contamination', 'nan_contam', 'orig_cat_id', 'orig_cat_field',
+         'USE']
+        elif filetype == "z":
+         return ['id', 'z_spec', 'z_a', 'z_m1', 'chi_a', 'z_p', 'chi_p',
+         'z_m2', 'odds', 'l68', 'u68', 'l95', 'u95', 'l99', 'u99',
+         'nfilt', 'q_z', 'z_peak', 'peak_prob', 'z_mc']
+        elif filetype == "f":
+         return ['id', 'z', 'ltau', 'metal', 'lage', 'Av', 'lmass',
+         'lsfr', 'lssfr', 'la2t', 'chi2']
+        else:
+            raise ValueError(f"filetype {filetype} not recognized")
+
+    @staticmethod
+    def names_to_keep(filetype):
+        if filetype == "p":
+            return ["id", "ra", "dec", "u", "V", "J", "Ks_tot", "Ks",
+                    "star", "K_flag", "contamination", "nan_contam"]
+        if filetype == "z":
+            return ["z_peak"]
+        if filetype == "f":
+            return ["lmass", "lssfr"]
+        else:
+            raise ValueError(f"filetype {filetype} not recognized")
+
+    def load(self):
+        if not len(self.config["files"]) == 3:
+            raise ValueError("Can't load until all files are in cache")
+
+        types = ["p", "f", "z"]
+        dat = [pd.read_csv(self.get_filepath(s), delim_whitespace=True,
+                names=self.get_names(s), comment="#",
+                usecols=self.names_to_keep(s)) for s in types]
+
+
+        cosmo = cosmology.Planck13
+        z = dat[2]["z_peak"]
+        logm = dat[1]["lmass"]
+        logssfr = dat[1]["lssfr"]
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            d_com = cosmo.comoving_distance(z).value * cosmo.h
+            d_lum = cosmo.luminosity_distance(z).value * cosmo.h
+            U_AB = -2.5 * np.log10(dat[0]["u"] * dat[0]["Ks_tot"] /
+                                   dat[0]["Ks"]) + 25.0
+            V_AB = -2.5 * np.log10(dat[0]["V"] * dat[0]["Ks_tot"] /
+                                   dat[0]["Ks"]) + 25.0
+            J_AB = -2.5 * np.log10(dat[0]["J"] * dat[0]["Ks_tot"] /
+                                   dat[0]["Ks"]) + 25.0
+            K_AB = -2.5 * np.log10(dat[0]["Ks_tot"]) + 25.0
+
+            M_U = U_AB - 5 * np.log10(d_lum * 1e5)
+            M_V = V_AB - 5 * np.log10(d_lum * 1e5)
+            M_J = J_AB - 5 * np.log10(d_lum * 1e5)
+            M_K = K_AB - 5 * np.log10(d_lum * 1e5)
+
+        selection = np.all([np.isfinite(U_AB), np.isfinite(V_AB),
+            np.isfinite(J_AB), np.isfinite(K_AB), np.isfinite(logm),
+            z > 1.5e-2, K_AB < 23.4, dat[0]["star"] == 0,
+            dat[0]["K_flag"] < 4, dat[0]["contamination"] == 0,
+            dat[0]["nan_contam"] < 3], axis=0)
+
+        names = ["id", "ra", "dec", "z", "logm", "logssfr", "d_com",
+                 "d_lum", "U_AB", "V_AB", "J_AB", "K_AB", "M_U",
+                 "M_V", "M_J", "M_K"]
+        cols = [dat[0]["id"], dat[0]["ra"], dat[0]["dec"], z, logm,
+                logssfr, d_com, d_lum, U_AB, V_AB, J_AB, K_AB, M_U,
+                M_V, M_J, M_K]
+
+        data = dict(zip(names,cols))
+        data = pd.DataFrame(data)
+        data = data[selection]
+        data.index = np.arange(len(data))
+
+        return data
+
+
+
+class UMBox(GalBox):
+    def __init__(self, redshift=0, thresh=None, ztol=0.05):
+        GalBox.__init__(self)
+        posnames = []
+        for s in ["", "halo_"]:
+            posnames += [f"{s}x", f"{s}y", f"{s}z",
+                         f"{s}vx", f"{s}vy", f"{s}vz"]
+
+        h,z = UMCache().load(redshift=redshift, thresh=thresh, ztol=ztol)
+        pos = pd.DataFrame(np.concatenate([h["pos"]] * 2, axis=1),
+                           columns=posnames)
+
+        othernames = list(h.dtype.names)
+        othernames.remove("pos")
+        halos = pd.DataFrame(h[othernames])
+
+        halos = pd.concat([pos, halos], axis=1, copy=False)
+        self.halos = self.gals = halos
+
+        self.redshift = z
+        self.populated = True
+        self.simname, self.Lbox, self.empty = "bolplanck", np.array([250.,250.,250.]), False
+
+    def field(self, rotation=None, **kwargs):
+        return UMMockField(rotation=None, **kwargs)
+
+    def boxfield(self, rotation=None, **kwargs):
+        return UMBoxField(rotation=None, **kwargs)
+
+class UMMockField(MockField):
+    def __init__(self, umbox, rotation=None, **kwargs):
+        umbox.rotate(rotation)
+        MockField.__init__(self, umbox, **kwargs)
+UMMockField.__doc__ = MockField.__doc__
+
+class UMBoxField(BoxField):
+    def __init__(self, umbox, rotation=None, **kwargs):
+        umbox.rotate(rotation)
+        BoxField.__init__(self, umbox, **kwargs)
+UMBoxField.__doc__ = BoxField.__doc__
