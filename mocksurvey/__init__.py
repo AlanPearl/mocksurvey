@@ -2152,11 +2152,14 @@ class UVISTACache(BaseCache):
                                    dat[0]["Ks"]) + 25.0
             J_AB = -2.5 * np.log10(dat[0]["J"] * dat[0]["Ks_tot"] /
                                    dat[0]["Ks"]) + 25.0
+            Y_AB = -2.5 * np.log10(dat[0]["Y"] * dat[0]["Ks_tot"] /
+                                   dat[0]["Ks"]) + 25.0
             K_AB = -2.5 * np.log10(dat[0]["Ks_tot"]) + 25.0
 
             M_U = U_AB - 5 * np.log10(d_lum * 1e5)
             M_V = V_AB - 5 * np.log10(d_lum * 1e5)
             M_J = J_AB - 5 * np.log10(d_lum * 1e5)
+            M_Y = Y_AB - 5 * np.log10(d_lum * 1e5)
             M_K = K_AB - 5 * np.log10(d_lum * 1e5)
 
         selection = np.all([np.isfinite(U_AB), np.isfinite(V_AB),
@@ -2166,11 +2169,11 @@ class UVISTACache(BaseCache):
             dat[0]["nan_contam"] < 3], axis=0)
 
         names = ["id", "ra", "dec", "z", "logm", "logssfr", "d_com",
-                 "d_lum", "U_AB", "V_AB", "J_AB", "K_AB", "M_U",
-                 "M_V", "M_J", "M_K"]
+                 "d_lum", "U_AB", "V_AB", "J_AB", "Y_AB", "K_AB", "M_U",
+                 "M_V", "M_J", "M_Y", "M_K"]
         cols = [dat[0]["id"], dat[0]["ra"], dat[0]["dec"], z, logm,
-                logssfr, d_com, d_lum, U_AB, V_AB, J_AB, K_AB, M_U,
-                M_V, M_J, M_K]
+                logssfr, d_com, d_lum, U_AB, V_AB, J_AB, Y_AB, K_AB,
+                M_U, M_V, M_J, M_Y, M_K]
 
         data = dict(zip(names,cols))
         data = pd.DataFrame(data)
