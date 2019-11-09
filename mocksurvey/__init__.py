@@ -2,7 +2,7 @@
 mocksurvey.py
 Author: Alan Pearl
 
-Some useful classes for coducting mock surveys of galaxies populated by `halotools`.
+Some useful classes for coducting mock surveys of galaxies populated by `halotools` and `UniverseMachine`.
 
 Classes
 -------
@@ -2067,18 +2067,28 @@ class UVISTACache(BaseCache):
     cache_dir : str (required on first run)
         The path to the directory where you plan on saving all of the files. If the directory is moved, then you must provide this argument again.
     """
+    UVISTAfiles = {
+        "p": "UVISTA_final_v4.1.cat",  # photometric catalog
+        "z": "UVISTA_final_v4.1.zout",  # EAZY output
+        "f": "UVISTA_final_BC03_v4.1.fout",  # FAST output
+        "s": "UVISTA_final_colors_sfrs_v4.1.dat", # IR+UV lum/sfr
+        "uv": "UVISTA_final_v4.1.153-155.rf", # rest-frame U,V
+        "vj": "UVISTA_final_v4.1.155-161.rf", # rest-frame V,J
+    }
     def __init__(self, cache_dir=None):
         config_dir, config_file = ".um-cache", "uvista-config.py"
         BaseCache.__init__(self, config_dir, config_file, cache_dir)
-        self.UVISTAfiles = {
-            "p": "UVISTA_final_v4.1.cat", # photometric catalog
-            "z": "UVISTA_final_v4.1.zout", # EAZY output
-            "f": "UVISTA_final_BC03_v4.1.fout", # FAST output
-        }
+
 
     def get_filepath(self, filetype):
+        """
+        Returns the absolute path to the requested file.
+        Filetype options are "p", "z", "f", and "s" where
+        each option corresponds to:
+        """
         filename = self.UVISTAfiles[filetype]
         return BaseCache.get_filepath(self, filename)
+    get_filepath.__doc__ += "\n" + repr(UVISTAfiles)
 
     def add(self, filename):
         if not filename in self.UVISTAfiles.values():
@@ -2113,67 +2123,100 @@ class UVISTACache(BaseCache):
         elif filetype == "f":
          return ['id', 'z', 'ltau', 'metal', 'lage', 'Av', 'lmass',
          'lsfr', 'lssfr', 'la2t', 'chi2']
+        elif filetype == "s":
+         return ['ID', 'z_peak', 'UmV', 'VmJ', 'L_UV', 'L_IR', 'SFR_UV',
+                 'SFR_IR', 'SFR_tot', 'SFR_SED', 'LMASS', 'USE']
+        elif filetype == "uv":
+         return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L153', 'L155']
+        elif filetype == "vj":
+         return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L155', 'L161']
         else:
             raise ValueError(f"filetype {filetype} not recognized")
 
     @staticmethod
     def names_to_keep(filetype):
         if filetype == "p":
-            return ["id", "ra", "dec", "u", "V", "J", "Ks_tot", "Ks",
+            return ["id", "ra", "dec", "u", "V", "J", "Y", "Ks", "Ks_tot",
                     "star", "K_flag", "contamination", "nan_contam"]
-        if filetype == "z":
+        elif filetype == "z":
             return ["z_peak"]
-        if filetype == "f":
+        elif filetype == "f":
             return ["lmass", "lssfr"]
+        elif filetype == "s":
+            return ["SFR_tot", "SFR_UV", "SFR_IR"]
+        elif filetype == "uv":
+            return ["L153", "L155"]
+        elif filetype == "vj":
+            return ["L155", "L161"]
+        else:
+            raise ValueError(f"filetype {filetype} not recognized")
+
+    @staticmethod
+    def get_skips(filetype):
+        if filetype == "p" or filetype == "z":
+            return 1
+        elif filetype == "f":
+            return 17
+        elif filetype == "s":
+            return 2
+        elif filetype == "uv" or filetype == "vj":
+            return 11
         else:
             raise ValueError(f"filetype {filetype} not recognized")
 
     def load(self):
-        if not len(self.config["files"]) == 3:
+        if not len(self.config["files"]) == len(self.UVISTAfiles):
             raise ValueError("Can't load until all files are in cache")
 
-        types = ["p", "f", "z"]
+        types = ["p", "f", "z", "s", "uv", "vj"]
         dat = [pd.read_csv(self.get_filepath(s), delim_whitespace=True,
-                names=self.get_names(s), comment="#",
+                names=self.get_names(s), skiprows=self.get_skips(s),
                 usecols=self.names_to_keep(s)) for s in types]
 
-
+        UVrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
+        VJrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
         cosmo = cosmology.Planck13
         z = dat[2]["z_peak"]
+        sfr_tot = dat[3]["SFR_tot"]
+        sfr_uv = dat[3]["SFR_UV"]
+        sfr_ir = dat[3]["SFR_IR"]
         logm = dat[1]["lmass"]
         logssfr = dat[1]["lssfr"]
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             d_com = cosmo.comoving_distance(z).value * cosmo.h
             d_lum = cosmo.luminosity_distance(z).value * cosmo.h
-            U_AB = -2.5 * np.log10(dat[0]["u"] * dat[0]["Ks_tot"] /
+            u_AB = -2.5 * np.log10(dat[0]["u"] * dat[0]["Ks_tot"] /
                                    dat[0]["Ks"]) + 25.0
-            V_AB = -2.5 * np.log10(dat[0]["V"] * dat[0]["Ks_tot"] /
+            v_AB = -2.5 * np.log10(dat[0]["V"] * dat[0]["Ks_tot"] /
                                    dat[0]["Ks"]) + 25.0
-            J_AB = -2.5 * np.log10(dat[0]["J"] * dat[0]["Ks_tot"] /
+            j_AB = -2.5 * np.log10(dat[0]["J"] * dat[0]["Ks_tot"] /
                                    dat[0]["Ks"]) + 25.0
-            Y_AB = -2.5 * np.log10(dat[0]["Y"] * dat[0]["Ks_tot"] /
+            y_AB = -2.5 * np.log10(dat[0]["Y"] * dat[0]["Ks_tot"] /
                                    dat[0]["Ks"]) + 25.0
-            K_AB = -2.5 * np.log10(dat[0]["Ks_tot"]) + 25.0
+            k_AB = -2.5 * np.log10(dat[0]["Ks_tot"]) + 25.0
 
-            M_U = U_AB - 5 * np.log10(d_lum * 1e5)
-            M_V = V_AB - 5 * np.log10(d_lum * 1e5)
-            M_J = J_AB - 5 * np.log10(d_lum * 1e5)
-            M_Y = Y_AB - 5 * np.log10(d_lum * 1e5)
-            M_K = K_AB - 5 * np.log10(d_lum * 1e5)
+            M_U = u_AB - 5 * np.log10(d_lum * 1e5)
+            M_V = v_AB - 5 * np.log10(d_lum * 1e5)
+            M_J = j_AB - 5 * np.log10(d_lum * 1e5)
+            M_Y = y_AB - 5 * np.log10(d_lum * 1e5)
+            M_K = k_AB - 5 * np.log10(d_lum * 1e5)
 
-        selection = np.all([np.isfinite(U_AB), np.isfinite(V_AB),
-            np.isfinite(J_AB), np.isfinite(K_AB), np.isfinite(logm),
-            z > 1.5e-2, K_AB < 23.4, dat[0]["star"] == 0,
+        selection = np.all([np.isfinite(u_AB), np.isfinite(v_AB),
+            np.isfinite(j_AB), np.isfinite(k_AB), np.isfinite(y_AB),
+            np.isfinite(logm),
+            z > 1.5e-2, k_AB < 23.4, dat[0]["star"] == 0,
             dat[0]["K_flag"] < 4, dat[0]["contamination"] == 0,
             dat[0]["nan_contam"] < 3], axis=0)
 
-        names = ["id", "ra", "dec", "z", "logm", "logssfr", "d_com",
-                 "d_lum", "U_AB", "V_AB", "J_AB", "Y_AB", "K_AB", "M_U",
-                 "M_V", "M_J", "M_Y", "M_K"]
+        names = ["id", "ra", "dec", "z", "logm", "sfr_tot", "logssfr",
+                 "d_com", "d_lum", "UVrest", "VJrest", "u_AB", "v_AB",
+                 "j_AB","y_AB","k_AB","M_U","M_V","M_J","M_Y","M_K",
+                 "sfr_uv", "sfr_ir"]
         cols = [dat[0]["id"], dat[0]["ra"], dat[0]["dec"], z, logm,
-                logssfr, d_com, d_lum, U_AB, V_AB, J_AB, Y_AB, K_AB,
-                M_U, M_V, M_J, M_Y, M_K]
+                sfr_tot, logssfr, d_com, d_lum, UVrest, VJrest, u_AB,
+                v_AB, j_AB, y_AB, k_AB, M_U, M_V, M_J, M_Y, M_K,
+                sfr_uv, sfr_ir]
 
         data = dict(zip(names,cols))
         data = pd.DataFrame(data)
@@ -2184,7 +2227,7 @@ class UVISTACache(BaseCache):
 
 
 
-class UMBox(GalBox):
+class UniverseMachine(GalBox):
     def __init__(self, redshift=0, thresh=None, ztol=0.05):
         GalBox.__init__(self)
         posnames = []
