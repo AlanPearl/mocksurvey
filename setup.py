@@ -22,6 +22,7 @@ setup(name="mocksurvey",
         "numpy", 
         "pandas",
         "astropy",
+        "scikit-learn",
       ],
       zip_safe=True,
 )

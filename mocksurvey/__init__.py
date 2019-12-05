@@ -30,6 +30,7 @@ import math
 import scipy
 import numpy as np
 import pandas as pd
+import functools
 from inspect import getfullargspec
 from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
@@ -513,7 +514,7 @@ class BoxField:
         """
         return self.simbox.gals[key][self.selection]
 
-    def get_data(self, rdz= False, realspace= False) -> np.ndarray:
+    def get_data(self, rdz=False, realspace=False) -> np.ndarray:
         """
         Returns the positions of all galaxies selected by this object.
         
@@ -699,8 +700,10 @@ class BoxField:
         if xyz is None:
             xyz = self._get_gals(realspace=self.realspace_selection)
 
-        lower, upper = self.center - self.get_shape()/2., self.center + self.get_shape()/2.
-        selection = np.all((lower[None,:] <= xyz) & (xyz <= upper[None,:]), axis=1)
+        lower = self.center - self.get_shape()/2.
+        upper = self.center + self.get_shape()/2.
+        selection = np.all((lower[None,:] <= xyz) &
+                           (xyz <= upper[None,:]), axis=1)
 
         if self.collision_fraction > 0.:
             collisions = hf.sample_fraction(len(selection), self.collision_fraction)
@@ -724,20 +727,21 @@ class BoxField:
     def _get_gals(self, rdz=False, realspace=False):
         if rdz:
             xyz = self.get_data(realspace=realspace)
-            xyz = hf.ra_dec_z(xyz-self.origin, np.zeros_like(xyz), self.simbox.cosmo, self.zprec)
+            xyz = hf.ra_dec_z(xyz-self.origin, np.zeros_like(xyz),
+                              self.simbox.cosmo, self.zprec)
         else:
             xyz = hf.xyz_array(self.simbox.gals)[self.selection]
             if not realspace:
-                if (self.halo_vel_factor is None) and (self.gal_vel_factor is None):
+                if (self.halo_vel_factor is None) and (
+                        self.gal_vel_factor is None):
                     vz = self.simbox.gals["vz"][self.selection]
                 else:
-                    vz = hf.factor_velocity(self.simbox.gals["vz"]
-                                                [self.selection],
-                                        self.simbox.gals["halo_vz"]
-                                                [self.selection],
-                                        halo_vel_factor=self.halo_vel_factor,
-                                        gal_vel_factor=self.gal_vel_factor,
-                                        inplace=False)
+                    vz = hf.factor_velocity(
+                        self.simbox.gals["vz"][self.selection],
+                        self.simbox.gals["halo_vz"][self.selection],
+                        halo_vel_factor=self.halo_vel_factor,
+                        gal_vel_factor=self.gal_vel_factor,
+                        inplace=False)
                 xyz = self._apply_distortion(xyz, vz)
         return xyz
 
@@ -1032,8 +1036,7 @@ class MockField:
         return (self.field_selector(data[:,:2]) &
                 self.redshift_selector(data[:,2], input_is_distance))
 
-# Private member functions
-# ========================
+
     def _measure_volume_setup(self, oef=1.5):
         if self.cartesian_selection:
             lims = self.get_lims(rdz=False, overestimation_factor=oef)
@@ -1113,7 +1116,8 @@ class MockField:
         xyz = hf.xyz_array(dataset, keys=[xkey, ykey, zkey])
         return xyz
 
-    def _get_vel(self, realspace=False, dataset=None, halo_vel_factor=None, gal_vel_factor=None):
+    def _get_vel(self, realspace=False, dataset=None,
+                 halo_vel_factor=None, gal_vel_factor=None):
         dataset, datanames, selection = self._get_dataset(dataset)
         if halo_vel_factor is None:
             halo_vel_factor = self.halo_vel_factor
@@ -1170,11 +1174,6 @@ class MockField:
             data = self._get_xyz(realspace=self.realspace_selection, dataset=dataset)
         else:
             data = self._get_rdz(realspace=self.realspace_selection, dataset=dataset)
-
-        # redshift = self._get_redshift(realspace=self.realspace_selection, dataset=dataset)
-        # field_selector = self.field_selector
-        # redshift_selector = self.redshift_selector
-        # selection = field_selector(data) & redshift_selector(redshift)
 
         selection = self.apply_selection(data, input_is_distance=self.cartesian_selection)
         collisions = hf.sample_fraction(len(selection), self.collision_fraction)
@@ -2248,7 +2247,8 @@ class UniverseMachine(GalBox):
 
         self.redshift = z
         self.populated = True
-        self.simname, self.Lbox, self.empty = "bolplanck", np.array([250.,250.,250.]), False
+        self.simname, self.Lbox, self.empty = ("bolplanck",
+                            np.array([250.,250.,250.]), False)
 
     def field(self, rotation=None, **kwargs):
         return UMMockField(rotation=None, **kwargs)
@@ -2256,14 +2256,121 @@ class UniverseMachine(GalBox):
     def boxfield(self, rotation=None, **kwargs):
         return UMBoxField(rotation=None, **kwargs)
 
-class UMMockField(MockField):
-    def __init__(self, umbox, rotation=None, **kwargs):
-        umbox.rotate(rotation)
-        MockField.__init__(self, umbox, **kwargs)
+    # Use @functools.cached_property (requires Python 3.8)
+    @property
+    @functools.lru_cache(maxsize=None)
+    def mag_predictor(self):
+        return make_predictor_UMmags(self.halos, self.redshift)
+
+class UMField:
+    @property
+    def MJ(self):
+        return self._get_abs_mags()[0]
+
+    @property
+    def MY(self):
+        return self._get_abs_mags()[1]
+
+    @property
+    def mJ(self):
+        d_on_10pc = self._get_lum_dist()
+        return self.MJ + 5 * np.log10(d_on_10pc)
+
+    @property
+    def mY(self):
+        d_on_10pc = self._get_lum_dist()
+        return self.MY + 5 * np.log10(d_on_10pc)
+
+    @functools.lru_cache(maxsize=None)
+    def _get_lum_dist(self):
+        return 1e5 * self.simbox.cosmo.luminosity_distance(
+            self.get_redshift(realspace=True)).value
+
+    @functools.lru_cache(maxsize=None)
+    def _get_abs_mags(self):
+        return self.simbox.mag_predictor(self.selection,
+                        self.get_redshift(realspace=False))
+
+class UMMockField(MockField, UMField):
+    def __init__(self, um, rotation=None, **kwargs):
+        um.rotate(rotation)
+        MockField.__init__(self, um, **kwargs)
+
+
 UMMockField.__doc__ = MockField.__doc__
 
-class UMBoxField(BoxField):
-    def __init__(self, umbox, rotation=None, **kwargs):
-        umbox.rotate(rotation)
-        BoxField.__init__(self, umbox, **kwargs)
+class UMBoxField(BoxField, UMField):
+    def __init__(self, um, rotation=None, **kwargs):
+        um.rotate(rotation)
+        BoxField.__init__(self, um, **kwargs)
+
+    def mag_predictor(self, z):
+        um.mag_predictor(self.selection, z)
 UMBoxField.__doc__ = BoxField.__doc__
+
+
+
+def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
+    """
+    Generate a function to predict the absolute magnitude in the J- and Y- band (MJ and MY, respectively) of UniverseMachine galaxies. This is done by fitting to UltraVISTA data.
+
+    First, sSFR_uv is calculated for UniverseMachine galaxies by conditional abundance matching (CAM) sSFR to UltraVISTA sSFR_uv values. Then, a random forest is trained to predict MJ,MY from sSFR_uv and redshift. Errors are ~0.1 dex or ~0.25 mag.
+
+    Parameters
+    ----------
+    UMhalos : DataFrame
+        Must contain columns "obs_sm" and "obs_sfr", storing stellar mass and SFR of all UniverseMachine
+
+    z_avg : float
+        Redshift slice of the UniverseMachine data
+
+    dz : float
+        UVISTA redshifts will be selected to be between z_avg - dz/2 and z_avg + dz/2
+
+    nwin : int (must be odd number)
+        Number of windows to divide stellar mass into for CAM
+
+    Returns
+    -------
+    Predictor : Function with signature f(s,z) -> tuple(MJ, MY)
+        Once the redshift is measured for each galaxy, you can use this function to predict its J and Y band absolute magnitudes. z, MJ, and MY are all arrays of shape (s.sum(),), where s is the boolean survey selection mask of shape (len(UMhalos),). Order is assumed to be preserved in UMhalos and z.
+    """
+    logm = np.log10(UMhalos["obs_sm"])
+    logssfr = np.log10(UMhalos["obs_sfr"]) - logm
+    UVISTAcat = UVISTACache().load()
+
+    uvista_z = UVISTAcat["z"]
+    uvista_logm = UVISTAcat["logm"]
+    uvista_logssfr_uv = np.log10(UVISTAcat["sfr_uv"]) - uvista_logm
+    uvista_m2l_j = uvista_logm - (UVISTAcat["M_J"] / -2.5)
+    uvista_m2l_y = uvista_logm - (UVISTAcat["M_Y"] / -2.5)
+
+    s = np.isfinite(uvista_logssfr_uv)
+    x = np.array([uvista_logssfr_uv, uvista_z]).T[s]
+    y = np.array([uvista_m2l_j, uvista_m2l_y]).T[s]
+
+    from sklearn import ensemble
+    reg = ensemble.RandomForestRegressor(n_estimators=10)
+    reg.fit(x, y)
+
+    s = (z_avg-dz/2. <= uvista_z) & (uvista_z <= z_avg+dz/2.)
+    logssfr_uv = empirical_models.conditional_abunmatch(logm, logssfr,
+                        uvista_logm[s], uvista_logssfr_uv[s], nwin=nwin)
+
+    predictor = _make_predictor_UMmags(reg, logm, logssfr_uv)
+    return predictor
+
+def _make_predictor_UMmags(regressor, logm, logssfr_uv):
+    """Define predictor in another function to
+    reduce the memory required for closure"""
+    def predictor(selection, redshifts):
+        """
+        predict MJ and MY for UniverseMachine galaxies, given
+        individual observed redshifts for each galaxy
+        """
+        x = np.array([logssfr_uv[selection], redshifts]).T
+        y = regressor.predict(x)
+        MJ = -2.5 * (logm[selection] - y[:, 0])
+        MY = -2.5 * (logm[selection] - y[:, 1])
+        return MJ, MY
+    return predictor
