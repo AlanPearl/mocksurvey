@@ -1813,6 +1813,9 @@ HaloBox.__doc__ = GalBox.__doc__ = SimBox.__doc__
 
 
 class BaseCache:
+    """
+    Abstract template class. Do not instantiate.
+    """
     def __init__(self, config_dir, config_file, cache_dir=None):
         self._read_config(config_dir, config_file)
         if not cache_dir is None:
@@ -2066,7 +2069,7 @@ class UVISTACache(BaseCache):
     cache_dir : str (required on first run)
         The path to the directory where you plan on saving all of the files. If the directory is moved, then you must provide this argument again.
     """
-    UVISTAfiles = {
+    UVISTAFILES = {
         "p": "UVISTA_final_v4.1.cat",  # photometric catalog
         "z": "UVISTA_final_v4.1.zout",  # EAZY output
         "f": "UVISTA_final_BC03_v4.1.fout",  # FAST output
@@ -2074,6 +2077,9 @@ class UVISTACache(BaseCache):
         "uv": "UVISTA_final_v4.1.153-155.rf", # rest-frame U,V
         "vj": "UVISTA_final_v4.1.155-161.rf", # rest-frame V,J
     }
+    PHOTBANDS = {"k": "Ks", "h": "H", "j": "J", "y": "Y",
+                 "z": "zp", "i": "ip", "r": "rp", "v": "V",
+                 "g": "gp", "b": "B", "u": "u"}
     def __init__(self, cache_dir=None):
         config_dir, config_file = ".um-cache", "uvista-config.py"
         BaseCache.__init__(self, config_dir, config_file, cache_dir)
@@ -2085,12 +2091,12 @@ class UVISTACache(BaseCache):
         Filetype options are "p", "z", "f", and "s" where
         each option corresponds to:
         """
-        filename = self.UVISTAfiles[filetype]
+        filename = self.UVISTAFILES[filetype]
         return BaseCache.get_filepath(self, filename)
-    get_filepath.__doc__ += "\n" + repr(UVISTAfiles)
+    get_filepath.__doc__ += "\n" + repr(UVISTAFILES)
 
     def add(self, filename):
-        if not filename in self.UVISTAfiles.values():
+        if not filename in self.UVISTAFILES.values():
             raise ValueError("That's not a UVISTA file")
 
         BaseCache.add(self, filename)
@@ -2135,8 +2141,9 @@ class UVISTACache(BaseCache):
     @staticmethod
     def names_to_keep(filetype):
         if filetype == "p":
-            return ["id", "ra", "dec", "u", "V", "J", "Y", "Ks", "Ks_tot",
-                    "star", "K_flag", "contamination", "nan_contam"]
+            return ["id", "ra", "dec", "Ks_tot",
+                    *self.PHOTBANDS.values(), "star", "K_flag", "zp",
+                    "ip", "contamination", "nan_contam"]
         elif filetype == "z":
             return ["z_peak"]
         elif filetype == "f":
@@ -2164,7 +2171,7 @@ class UVISTACache(BaseCache):
             raise ValueError(f"filetype {filetype} not recognized")
 
     def load(self):
-        if not len(self.config["files"]) == len(self.UVISTAfiles):
+        if not len(self.config["files"]) == len(self.UVISTAFILES):
             raise ValueError("Can't load until all files are in cache")
 
         types = ["p", "f", "z", "s", "uv", "vj"]
@@ -2185,37 +2192,35 @@ class UVISTACache(BaseCache):
             warnings.filterwarnings("ignore")
             d_com = cosmo.comoving_distance(z).value * cosmo.h
             d_lum = cosmo.luminosity_distance(z).value * cosmo.h
-            u_AB = -2.5 * np.log10(dat[0]["u"] * dat[0]["Ks_tot"] /
-                                   dat[0]["Ks"]) + 25.0
-            v_AB = -2.5 * np.log10(dat[0]["V"] * dat[0]["Ks_tot"] /
-                                   dat[0]["Ks"]) + 25.0
-            j_AB = -2.5 * np.log10(dat[0]["J"] * dat[0]["Ks_tot"] /
-                                   dat[0]["Ks"]) + 25.0
-            y_AB = -2.5 * np.log10(dat[0]["Y"] * dat[0]["Ks_tot"] /
-                                   dat[0]["Ks"]) + 25.0
-            k_AB = -2.5 * np.log10(dat[0]["Ks_tot"]) + 25.0
 
-            M_U = u_AB - 5 * np.log10(d_lum * 1e5)
-            M_V = v_AB - 5 * np.log10(d_lum * 1e5)
-            M_J = j_AB - 5 * np.log10(d_lum * 1e5)
-            M_Y = y_AB - 5 * np.log10(d_lum * 1e5)
-            M_K = k_AB - 5 * np.log10(d_lum * 1e5)
+            aperture_factor = dat[0]["Ks_tot"] / dat[0]["Ks"]
+            relative_mags = {
+                key: -2.5 * np.log10(dat[0][val] * aperture_factor) + 25
+                    for (key,val) in self.PHOTBANDS
+            }
+            absolute_mags = {
+                key: val - 5 * np.log10(d_lum * 1e5)
+                    for (key,val) in relative_mags
+            }
 
-        selection = np.all([np.isfinite(u_AB), np.isfinite(v_AB),
-            np.isfinite(j_AB), np.isfinite(k_AB), np.isfinite(y_AB),
-            np.isfinite(logm),
-            z > 1.5e-2, k_AB < 23.4, dat[0]["star"] == 0,
-            dat[0]["K_flag"] < 4, dat[0]["contamination"] == 0,
-            dat[0]["nan_contam"] < 3], axis=0)
+        selection = np.all([
+            np.isfinite(list(absolute_mags.values())).all(axis=0),
+            np.isfinite(logm), z > 1.5e-2, k_AB < 23.4,
+            dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
+            dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
+            axis=0)
+
+        rel_keys, rel_vals = zip(*relative_mags.items())
+        abs_keys, abs_vals = zip(*absolute_mags.items())
+        rel_keys = [key + "_AB" for key in rel_keys]
+        abs_keys = ["M_" + key.upper() for key in abs_keys]
 
         names = ["id", "ra", "dec", "z", "logm", "sfr_tot", "logssfr",
-                 "d_com", "d_lum", "UVrest", "VJrest", "u_AB", "v_AB",
-                 "j_AB","y_AB","k_AB","M_U","M_V","M_J","M_Y","M_K",
-                 "sfr_uv", "sfr_ir"]
+                 "d_com", "d_lum", "UVrest", "VJrest", *rel_keys,
+                 *abs_keys, "sfr_uv", "sfr_ir"]
         cols = [dat[0]["id"], dat[0]["ra"], dat[0]["dec"], z, logm,
-                sfr_tot, logssfr, d_com, d_lum, UVrest, VJrest, u_AB,
-                v_AB, j_AB, y_AB, k_AB, M_U, M_V, M_J, M_Y, M_K,
-                sfr_uv, sfr_ir]
+                sfr_tot, logssfr, d_com, d_lum, UVrest, VJrest, *rel_vals,
+                *abs_vals, sfr_uv, sfr_ir]
 
         data = dict(zip(names,cols))
         data = pd.DataFrame(data)
@@ -2263,23 +2268,23 @@ class UniverseMachine(GalBox):
         return make_predictor_UMmags(self.halos, self.redshift)
 
 class UMField:
-    @property
-    def MJ(self):
-        return self._get_abs_mags()[0]
+    """
+    Abstract template class. Do not instantiate
+    """
+    def Magnitude(self, band):
+        band = band.lower()
+        photbands = list(UVISTACache.PHOTBANDS.keys())
 
-    @property
-    def MY(self):
-        return self._get_abs_mags()[1]
+        try:
+            index = photbands.index(band)
+        except ValueError:
+            raise ValueError(f"{band} is not an allowed band. "
+                             f"Use one of {photbands}.")
+        return self._get_abs_mags()[index]
 
-    @property
-    def mJ(self):
+    def magnitude(self, band):
         d_on_10pc = self._get_lum_dist()
-        return self.MJ + 5 * np.log10(d_on_10pc)
-
-    @property
-    def mY(self):
-        d_on_10pc = self._get_lum_dist()
-        return self.MY + 5 * np.log10(d_on_10pc)
+        return self.Magnitude(band) + 5. * np.log10(d_on_10pc)
 
     @functools.lru_cache(maxsize=None)
     def _get_lum_dist(self):
@@ -2295,8 +2300,6 @@ class UMMockField(MockField, UMField):
     def __init__(self, um, rotation=None, **kwargs):
         um.rotate(rotation)
         MockField.__init__(self, um, **kwargs)
-
-
 UMMockField.__doc__ = MockField.__doc__
 
 class UMBoxField(BoxField, UMField):
@@ -2312,7 +2315,7 @@ UMBoxField.__doc__ = BoxField.__doc__
 
 def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
     """
-    Generate a function to predict the absolute magnitude in the J- and Y- band (MJ and MY, respectively) of UniverseMachine galaxies. This is done by fitting to UltraVISTA data.
+    Generate a function to predict the absolute magnitude in a number of photometric bands of UniverseMachine galaxies. This is done by fitting to UltraVISTA data.
 
     First, sSFR_uv is calculated for UniverseMachine galaxies by conditional abundance matching (CAM) sSFR to UltraVISTA sSFR_uv values. Then, a random forest is trained to predict MJ,MY from sSFR_uv and redshift. Errors are ~0.1 dex or ~0.25 mag.
 
@@ -2332,8 +2335,8 @@ def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
 
     Returns
     -------
-    Predictor : Function with signature f(s,z) -> tuple(MJ, MY)
-        Once the redshift is measured for each galaxy, you can use this function to predict its J and Y band absolute magnitudes. z, MJ, and MY are all arrays of shape (s.sum(),), where s is the boolean survey selection mask of shape (len(UMhalos),). Order is assumed to be preserved in UMhalos and z.
+    Predictor : Function with signature f(s,z) -> tuple(MK,MH,...)
+        Once the redshift is measured for each galaxy, you can use this function to predict its absolute magnitudes. z, MK, MH, ... are all arrays of shape (s.sum(),), where s is the boolean survey selection mask of shape (len(UMhalos),). Order is assumed to be preserved in UMhalos and z.
     """
     logm = np.log10(UMhalos["obs_sm"])
     logssfr = np.log10(UMhalos["obs_sfr"]) - logm
@@ -2342,12 +2345,13 @@ def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
     uvista_z = UVISTAcat["z"]
     uvista_logm = UVISTAcat["logm"]
     uvista_logssfr_uv = np.log10(UVISTAcat["sfr_uv"]) - uvista_logm
-    uvista_m2l_j = uvista_logm - (UVISTAcat["M_J"] / -2.5)
-    uvista_m2l_y = uvista_logm - (UVISTAcat["M_Y"] / -2.5)
+
+    names = ["M_" + key.upper() for key in UVISTACache.PHOTBANDS.keys()]
+    uvista_m2l = [uvista_logm + UVISTAcat[name]/2.5 for name in names]
 
     s = np.isfinite(uvista_logssfr_uv)
     x = np.array([uvista_logssfr_uv, uvista_z]).T[s]
-    y = np.array([uvista_m2l_j, uvista_m2l_y]).T[s]
+    y = np.array(uvista_m2l).T[s]
 
     from sklearn import ensemble
     reg = ensemble.RandomForestRegressor(n_estimators=10)
@@ -2365,12 +2369,10 @@ def _make_predictor_UMmags(regressor, logm, logssfr_uv):
     reduce the memory required for closure"""
     def predictor(selection, redshifts):
         """
-        predict MJ and MY for UniverseMachine galaxies, given
-        individual observed redshifts for each galaxy
+        predict absolute magnitudes for UniverseMachine galaxies, given individual observed redshifts for each galaxy
         """
         x = np.array([logssfr_uv[selection], redshifts]).T
         y = regressor.predict(x)
-        MJ = -2.5 * (logm[selection] - y[:, 0])
-        MY = -2.5 * (logm[selection] - y[:, 1])
-        return MJ, MY
+        Mag = -2.5 * (np.asarray(logm)[selection,None] - y)
+        return Mag.T
     return predictor

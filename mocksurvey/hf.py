@@ -2,6 +2,7 @@ import numpy as np
 import scipy.special as spec
 from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
+from astropy import units
 import collections
 import warnings
 from contextlib import contextmanager
@@ -329,37 +330,40 @@ def comoving_disth(redshifts, cosmo):
             if is_arraylike(dist) else dist)
 
 def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
-    redshift_hard_max = 10.
     if len(dist) == 0:
         return np.array([])
     c_km_s = c.to('km/s').value
-    rmin, rmax = dist.min(), dist.max()
-    
+    dist_units = units.Mpc/cosmo.h if h_scaled else units.Mpc
+    zmin,zmax = [cosmology.z_at_value(cosmo.comoving_distance,
+                f(dist)*dist_units) for f in [min,max]]
+
+    # OLD CODE TO CALCULATE ZMIN,ZMAX
     # First construct a low resolution grid to check the range of redshifts
     # needed for the high resolution grid
-    yy = np.arange(0, redshift_hard_max+.005, 0.1)
-    xx = cosmo.comoving_distance(yy).value
-    if h_scaled:
-        xx *= cosmo.h
-    imin,imax = None,None
-    for i in range(len(yy)):
-        if xx[i] >= rmin:
-            imin = max((0, i-1))
-            break
-    for i in range(len(yy)):
-        if xx[-1-i] <= rmax:
-            imax = -i
-            break
-    if imax == 0:
-        dmin, dmax = cosmo.comoving_distance([0., redshift_hard_max]).value * cosmo.h
-        msg = "You can't observe galaxies at that distance. min/max distance from input array = (%.1f,%.1f) but 0 < z < %.1f is required." %(min(dist), max(dist), redshift_hard_max)
-        msg += "This corresponds to a requirement of %.1f < distance < %.1f" %(dmin,dmax)
-        msg += "If you want to observe galaxies further away, change the value of `redshift_hard_max`"
-        raise ValueError(msg)
+    # redshift_hard_max = 10.
+    # yy = np.arange(0, redshift_hard_max+.005, 0.1)
+    # xx = cosmo.comoving_distance(yy).value
+    # if h_scaled:
+    #     xx *= cosmo.h
+    # imin,imax = None,None
+    # for i in range(len(yy)):
+    #     if xx[i] >= rmin:
+    #         imin = max((0, i-1))
+    #         break
+    # for i in range(len(yy)):
+    #     if xx[-1-i] <= rmax:
+    #         imax = -i
+    #         break
+    # if imax == 0:
+    #     dmin, dmax = cosmo.comoving_distance([0., redshift_hard_max]).value * cosmo.h
+    #     msg = "You can't observe galaxies at that distance. min/max distance from input array = (%.1f,%.1f) but 0 < z < %.1f is required." %(min(dist), max(dist), redshift_hard_max)
+    #     msg += "This corresponds to a requirement of %.1f < distance < %.1f" %(dmin,dmax)
+    #     msg += "If you want to observe galaxies further away, change the value of `redshift_hard_max`"
+    #     raise ValueError(msg)
+    #
+    # zmin, zmax = yy[imin], yy[imax]
 
-    zmin, zmax = yy[imin], yy[imax]
-
-    # compute cosmological redshift and add contribution from peculiar velocity
+    # compute cosmological redshift + doppler shift
     num_points = int((zmax-zmin)/zprec) + 1
     yy = np.linspace(zmin, zmax, num_points, dtype=np.float32)
     xx = cosmo.comoving_distance(yy).value.astype(np.float32)
