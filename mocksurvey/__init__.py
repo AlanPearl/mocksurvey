@@ -2138,8 +2138,7 @@ class UVISTACache(BaseCache):
         else:
             raise ValueError(f"filetype {filetype} not recognized")
 
-    @staticmethod
-    def names_to_keep(filetype):
+    def names_to_keep(self, filetype):
         if filetype == "p":
             return ["id", "ra", "dec", "Ks_tot",
                     *self.PHOTBANDS.values(), "star", "K_flag", "zp",
@@ -2196,16 +2195,16 @@ class UVISTACache(BaseCache):
             aperture_factor = dat[0]["Ks_tot"] / dat[0]["Ks"]
             relative_mags = {
                 key: -2.5 * np.log10(dat[0][val] * aperture_factor) + 25
-                    for (key,val) in self.PHOTBANDS
+                    for (key,val) in self.PHOTBANDS.items()
             }
             absolute_mags = {
                 key: val - 5 * np.log10(d_lum * 1e5)
-                    for (key,val) in relative_mags
+                    for (key,val) in relative_mags.items()
             }
 
         selection = np.all([
             np.isfinite(list(absolute_mags.values())).all(axis=0),
-            np.isfinite(logm), z > 1.5e-2, k_AB < 23.4,
+            np.isfinite(logm), z > 1.5e-2, relative_mags["k"] < 23.4,
             dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
             dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
             axis=0)
@@ -2271,7 +2270,7 @@ class UMField:
     """
     Abstract template class. Do not instantiate
     """
-    def Magnitude(self, band):
+    def get_abs_mag(self, band):
         band = band.lower()
         photbands = list(UVISTACache.PHOTBANDS.keys())
 
@@ -2282,9 +2281,9 @@ class UMField:
                              f"Use one of {photbands}.")
         return self._get_abs_mags()[index]
 
-    def magnitude(self, band):
+    def get_rel_mag(self, band):
         d_on_10pc = self._get_lum_dist()
-        return self.Magnitude(band) + 5. * np.log10(d_on_10pc)
+        return self.get_abs_mag(band) + 5. * np.log10(d_on_10pc)
 
     @functools.lru_cache(maxsize=None)
     def _get_lum_dist(self):

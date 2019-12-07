@@ -2,6 +2,7 @@ import numpy as np
 import scipy.special as spec
 from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
+from astropy import cosmology
 from astropy import units
 import collections
 import warnings
@@ -336,6 +337,8 @@ def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
     dist_units = units.Mpc/cosmo.h if h_scaled else units.Mpc
     zmin,zmax = [cosmology.z_at_value(cosmo.comoving_distance,
                 f(dist)*dist_units) for f in [min,max]]
+    zmin = (zmin+1) * .99 - 1
+    zmax = (zmax+1) * 1.01 - 1
 
     # OLD CODE TO CALCULATE ZMIN,ZMAX
     # First construct a low resolution grid to check the range of redshifts
