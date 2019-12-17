@@ -29,7 +29,7 @@ def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     and is essentially implemented by the following code:
     
     >>> def apply_over_window(func, a, window, **kw):
-    >>>     return func(rolling_window(a, window, **kw), axis=-1)
+    >>>     return func(rolling_window(a, window), axis=-1, **kw)
     
     See rolling_window docstring for more info
     """

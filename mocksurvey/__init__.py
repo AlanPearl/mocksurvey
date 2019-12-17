@@ -1914,6 +1914,13 @@ class BaseCache:
         del self.config["files"][i]
         return i
 
+    def remove_all(self):
+        """
+        Remove all files from our records. Simply erases the entire config file
+        """
+        self.config = {}
+        self.update()
+
     def _read_config(self, dirname, filename):
         dirpath = os.path.join(os.path.dirname(
                 os.path.realpath(__file__)), dirname)
@@ -1960,7 +1967,7 @@ class UMCache(BaseCache):
             Desired redshift of the snapshot
 
         thresh : callable, None, or "none" (optional)
-            Callable which takes a halo catalog as input and returns a boolean array to select the halos on before loading them into memory. By default, ``thresh = lambda cat: cat["sm"] > 3e9``. "none" loads the entire table and is equivalent to ``thresh = lambda cat: slice(None)``
+            Callable which takes a halo catalog as input and returns a boolean array to select the halos on before loading them into memory. By default, ``thresh = lambda cat: cat["obs_sm"] > 3e9``. "none" loads the entire table and is equivalent to ``thresh = lambda cat: slice(None)``
 
         ztol : float (default = 0.05)
             A match must be within redshift +/- ztol
@@ -1971,7 +1978,7 @@ class UMCache(BaseCache):
             Structured array of the requested halo catalog
         """
         if thresh is None:
-            thresh = lambda cat: cat["sm"] > 3e9
+            thresh = lambda cat: cat["obs_sm"] > 3e9
         dtype = np.dtype([('id','i8'),('descid','i8'),('upid','i8'),
                           ('flags','i4'),('uparent_dist','f4'),
                           ('pos','f4',(6)),('vmp','f4'),('lvmp','f4'),
@@ -2008,10 +2015,11 @@ class UMCache(BaseCache):
         -------
         None
         """
-        BaseCache.add(self, filename)
-
         if redshift is None:
             redshift = self._infer_redshift(filename)
+
+        BaseCache.add(self, filename)
+
         self.config["z"].append(redshift)
 
         self.update()
@@ -2169,7 +2177,7 @@ class UVISTACache(BaseCache):
         else:
             raise ValueError(f"filetype {filetype} not recognized")
 
-    def load(self):
+    def load(self, include_rel_mags=False):
         if not len(self.config["files"]) == len(self.UVISTAFILES):
             raise ValueError("Can't load until all files are in cache")
 
@@ -2210,8 +2218,11 @@ class UVISTACache(BaseCache):
             axis=0)
 
         rel_keys, rel_vals = zip(*relative_mags.items())
-        abs_keys, abs_vals = zip(*absolute_mags.items())
         rel_keys = [key + "_AB" for key in rel_keys]
+        rel_vals = rel_vals if include_rel_mags else []
+        rel_keys = rel_keys if include_rel_mags else []
+
+        abs_keys, abs_vals = zip(*absolute_mags.items())
         abs_keys = ["M_" + key.upper() for key in abs_keys]
 
         names = ["id", "ra", "dec", "z", "logm", "sfr_tot", "logssfr",
@@ -2263,8 +2274,8 @@ class UniverseMachine(GalBox):
     # Use @functools.cached_property (requires Python 3.8)
     @property
     @functools.lru_cache(maxsize=None)
-    def mag_predictor(self):
-        return make_predictor_UMmags(self.halos, self.redshift)
+    def mag_predictor(self, photbands=None):
+        return make_predictor_UMmags(self.halos, self.redshift, photbands)
 
 class UMField:
     """
@@ -2272,14 +2283,13 @@ class UMField:
     """
     def get_abs_mag(self, band):
         band = band.lower()
-        photbands = list(UVISTACache.PHOTBANDS.keys())
+        data = self._get_abs_mags()
 
         try:
-            index = photbands.index(band)
-        except ValueError:
-            raise ValueError(f"{band} is not an allowed band. "
-                             f"Use one of {photbands}.")
-        return self._get_abs_mags()[index]
+            return data[band]
+        except KeyError:
+            raise KeyError(f"{band} is not an allowed band. "
+                             f"Use one of {data.columns.tolist()}.")
 
     def get_rel_mag(self, band):
         d_on_10pc = self._get_lum_dist()
@@ -2312,7 +2322,7 @@ UMBoxField.__doc__ = BoxField.__doc__
 
 
 
-def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
+def make_predictor_UMmags(UMhalos, z_avg, photbands=None, dz=0.2, nwin=501):
     """
     Generate a function to predict the absolute magnitude in a number of photometric bands of UniverseMachine galaxies. This is done by fitting to UltraVISTA data.
 
@@ -2326,6 +2336,9 @@ def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
     z_avg : float
         Redshift slice of the UniverseMachine data
 
+    photbands : list of length-1 strings
+        Which bands to allow prediction for
+
     dz : float
         UVISTA redshifts will be selected to be between z_avg - dz/2 and z_avg + dz/2
 
@@ -2337,9 +2350,22 @@ def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
     Predictor : Function with signature f(s,z) -> tuple(MK,MH,...)
         Once the redshift is measured for each galaxy, you can use this function to predict its absolute magnitudes. z, MK, MH, ... are all arrays of shape (s.sum(),), where s is the boolean survey selection mask of shape (len(UMhalos),). Order is assumed to be preserved in UMhalos and z.
     """
+    if photbands is None:
+        photbands = ["k", "i", "j", "y", "g", "r"]
+    else:
+        photbands = [s.lower() for s in photbands]
+        if not ("i" in photbands):
+            photbands.append("i")
+        if not ("k" in photbands):
+            photbands.append("k")
+
+    UVISTA = UVISTACache()
+    UVISTA.PHOTBANDS = {k:UVISTA.PHOTBANDS[k] for k in photbands}
+    UVISTAcat = UVISTA.load()
+
     logm = np.log10(UMhalos["obs_sm"])
     logssfr = np.log10(UMhalos["obs_sfr"]) - logm
-    UVISTAcat = UVISTACache().load()
+
 
     uvista_z = UVISTAcat["z"]
     uvista_logm = UVISTAcat["logm"]
@@ -2360,10 +2386,10 @@ def make_predictor_UMmags(UMhalos, z_avg, dz=0.2, nwin=501):
     logssfr_uv = empirical_models.conditional_abunmatch(logm, logssfr,
                         uvista_logm[s], uvista_logssfr_uv[s], nwin=nwin)
 
-    predictor = _make_predictor_UMmags(reg, logm, logssfr_uv)
+    predictor = _make_predictor_UMmags(reg, logm, logssfr_uv, photbands)
     return predictor
 
-def _make_predictor_UMmags(regressor, logm, logssfr_uv):
+def _make_predictor_UMmags(regressor, logm, logssfr_uv, photbands):
     """Define predictor in another function to
     reduce the memory required for closure"""
     def predictor(selection, redshifts):
@@ -2373,5 +2399,5 @@ def _make_predictor_UMmags(regressor, logm, logssfr_uv):
         x = np.array([logssfr_uv[selection], redshifts]).T
         y = regressor.predict(x)
         Mag = -2.5 * (np.asarray(logm)[selection,None] - y)
-        return Mag.T
+        return pd.DataFrame(Mag, columns=photbands)
     return predictor
