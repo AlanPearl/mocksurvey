@@ -2267,10 +2267,13 @@ class UniverseMachine(GalBox):
                             np.array([250.,250.,250.]), False)
 
     def field(self, rotation=None, **kwargs):
-        return UMMockField(rotation=None, **kwargs)
+        return UMMockField(self, rotation=None, **kwargs)
 
     def boxfield(self, rotation=None, **kwargs):
-        return UMBoxField(rotation=None, **kwargs)
+        return UMBoxField(self, rotation=None, **kwargs)
+
+    def survey(self, *args, **kwargs):
+        raise NotImplementedError()
 
     # Use @functools.cached_property (requires Python 3.8)
     @property
