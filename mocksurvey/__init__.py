@@ -1,8 +1,8 @@
 """
-mocksurvey.py
+main.py
 Author: Alan Pearl
 
-Some useful classes for coducting mock surveys of galaxies populated by `halotools` and `UniverseMachine`.
+Some useful classes for conducting mock surveys of galaxies populated by `halotools` and `UniverseMachine`.
 
 Classes
 -------
@@ -19,4 +19,4 @@ MockSurvey:
     A collection of MockFields, centered at nearby places on the sky. Data access methods work in the same way as BoxField.
 """
 
-from .mocksurvey import *
+from .main import *

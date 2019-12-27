@@ -1,4 +1,7 @@
 import halotools as ht
+import numpy as np
+import pandas as pd
+from .. import main as ms
 
 
 def make_predictor_UMmags(UMhalos, z_avg, photbands=None, dz=0.2, nwin=501):
@@ -38,7 +41,7 @@ def make_predictor_UMmags(UMhalos, z_avg, photbands=None, dz=0.2, nwin=501):
         if not ("k" in photbands):
             photbands.append("k")
 
-    UVISTA = UVISTACache()
+    UVISTA = ms.UVISTACache()
     UVISTA.PHOTBANDS = {k:UVISTA.PHOTBANDS[k] for k in photbands}
     UVISTAcat = UVISTA.load()
 
@@ -50,7 +53,7 @@ def make_predictor_UMmags(UMhalos, z_avg, photbands=None, dz=0.2, nwin=501):
     uvista_logm = UVISTAcat["logm"]
     uvista_logssfr_uv = np.log10(UVISTAcat["sfr_uv"]) - uvista_logm
 
-    names = ["M_" + key.upper() for key in UVISTACache.PHOTBANDS.keys()]
+    names = ["M_" + key.upper() for key in UVISTA.PHOTBANDS.keys()]
     uvista_m2l = [uvista_logm + UVISTAcat[name]/2.5 for name in names]
 
     s = np.isfinite(uvista_logssfr_uv)
@@ -62,7 +65,7 @@ def make_predictor_UMmags(UMhalos, z_avg, photbands=None, dz=0.2, nwin=501):
     reg.fit(x, y)
 
     s = (z_avg-dz/2. <= uvista_z) & (uvista_z <= z_avg+dz/2.)
-    logssfr_uv = empirical_models.conditional_abunmatch(logm, logssfr,
+    logssfr_uv = ht.empirical_models.conditional_abunmatch(logm, logssfr,
                         uvista_logm[s], uvista_logssfr_uv[s], nwin=nwin)
 
     predictor = _make_predictor_UMmags(reg, logm, logssfr_uv, photbands)

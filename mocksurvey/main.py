@@ -1,5 +1,5 @@
 """
-mocksurvey.py
+main.py
 Author: Alan Pearl
 
 Some useful classes for coducting mock surveys of galaxies populated by `halotools` and `UniverseMachine`.
@@ -22,7 +22,7 @@ MockSurvey:
 from . import hf
 from . import cf
 from . import tp
-from . import ummags
+from .ummags import ummags
 
 import os
 import gc
@@ -37,7 +37,6 @@ from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
-__all__ = ["Observable", "RedshiftSelector", "FieldSelector", "CartesianSelector", "CelestialSelector", "SimBox", "HaloBox", "GalBox", "BoxField", "MockField", "MockSurvey", "PFSSurvey"]
 
 class Observable:
     def __init__(self, funcs, names=None, args=None, kwargs=None):
@@ -1129,7 +1128,7 @@ class MockField:
             if len(datanames) == 0:
                 length = 1
             else:
-                length = len(dataset[ list(datanames)[0] ])
+                length = len(dataset[list(datanames)[0]])
             return np.zeros((length, 3))
         else:
             if not(halo_vel_factor is None) or not(gal_vel_factor is None):
@@ -1255,7 +1254,7 @@ class MockField:
         center_dist = close_dist + self.get_shape()[2]/2.
         origin = self.center - np.array([0., 0., center_dist], dtype=np.float32)
 
-        points = np.array([ [0.,0.,0.], [self.simbox.Lbox[0], 0., 0.] ]) + origin
+        points = np.array([[0.,0.,0.], [self.simbox.Lbox[0], 0., 0.]]) + origin
         ra = hf.ra_dec_z(points, np.zeros_like(points), self.simbox.cosmo)[:,0]
         ra = abs(ra[1]-ra[0]) * math.sqrt(2.)
 
@@ -1396,7 +1395,7 @@ class PFSSurvey(MockSurvey):
         data = self.get_data()
         rands = self.get_rands()
         data2b = self.get_data(rdz=True)
-        rand2b = self.get_rands(1)
+        rand2b = self.get_rands(True)
         centers = [field.center_rdz for field in self.fields]
         boxshape = self.fields[0].get_shape(1)
         nbins = (2,2,1)
@@ -1557,7 +1556,7 @@ class SimBox:
 
 # Helper member functions
 # =======================
-    
+
     def rotate(self, rotation, gals=None):
         if rotation is None:
             rotation = np.random.randint(3)
@@ -1570,10 +1569,14 @@ class SimBox:
             k2 = [np.roll(a,rotation).tolist() for a in k0]
             keys = [np.ravel(k).tolist() for k in [k0,k1,k2]]
 
-            for olds,news in [[keys[0],keys[1]],[keys[1],keys[2]]]:
-                for old,new in zip(olds,news):
-                    gals.rename_column(old,new)
-    
+            try:
+                for olds,news in [[keys[0],keys[1]],[keys[1],keys[2]]]:
+                    for old,new in zip(olds,news):
+                        gals.rename_column(old,new)
+            except AttributeError:
+                mapper = dict(zip(keys[0],keys[2]))
+                gals.rename(mapper, copy=False)
+
     def populate_mock(self, seed=None, masking_function=None, rotation=None, Nbox=None):
         """Implement HOD model over halos to populate mock galaxy sample"""
         gc.collect()
@@ -1585,7 +1588,7 @@ class SimBox:
                 self._populate_periodically(Nbox, seed, masking_function)
             else:
                 self._populate(seed, masking_function)
-        
+
         if rotation is None:
             rotation = self.rotation
         self.rotate(rotation, self.gals)
@@ -1982,7 +1985,7 @@ class UMCache(BaseCache):
             thresh = lambda cat: cat["obs_sm"] > 3e9
         dtype = np.dtype([('id','i8'),('descid','i8'),('upid','i8'),
                           ('flags','i4'),('uparent_dist','f4'),
-                          ('pos','f4',(6)),('vmp','f4'),('lvmp','f4'),
+                          ('pos','f4',6),('vmp','f4'),('lvmp','f4'),
                           ('mp','f4'),('m','f4'),('v','f4'),('r','f4'),
                           ('rank1','f4'),('rank2','f4'),('ra','f4'),
                           ('rarank','f4'),('A_UV','f4'),('sm','f4'),
@@ -2089,6 +2092,8 @@ class UVISTACache(BaseCache):
     PHOTBANDS = {"k": "Ks", "h": "H", "j": "J", "y": "Y",
                  "z": "zp", "i": "ip", "r": "rp", "v": "V",
                  "g": "gp", "b": "B", "u": "u"}
+    _msg1 = lambda ftype: f"File type {repr(ftype)} not recognized. " \
+                          f"Must be one of {set(UVISTAFILES.keys())}"
     def __init__(self, cache_dir=None):
         config_dir, config_file = ".um-cache", "uvista-config.py"
         BaseCache.__init__(self, config_dir, config_file, cache_dir)
@@ -2145,7 +2150,7 @@ class UVISTACache(BaseCache):
         elif filetype == "vj":
          return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L155', 'L161']
         else:
-            raise ValueError(f"filetype {filetype} not recognized")
+            raise ValueError(_msg1(filetype))
 
     def names_to_keep(self, filetype):
         if filetype == "p":
@@ -2163,7 +2168,7 @@ class UVISTACache(BaseCache):
         elif filetype == "vj":
             return ["L155", "L161"]
         else:
-            raise ValueError(f"filetype {filetype} not recognized")
+            raise ValueError(_msg1(filetype))
 
     @staticmethod
     def get_skips(filetype):
@@ -2176,7 +2181,7 @@ class UVISTACache(BaseCache):
         elif filetype == "uv" or filetype == "vj":
             return 11
         else:
-            raise ValueError(f"filetype {filetype} not recognized")
+            raise ValueError(_msg1(filetype))
 
     def load(self, include_rel_mags=False):
         if not len(self.config["files"]) == len(self.UVISTAFILES):
@@ -2319,7 +2324,4 @@ class UMBoxField(BoxField, UMField):
     def __init__(self, um, rotation=None, **kwargs):
         um.rotate(rotation)
         BoxField.__init__(self, um, **kwargs)
-
-    def mag_predictor(self, z):
-        um.mag_predictor(self.selection, z)
 UMBoxField.__doc__ = BoxField.__doc__
