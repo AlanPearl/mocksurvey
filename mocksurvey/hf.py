@@ -340,32 +340,6 @@ def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
     zmin = (zmin+1) * .99 - 1
     zmax = (zmax+1) * 1.01 - 1
 
-    # OLD CODE TO CALCULATE ZMIN,ZMAX
-    # First construct a low resolution grid to check the range of redshifts
-    # needed for the high resolution grid
-    # redshift_hard_max = 10.
-    # yy = np.arange(0, redshift_hard_max+.005, 0.1)
-    # xx = cosmo.comoving_distance(yy).value
-    # if h_scaled:
-    #     xx *= cosmo.h
-    # imin,imax = None,None
-    # for i in range(len(yy)):
-    #     if xx[i] >= rmin:
-    #         imin = max((0, i-1))
-    #         break
-    # for i in range(len(yy)):
-    #     if xx[-1-i] <= rmax:
-    #         imax = -i
-    #         break
-    # if imax == 0:
-    #     dmin, dmax = cosmo.comoving_distance([0., redshift_hard_max]).value * cosmo.h
-    #     msg = "You can't observe galaxies at that distance. min/max distance from input array = (%.1f,%.1f) but 0 < z < %.1f is required." %(min(dist), max(dist), redshift_hard_max)
-    #     msg += "This corresponds to a requirement of %.1f < distance < %.1f" %(dmin,dmax)
-    #     msg += "If you want to observe galaxies further away, change the value of `redshift_hard_max`"
-    #     raise ValueError(msg)
-    #
-    # zmin, zmax = yy[imin], yy[imax]
-
     # compute cosmological redshift + doppler shift
     num_points = int((zmax-zmin)/zprec) + 1
     yy = np.linspace(zmin, zmax, num_points, dtype=np.float32)
@@ -386,7 +360,7 @@ def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
         xyz = xyz/cosmo.h
 
     # comoving distance from observer (at origin)
-    r = np.sqrt(xyz[:, 0]**2+xyz[:, 1]**2+xyz[:, 2]**2)
+    r = np.sqrt(xyz[:,0]**2 + xyz[:,1]**2 + xyz[:,2]**2)
     r_cyl_eq = np.sqrt(xyz[:, 2]**2 + xyz[:, 0]**2)
 
     # radial velocity from observer (at origin)
@@ -403,7 +377,7 @@ def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
         redshift = distance2redshift(r, vr, cosmo, zprec, h_scaled=False)
 
     # calculate spherical coordinates
-    # theta = np.arccos(xyz[:, 2]/r) # <--- causes large roundoff error near (x,y) = (0,0)
+    # theta = np.arccos(xyz[:, 2]/r) # <--- causes large round off error near (x,y) = (0,0)
     # theta = np.arctan2(r_cyl, xyz[:, 2])
     # phi = np.arctan2(xyz[:, 1], xyz[:, 0])
     

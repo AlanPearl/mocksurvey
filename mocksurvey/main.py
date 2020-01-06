@@ -19,11 +19,6 @@ MockSurvey:
     A collection of MockFields, centered at nearby places on the sky. Data access methods work in the same way as BoxField.
 """
 
-from . import hf
-from . import cf
-from . import tp
-from .ummags import ummags
-
 import os
 import gc
 import warnings
@@ -37,6 +32,17 @@ from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
+from . import hf
+from . import cf
+from . import tp
+from .ummags import ummags
+from .ummags.ummags import makelightcones
+
+
+bplcosmo = cosmology.FlatLambdaCDM(name="Bolshoi-Planck",
+                                   H0=68.,
+                                   Om0=0.307,
+                                   Ob0=0.307*0.158)
 
 class Observable:
     def __init__(self, funcs, names=None, args=None, kwargs=None):
@@ -1418,7 +1424,7 @@ class SimBox:
         - **simname** = "smdpl"
         - **version_name** = None
         - **hodname** = "zheng07"
-        - **cosmo** = cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459)
+        - **cosmo** = cosmology.FlatLambdaCDM(<Bolshoi-Planck parameters>)
         - **redshift** = 1.0
         - **threshold** = 10.5
         - **populate_on_instantiation** = True
@@ -1482,7 +1488,7 @@ class SimBox:
         "simname": "smdpl", # Small Multidark Planck; also try bolshoi, bolplanck, multidark, consuelo...
         "version_name": None, # Version of halo catalog: "halotools_v0p4" or "my_cosmosim_halos"
         "hodname": "zheng07", # Specifies the HOD model to populate galaxies; also try Zheng07
-        "cosmo": cosmology.FlatLambdaCDM(name="WMAP5", H0=70.2, Om0=0.277, Tcmb0=2.725, Neff=3.04, Ob0=0.0459),
+        "cosmo": bplcosmo,
         "redshift": 1.0, # Redshift of simulation
         "threshold": -21., # Galaxy mass threshold is 10**[threshold] M_sun
         "populate_on_instantiation": True, # Populate the galaxies upon instantiation
@@ -2194,7 +2200,7 @@ class UVISTACache(BaseCache):
 
         UVrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
         VJrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
-        cosmo = cosmology.Planck13
+        cosmo = bplcosmo
         z = dat[2]["z_peak"]
         sfr_tot = dat[3]["SFR_tot"]
         sfr_uv = dat[3]["SFR_UV"]

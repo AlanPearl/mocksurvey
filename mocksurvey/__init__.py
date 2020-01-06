@@ -1,5 +1,5 @@
 """
-main.py
+mocksurvey
 Author: Alan Pearl
 
 Some useful classes for conducting mock surveys of galaxies populated by `halotools` and `UniverseMachine`.
