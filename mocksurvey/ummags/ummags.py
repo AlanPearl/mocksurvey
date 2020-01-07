@@ -270,11 +270,11 @@ def _default_lightcone_filenames(z_low, z_high, x_arcmin, y_arcmin,
             for i in range(samples)]
 
 
-def _generate_lightcone_filenames(args, outfilepath="", outfilebase=None):
+def _generate_lightcone_filenames(args, outfilepath=None, outfilebase=None):
     fake_id = args.pop()
     z_low, z_high, x_arcmin, y_arcmin, samples, id_tag = args
 
-
+    outfilepath = "" if outfilepath is None else outfilepath
     args[-1] = "" if args[-1] is None else args[-1]
     if outfilebase is None:
         outfilebase = _default_lightcone_filenames(*args)[0][:-6]
