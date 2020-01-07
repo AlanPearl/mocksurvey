@@ -14,7 +14,7 @@ def lightcone():
     parser.add_argument("z_high", type=float, help="Maximum redshift")
     parser.add_argument("x_arcmin", type=float, help="Horizontal field "
                                                      "of view sidelength")
-    parser.add_argument("x_arcmin", type=float, help="Vertical field "
+    parser.add_argument("y_arcmin", type=float, help="Vertical field "
                                                      "of view sidelength")
     # Optional positional arguments
     parser.add_argument("samples", type=int, default=1, nargs="?",
