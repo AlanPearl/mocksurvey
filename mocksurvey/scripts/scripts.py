@@ -20,7 +20,7 @@ def lightcone():
     parser.add_argument("samples", type=int, default=1, nargs="?",
                         help="Number of realizations to create")
     parser.add_argument("photbands", type=str, nargs="?",
-        help="String of characters of bands to calculate luminosity for")
+        help="String of characters specifying which magnitude bands to get")
 
     # Arguments to specify paths
     parser.add_argument("--outfilepath", metavar="PATH", help="directory to "
@@ -36,9 +36,9 @@ def lightcone():
                 "configuration file required by the lightcone executable")
 
     # Specify mass limit / random seed
-    parser.add_argument("--obs_mass_limit", type=float, default=8e8,
+    parser.add_argument("--obs-mass-limit", type=float, default=8e8,
                     metavar="CUT", help="cut to place on 'obs_sm' column")
-    parser.add_argument("--true_mass_limit", type=float, default=0,
+    parser.add_argument("--true-mass-limit", type=float, default=0,
                     metavar="CUT", help="cut to place on 'true_sm' column")
     parser.add_argument("--rseed", type=int, metavar="R", help="Random "
                                             "seed for this realization")
@@ -50,7 +50,7 @@ def lightcone():
                 help="center around this declination")
     parser.add_argument("--theta-center", type=float, default=0, metavar="Z",
                 help="third rotation angle around ra/dec center")
-    parser.add_argument("--do_collision_test", action="store_true",
+    parser.add_argument("--do-collision-test", action="store_true",
                         help="not recommended for large lightcones")
 
     a = parser.parse_args()
