@@ -46,26 +46,27 @@ def makelightcones(z_low, z_high, x_arcmin, y_arcmin,
 
     # Convert the enormous ascii file into a binary table + meta data
     for filename in moved_files:
-        convert_ascii_to_npy_and_json(filename, photbands=photbands,
-                                        obs_mass_limit=obs_mass_limit,
-                                        true_mass_limit=true_mass_limit)
+        convert_ascii_to_npy_and_json(filename,
+            remove_ascii_file=not keep_ascii_files, photbands=photbands,
+            obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
 
-        # Save disk space by deleting the huge ascii files
-        if not keep_ascii_files:
-            os.remove(filename)
 
 def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
-                                  *args, **kwargs):
+                    remove_ascii_file=False, **kwargs):
     if outfilebase is None:
         outfilebase = ".".join(asciifile.split(".")[:-1])
 
-    lightcone = lightcone_from_ascii(asciifile, *args, **kwargs)
-    metadict = metadict_from_ascii(asciifile)
+    lightcone = lightcone_from_ascii(asciifile, **kwargs)
+    metadict = metadict_from_ascii(asciifile, **kwargs)
 
     np.save(outfilebase + ".npy", lightcone)
     json.dump(metadict, open(outfilebase + ".json", "w"))
 
-def metadict_from_ascii(filename):
+    if remove_ascii_file:
+        # Save disk space by deleting the huge ascii file
+        os.remove(asciifile)
+
+def metadict_from_ascii(filename, **kwargs):
     with open(filename) as f:
         [f.readline() for i in range(1)]
         cmd = " ".join(f.readline().split()[2:])
@@ -75,7 +76,7 @@ def metadict_from_ascii(filename):
         Rmatrix = eval(("".join([f.readline()[1:].strip().replace(" ", ",")
                                  for i in range(3)]))[:-1])
 
-    return dict(Rmatrix=Rmatrix, seed=seed, origin=origin, cmd=cmd)
+    return dict(Rmatrix=Rmatrix, seed=seed, origin=origin, cmd=cmd, **kwargs)
 
 def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
                          true_mass_limit=0):
