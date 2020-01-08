@@ -1,6 +1,8 @@
 import os
+import pathlib
 import shutil
 import json
+from packaging.version import parse as vparse
 import numpy as np
 import pandas as pd
 import halotools as ht
@@ -13,6 +15,20 @@ def makelightcones(z_low, z_high, x_arcmin, y_arcmin,
                    outfilepath=None, outfilebase=None, id_tag=None,
                    do_collision_test=False, ra=0.,
                    dec=0., theta=0., rseed=None):
+
+    assert(vparse(ht.version.version) >= vparse("0.7dev"))
+    if not ms.UVISTACache().are_all_files_cached():
+        raise IOError("You have not specified paths to all UltraVISTA data. "
+            "Please use UVISTACache('path/to/dir').auto_add()")
+    if not ms.UMCache().is_lightcone_ready():
+        raise IOError("You must set paths to the lightcone executable and "
+            "config files via UMCache('path/to/dir').set_lightcone_"
+            "<executable/config>('path/to/file')")
+
+    if executable is None:
+        executable = ms.UMCache().get_lightcone_executable()
+    if umcfg is None:
+        umcfg = ms.UMCache().get_lightcone_config()
 
     # Predict/generate filenames
     fake_id = "_tmp_file_made_by__mocksurvey.makelightcones_"
@@ -34,9 +50,8 @@ def makelightcones(z_low, z_high, x_arcmin, y_arcmin,
                                         obs_mass_limit=obs_mass_limit,
                                         true_mass_limit=true_mass_limit)
 
-    # Save disk space by deleting the huge ascii files
-    if not keep_ascii_files:
-        for filename in moved_files:
+        # Save disk space by deleting the huge ascii files
+        if not keep_ascii_files:
             os.remove(filename)
 
 def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
@@ -190,17 +205,19 @@ def setup_uvista_mag_regressor(photbands):
 
 
 def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz):
-    z_sel = (z_avg - dz / 2. <= z2) & (z2 <= z_avg + dz / 2.)
+    assert (vparse(ht.version.version) >= vparse("0.7dev"))
+    z_sel = (z_avg - dz/2 <= z2) & (z2 <= z_avg + dz/2)
     new_prop = empirical_models.conditional_abunmatch(m, prop,
                                 m2[z_sel], prop2[z_sel], nwin=nwin)
     return logssfr_uv
 
 
 def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, zbin_min=0.05):
+    assert (vparse(ht.version.version) >= vparse("0.7dev"))
     assert (zbin_min > 0)
     zrange = z.min() - zbin_min/20, z.max() + zbin_min/20
     nz = int((zrange[1] - zrange[0]) / zbin_min)
-    bin_edges = np.linspace(*zrange, nz + 1)
+    bin_edges = np.linspace(*zrange, nz+1)
 
     new_prop = np.zeros_like(prop)
     for i in range(nz):
@@ -233,10 +250,11 @@ def _execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
                             executable=None, umcfg=None, samples=1,
                             id_tag="",do_collision_test=False, ra=0.,
                             dec=0., theta=0., rseed=None):
+    homedir = str(pathlib.Path.home()) + "/"
     if executable is None:
-        executable = "$HOME/local/src/universemachine/lightcone"
+        executable = homedir + "local/src/universemachine/lightcone"
     if umcfg is None:
-        umcfg = "$HOME/data/LightCone/um-lightcone.cfg"
+        umcfg = homedir + "data/LightCone/um-lightcone.cfg"
     if not rseed is None:
         assert(isinstance(rseed, int)), "Random seed must be an integer"
     assert(isinstance(samples, int)), "Number of samples must be an integer"

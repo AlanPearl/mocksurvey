@@ -1,13 +1,15 @@
+import sys
+import os
+import collections
+import warnings
+from contextlib import contextmanager
 import numpy as np
 import scipy.special as spec
 from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
 from astropy import cosmology
 from astropy import units
-import collections
-import warnings
-from contextlib import contextmanager
-import sys, os
+
 
 @contextmanager
 def suppress_stdout():

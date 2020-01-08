@@ -11,7 +11,7 @@ setup(name="mocksurvey",
       python_requires=">=3.7",
       install_requires = [
         "h5py",
-		"halotools",
+		"halotools>=0.7dev",
 		"Corrfunc",
 		"emcee>=3.0rc2",
 		"corner",

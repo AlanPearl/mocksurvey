@@ -1858,7 +1858,7 @@ class BaseCache:
             except ValueError:
                 n -= 1
 
-        print(f"Successfully cached {n} files")
+        print(f"Successfully cached {n} files to {self}")
 
     def update(self):
         """
@@ -1966,6 +1966,26 @@ class UMCache(BaseCache):
 
         if not "z" in self.config:
             self.config["z"] = []
+
+    def set_lightcone_config(self, filepath):
+        assert(os.path.isfile(filepath)), f"file does not exist: {filepath}"
+        self.config["lightcone_config"] = filepath
+
+    def set_lightcone_executable(self, filepath):
+        assert (os.path.isfile(filepath)), f"file does not exist: {filepath}"
+        self.config["lightcone_executable"] = filepath
+
+    def get_lightcone_config(self):
+        return self.config["lightcone_config"]
+
+    def get_lightcone_executable(self):
+        return self.config["lightcone_executable"]
+
+    def is_lightcone_ready(self):
+        return ("lightcone_config" in self.config and
+                "lightcone_executable" in self.config and
+                os.path.isfile(self.config["lightcone_config"]) and
+                os.path.isfile(self.config["lightcone_executable"]))
 
     def load(self, redshift=0, thresh=None, ztol=0.05):
         """
@@ -2189,8 +2209,11 @@ class UVISTACache(BaseCache):
         else:
             raise ValueError(_msg1(filetype))
 
+    def are_all_files_cached(self):
+        return len(self.config["files"]) == len(self.UVISTAFILES)
+
     def load(self, include_rel_mags=False):
-        if not len(self.config["files"]) == len(self.UVISTAFILES):
+        if not self.are_all_files_cached():
             raise ValueError("Can't load until all files are in cache")
 
         types = ["p", "f", "z", "s", "uv", "vj"]
