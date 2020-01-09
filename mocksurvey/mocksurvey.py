@@ -1,5 +1,5 @@
 """
-main.py
+mocksurvey.py
 Author: Alan Pearl
 
 Some useful classes for coducting mock surveys of galaxies populated by `halotools` and `UniverseMachine`.
@@ -22,6 +22,7 @@ MockSurvey:
 import os
 import gc
 import warnings
+import json
 import math
 import scipy
 import numpy as np
@@ -1828,9 +1829,10 @@ class BaseCache:
     """
     def __init__(self, config_dir, config_file, cache_dir=None):
         self._read_config(config_dir, config_file)
-        if not cache_dir is None:
-            self.config["cache_dir"] = cache_dir
-        elif not "cache_dir" in self.config:
+        if cache_dir:
+            self.config["cache_dir"] = os.path.abspath(cache_dir)
+            self.update()
+        if cache_dir is None and not "cache_dir" in self.config:
             raise ValueError("Your first time running this, you "
                              "must provide the path to where you "
                              "will be storing the files.")
@@ -1843,7 +1845,7 @@ class BaseCache:
 
     def auto_add(self):
         """
-        Automatically try to add all binary files contained in the cache directory.
+        Automatically try to add all files contained in the cache directory.
 
         Takes no arguments and returns None.
         """
@@ -1875,7 +1877,7 @@ class BaseCache:
             line = f"{key} = {repr(val)}"
             lines.append(line)
 
-        with open(self.filename, "w") as f:
+        with open(self._filepath, "w") as f:
             f.write("\n".join(lines))
 
     def add(self, filename):
@@ -1924,12 +1926,11 @@ class BaseCache:
         del self.config["files"][i]
         return i
 
-    def remove_all(self):
+    def reset(self):
         """
-        Remove all files from our records. Simply erases the entire config file
+        Erases the config file for this object; all files are forgotten
         """
-        self.config = {}
-        self.update()
+        os.remove(self._filepath)
 
     def _read_config(self, dirname, filename):
         dirpath = os.path.join(os.path.dirname(
@@ -1949,7 +1950,7 @@ class BaseCache:
         exec("", empty); [config.pop(i) for i in empty]
 
         self.config = config.copy()
-        self.filename = filepath
+        self._filepath = filepath
 
 class UMCache(BaseCache):
     """
@@ -1966,6 +1967,8 @@ class UMCache(BaseCache):
 
         if not "z" in self.config:
             self.config["z"] = []
+        if not "lightcones" in self.config:
+            self.config["lightcones"] = []
 
     def set_lightcone_config(self, filepath):
         assert(os.path.isfile(filepath)), f"file does not exist: {filepath}"
@@ -2030,6 +2033,14 @@ class UMCache(BaseCache):
             mm = np.memmap(fullpath, dtype=dtype)
             return np.array(mm[thresh(mm)]), true_z
 
+    def auto_add(self):
+        """
+        In addition to the below, this searches for available lightcones
+        """
+        BaseCache.auto_add(self)
+        self.auto_add_lightcones()
+    auto_add.__doc__ = BaseCache.auto_add.__doc__
+
     def add(self, filename, redshift=None):
         """
         Add a new binary file containing a UniverseMachine snapshot
@@ -2073,6 +2084,40 @@ class UMCache(BaseCache):
         self.update()
         return i
 
+    def auto_add_lightcones(self):
+        """
+        Automatically add all lightcones found via add_lightcone
+        """
+        path = os.path.join(self.config["cache_dir"], "lightcones")
+        candidates = [os.path.join(path, name) for name in os.listdir(path)]
+        dirs = [c for c in candidates if os.path.isdir(c)]
+        names = [os.path.split(d)[1] for d in dirs]
+        for name in names:
+            self.add_lightcone(name)
+
+    def add_lightcone(self, name):
+        """
+        Given the name of a lightcone sample, add it to our records.
+
+        Parameters
+        ----------
+        name : str
+            The name of the lightcone sample. It is also the name of the directory located at {cache_dir}/lightcones/{name}
+
+        Returns
+        -------
+        None
+        """
+        cache_dir = self.config["cache_dir"]
+        path = os.path.join(cache_dir, "lightcones", name)
+        LightConeCache(path).auto_add()
+        if not path in self.config["lightcones"]:
+            self.config["lightcones"].append(path)
+        self.update()
+
+    def remove_lightcone(self, path):
+        raise NotImplementedError()
+
     def _get_file_at_redshift(self, redshift, ztol):
         wh = np.where(np.isclose(self.config["z"], redshift,
                                  rtol=0, atol=ztol))[0]
@@ -2097,6 +2142,115 @@ class UMCache(BaseCache):
             raise
         except:
             raise ValueError("Cannot infer a redshift from this filename.")
+
+class LightConeCache(BaseCache):
+    """
+    Keeps track of the locations of locally saved binary files that come from the UniverseMachine data release.
+
+    Parameters
+    ----------
+    cache_dir : str (required on first run)
+        The path to the directory where you plan on saving all of the binary files. If the directory is moved, then you must provide this argument again.
+    """
+    def __init__(self, cache_dir):
+        path, name = os.path.split(cache_dir)
+        if name == "":
+            if path == "":
+                raise NotADirectoryError("Invalid directory {cache_dir}")
+            path, name = os.path.split(path)
+
+        # If path is explicit and exists, interpret argument as actual path
+        if (cache_dir.startswith((os.extsep, os.path.sep))) and \
+                                        os.path.isdir(cache_dir):
+            cache_dir = os.path.abspath(cache_dir)
+        # Otherwise, interpret argument as name to go in standard location
+        else:
+            path = UMCache().get_filepath("lightcones")
+            cache_dir = os.path.join(path, cache_dir)
+            assert(os.path.isdir(cache_dir)), f"{cache_dir} does not exist"
+
+        config_dir, config_file = ".um-cache", f"lightcone-{name}-config.py"
+        BaseCache.__init__(self, config_dir, config_file, cache_dir)
+
+        if not "meta_files" in self.config:
+            self.config["meta_files"] = []
+
+    def load(self, index):
+        """
+        Load a halo table into memory, at a given snapshot in redshift.
+
+        Parameters
+        ----------
+        index : int
+            Number specifies which lightcone realization to load
+
+        Returns
+        -------
+        lightcone : np.ndarray
+            Structured array of the requested halo catalog
+
+        meta : dict
+            Dictionay storing additional information about this lightcone
+        """
+        n = len(self.config["files"])
+        assert isinstance(index, int), "index must be an integer"
+        assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
+
+        datafile = self.get_filepath(self.config["files"][index])
+        metafile = self.get_filepath(self.config["meta_files"][index])
+
+        data = np.load(datafile)
+        meta = json.load(open(metafile))
+        return data, meta
+
+    def add(self, filename, meta_filename=None):
+        """
+        Add a new file containing a lightcone
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file (do not include path)
+        meta_filename : str (optional)
+            The name of the corresponding metadata file (by default, .npy is replaced with .json)
+
+        Returns
+        -------
+        None
+        """
+        if meta_filename is None:
+            meta_filename = filename[:-3] + "json"
+        metapath = os.path.join(self.config["cache_dir"], meta_filename)
+
+        if not filename.endswith(".npy"):
+            raise ValueError(f"lightcone file {filename} must end in '.npy'")
+        if not os.path.isfile(metapath):
+            raise ValueError(f"metadata file {metapath} does not exist")
+
+        BaseCache.add(self, filename)
+        self.config["meta_files"].append(meta_filename)
+
+        self.update()
+
+    def remove(self, filename):
+        """
+        Remove a file from our records. Note this does NOT delete the file.
+
+        Parameters
+        ----------
+        filename : str
+            The name of the file (do not include path)
+
+        Returns
+        -------
+        i : int
+            The index of the file being removed
+        """
+        i = BaseCache.remove(self, filename)
+        del self.config["meta_files"][i]
+        self.update()
+        return i
+
 
 class UVISTACache(BaseCache):
     """

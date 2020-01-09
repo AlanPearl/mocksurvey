@@ -11,6 +11,6 @@ if __name__ == "__main__":
     if len(argv) == 0:
         raise IOError(msg)
     if not argv[0] in available_scripts:
-        raise IOError(f"Unknown command \"{argv[0]}\". {msg}")
+        raise IOError(f"Unknown command \"{argv[0]}\".\n{msg}")
 
     available_scripts[argv[0]]()

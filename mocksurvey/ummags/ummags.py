@@ -6,7 +6,7 @@ from packaging.version import parse as vparse
 import numpy as np
 import pandas as pd
 import halotools as ht
-from .. import main as ms
+from .. import mocksurvey as ms
 
 def makelightcones(z_low, z_high, x_arcmin, y_arcmin,
                    executable=None, umcfg=None, samples=1,
@@ -66,7 +66,10 @@ def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
         # Save disk space by deleting the huge ascii file
         os.remove(asciifile)
 
-def metadict_from_ascii(filename, **kwargs):
+def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
+                         true_mass_limit=0):
+    photbands = _get_photbands(photbands)
+
     with open(filename) as f:
         [f.readline() for i in range(1)]
         cmd = " ".join(f.readline().split()[2:])
@@ -76,7 +79,15 @@ def metadict_from_ascii(filename, **kwargs):
         Rmatrix = eval(("".join([f.readline()[1:].strip().replace(" ", ",")
                                  for i in range(3)]))[:-1])
 
-    return dict(Rmatrix=Rmatrix, seed=seed, origin=origin, cmd=cmd, **kwargs)
+    (executable, config, z_low, z_high,
+     x_arcmin, y_arcmin, samples) = cmd.split()[:7]
+
+    return dict(Rmatrix=Rmatrix, seed=seed, origin=origin, cmd=cmd,
+                photbands=photbands, obs_mass_limit=obs_mass_limit,
+                true_mass_limit=true_mass_limit, executable=executable,
+                config=config, z_low=float(z_low), z_high=float(z_high),
+                x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
+                samples=int(samples))
 
 def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
                          true_mass_limit=0):

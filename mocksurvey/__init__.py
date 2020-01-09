@@ -19,4 +19,4 @@ MockSurvey:
     A collection of MockFields, centered at nearby places on the sky. Data access methods work in the same way as BoxField.
 """
 
-from .main import *
+from .mocksurvey import *
