@@ -9,37 +9,38 @@ def lightcone():
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     # Mandatory positional arguments
-    parser.add_argument("z_low", type=float, help="Minimum redshift")
-    parser.add_argument("z_high", type=float, help="Maximum redshift")
-    parser.add_argument("x_arcmin", type=float, help="Horizontal field "
+    parser.add_argument("Z_LOW", type=float, help="Minimum redshift")
+    parser.add_argument("Z_HIGH", type=float, help="Maximum redshift")
+    parser.add_argument("X_ARCMIN", type=float, help="Horizontal field "
                                                      "of view sidelength")
-    parser.add_argument("y_arcmin", type=float, help="Vertical field "
+    parser.add_argument("Y_ARCMIN", type=float, help="Vertical field "
                                                      "of view sidelength")
     # Optional positional arguments
-    parser.add_argument("samples", type=int, default=1, nargs="?",
+    parser.add_argument("SAMPLES", type=int, default=1, nargs="?",
                         help="Number of realizations to create")
-    parser.add_argument("photbands", type=str, nargs="?",
+    parser.add_argument("PHOTBANDS", type=str, nargs="?",
         help="String of characters specifying which magnitude bands to get")
 
     # Arguments to specify paths
-    parser.add_argument("--outfilepath", metavar="PATH", help="directory to "
-                "place output files")
+    parser.add_argument("--id-tag", metavar="NAME", help="name the lightcone "
+                "for easy loading with LightConeConfig(id_tag).load(0) "
+                "(this may not work if outfilepath is specified)")
     parser.add_argument("--outfilebase", metavar="NAME", help="base of the "
                 "filename to construct the output lightcones")
-    parser.add_argument("--id-tag", metavar="NAME", help="name of the survey "
-                "in filename (ignored if outfilebase specified)")
 
     parser.add_argument("--executable", metavar="PATH", help="path to the "
                 "lightcone executable from the UniverseMachine package")
     parser.add_argument("--umcfg", metavar="PATH", help="path to the "
                 "configuration file required by the lightcone executable")
+    parser.add_argument("--outfilepath", metavar="PATH", help="directory to "
+                "place output files")
 
     # Specify mass limit / random seed
     parser.add_argument("--obs-mass-limit", type=float, default=8e8,
                     metavar="CUT", help="cut to place on 'obs_sm' column")
     parser.add_argument("--true-mass-limit", type=float, default=0,
                     metavar="CUT", help="cut to place on 'true_sm' column")
-    parser.add_argument("--rseed", type=int, metavar="R", help="Random "
+    parser.add_argument("--rseed", type=int, metavar="R", help="random "
                                             "seed for this realization")
 
     # Arguments with not much use
@@ -56,9 +57,9 @@ def lightcone():
 
     a = parser.parse_args()
 
-    makelightcones(a.z_low, a.z_high, a.x_arcmin, a.y_arcmin,
-        executable=a.executable, umcfg=a.umcfg, samples=a.samples,
-        photbands=a.photbands, keep_ascii_files=a.keep_ascii_files,
+    makelightcones(a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
+        executable=a.executable, umcfg=a.umcfg, samples=a.SAMPLES,
+        photbands=a.PHOTBANDS, keep_ascii_files=a.keep_ascii_files,
         obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
         outfilepath=a.outfilepath, outfilebase=a.outfilebase, id_tag=a.id_tag,
         do_collision_test=a.do_collision_test, ra=a.ra_center,

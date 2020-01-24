@@ -12,6 +12,26 @@ from astropy import units
 
 
 @contextmanager
+def temp_seed(seed):
+    if seed is None:
+        do_alter = False # Don't alter state
+    elif isinstance(seed, str):
+        do_alter = True # New state with random seed
+        seed = None
+    else:
+        assert(isinstance(seed, int)), f"seed={seed} must be int"
+        do_alter = True # New state with specified seed
+
+    state = np.random.get_state()
+    if do_alter:
+        np.random.seed(seed)
+    try:
+        yield
+    finally:
+        if do_alter:
+            np.random.set_state(state)
+
+@contextmanager
 def suppress_stdout():
     with open(os.devnull, "w") as devnull:
         old_stdout = sys.stdout
@@ -145,67 +165,64 @@ def get_N_subsamples_len_M(sample, N, M, norepeats=False, suppress_warning=False
     Returns (N,M,*) array containing N subsamples, each of length M.
     We require M < L, where (L,*) is the shape of `sample`.
     If norepeats=True, then we require N*M < L."""
-    assert(is_arraylike(sample))
-    maxM = len(sample)
-    assert(M <= maxM)
-    maxN = np.math.factorial(maxM)//(np.math.factorial(M)*np.math.factorial(maxM-M))
-    if N is None:
-        N = int(maxM // M)
-    assert(N <= maxN)
-    
-    if norepeats:
-        if N*M > maxM:
-            msg = "Warning: Cannot make %d subsamples without repeats\n" %N
-            N = int(maxM/float(M))
-            msg += "Making %d subsamples instead" %N
-            if not suppress_warning:
-                print(msg)
-        
-        sample = np.asarray(sample)
-        newshape = (N,M,*sample.shape[1:])
-        newsize = N*M
-        if not seed is None: np.random.seed(seed)
-        np.random.shuffle(sample)
-        if not seed is None: np.random.seed()
-        return sample[:newsize].reshape(newshape)
-    
-    if isinstance(sample, np.ndarray):
-        return get_N_subsamples_len_M_numpy(sample, N, M, maxM, seed)
-    else:
-        return get_N_subsamples_len_M_list(sample, N, M, maxM, seed)
+    with temp_seed(seed):
+        assert(is_arraylike(sample))
+        maxM = len(sample)
+        assert(M <= maxM)
+        maxN = np.math.factorial(maxM)//(np.math.factorial(M)*np.math.factorial(maxM-M))
+        if N is None:
+            N = int(maxM // M)
+        assert(N <= maxN)
+
+        if norepeats:
+            if N*M > maxM:
+                msg = "Warning: Cannot make %d subsamples without repeats\n" %N
+                N = int(maxM/float(M))
+                msg += "Making %d subsamples instead" %N
+                if not suppress_warning:
+                    print(msg)
+
+            sample = np.asarray(sample)
+            newshape = (N,M,*sample.shape[1:])
+            newsize = N*M
+            np.random.shuffle(sample)
+            return sample[:newsize].reshape(newshape)
+
+        if isinstance(sample, np.ndarray):
+            return get_N_subsamples_len_M_numpy(sample, N, M, maxM, seed)
+        else:
+            return get_N_subsamples_len_M_list(sample, N, M, maxM, seed)
 
 def get_N_subsamples_len_M_list(sample, N, M, maxM, seed=None):
-    i = 0
-    subsamples = []
-    while i < N:
-        if not seed is None: np.random.seed(seed)
-        subsample = set(np.random.choice(maxM, M, replace=False))
-        if not seed is None: np.random.seed()
-        if not subsample in subsamples:
-            subset = []
-            for index in subsample:
-                subset.append(sample[index])
-            subsamples.append(subset)
-            i += 1
-    
-    return subsamples
+    with temp_seed(seed):
+        i = 0
+        subsamples = []
+        while i < N:
+            subsample = set(np.random.choice(maxM, M, replace=False))
+            if not subsample in subsamples:
+                subset = []
+                for index in subsample:
+                    subset.append(sample[index])
+                subsamples.append(subset)
+                i += 1
+
+        return subsamples
 
 def get_N_subsamples_len_M_numpy(sample, N, M, maxM, seed=None):
-    i = 0
-    subsamples = np.zeros((N,maxM), dtype=bool)
-    while i < N:
-        if not seed is None: np.random.seed(seed)
-        subsample = np.random.choice(maxM, M, replace=False)
-        if not seed is None: np.random.seed()
-        subsample = np.bincount(subsample, minlength=maxM).astype(bool)
-        if np.any(np.all(subsample[None,:] == subsamples[:i,:], axis=1)):
-            continue
-        else:
-            subsamples[i,:] = subsample
-            i += 1
-    
-    subset = np.tile(sample,(N,*[1]*len(sample.shape)))[subsamples].reshape((N,M,*sample.shape[1:]))
-    return subset
+    with temp_seed(seed):
+        i = 0
+        subsamples = np.zeros((N,maxM), dtype=bool)
+        while i < N:
+            subsample = np.random.choice(maxM, M, replace=False)
+            subsample = np.bincount(subsample, minlength=maxM).astype(bool)
+            if np.any(np.all(subsample[None,:] == subsamples[:i,:], axis=1)):
+                continue
+            else:
+                subsamples[i,:] = subsample
+                i += 1
+
+        subset = np.tile(sample,(N,*[1]*len(sample.shape)))[subsamples].reshape((N,M,*sample.shape[1:]))
+        return subset
 
 def is_arraylike(a):
     # return isinstance(a, (tuple, list, np.ndarray))
@@ -232,47 +249,45 @@ def redshift_lim_to_dist(delta_redshift, mean_redshift, cosmo):
     return dist
 
 def get_random_center(Lbox, fieldshape, numcenters=None, seed=None, pad=30):
-    #origin_shift = np.asarray(origin_shift)
-    Lbox = np.asarray(Lbox)
-    fieldshape = np.asarray(fieldshape)
-    if numcenters is None:
-        shape = 3
-    else:
-        shape = (numcenters,3)
-    if pad is None:
-        pad = np.array([0.,0.,0.])
-    else:
-        pad = np.asarray(pad)
-    
-    assert(np.all(2.*pad + fieldshape <= Lbox))
-    if not seed is None: np.random.seed(seed)
-    xyz_min = np.random.random(shape)*(Lbox - fieldshape - 2.*pad) #- origin_shift
-    if not seed is None: np.random.seed()
-    center = xyz_min + fieldshape/2. + pad
-    return center
+    with temp_seed(seed):
+        #origin_shift = np.asarray(origin_shift)
+        Lbox = np.asarray(Lbox)
+        fieldshape = np.asarray(fieldshape)
+        if numcenters is None:
+            shape = 3
+        else:
+            shape = (numcenters,3)
+        if pad is None:
+            pad = np.array([0.,0.,0.])
+        else:
+            pad = np.asarray(pad)
+
+        assert(np.all(2.*pad + fieldshape <= Lbox))
+        xyz_min = np.random.random(shape)*(Lbox - fieldshape - 2.*pad) #- origin_shift
+        center = xyz_min + fieldshape/2. + pad
+        return center
 
 def get_random_gridded_center(Lbox, fieldshape, numcenters=None, pad=None, replace=False, seed=None):
-    Lbox = np.asarray(Lbox); fieldshape = np.asarray(fieldshape)
-    if numcenters is None:
-        numcenters = 1
-        one_dim = True
-    else:
-        one_dim = False
-        
-    centers = grid_centers(Lbox, fieldshape, pad)
-    if not replace and numcenters > len(centers):
-        raise ValueError("numcenters=%d, but there are only %d possible grid centers" %(numcenters, len(centers)))
-    if isinstance(numcenters, str) and numcenters.lower().startswith("all"):
-        numcenters = len(centers)
+    with temp_seed(seed):
+        Lbox = np.asarray(Lbox); fieldshape = np.asarray(fieldshape)
+        if numcenters is None:
+            numcenters = 1
+            one_dim = True
+        else:
+            one_dim = False
 
-    if not seed is None: np.random.seed(seed)
-    which = np.random.choice(np.arange(len(centers)), numcenters, replace=replace)
-    if not seed is None: np.random.seed()
-    centers = centers[which]
-    if one_dim:
-        return centers[0]
-    else:
-        return centers
+        centers = grid_centers(Lbox, fieldshape, pad)
+        if not replace and numcenters > len(centers):
+            raise ValueError("numcenters=%d, but there are only %d possible grid centers" %(numcenters, len(centers)))
+        if isinstance(numcenters, str) and numcenters.lower().startswith("all"):
+            numcenters = len(centers)
+
+        which = np.random.choice(np.arange(len(centers)), numcenters, replace=replace)
+        centers = centers[which]
+        if one_dim:
+            return centers[0]
+        else:
+            return centers
 
 def grid_centers(Lbox, fieldshape, pad=None):
     if pad is None: pad = np.array([0.,0.,0.])
@@ -284,21 +299,20 @@ def grid_centers(Lbox, fieldshape, pad=None):
     
 
 def sample_fraction(sample, fraction, seed=None):
-    assert(0 <= fraction <= 1)
-    if hasattr(sample, "__len__"):
-        N = len(sample)
-        return_indices = False
-    else:
-        N = sample
-        return_indices = True
-    Nfrac = int(N*fraction)
-    if not seed is None: np.random.seed(seed)
-    indices = np.random.choice(N, Nfrac, replace=False)
-    if not seed is None: np.random.seed()
-    if return_indices:
-        return indices
-    else:
-        return sample[indices]
+    with temp_seed(seed):
+        assert(0 <= fraction <= 1)
+        if hasattr(sample, "__len__"):
+            N = len(sample)
+            return_indices = False
+        else:
+            N = sample
+            return_indices = True
+        Nfrac = int(N*fraction)
+        indices = np.random.choice(N, Nfrac, replace=False)
+        if return_indices:
+            return indices
+        else:
+            return sample[indices]
 
 def kwargs2attributes(obj, kwargs):
     class_name = str(obj.__class__).split("'")[1].split(".")[1]
@@ -314,7 +328,7 @@ def kwargs2attributes(obj, kwargs):
     
     obj.__dict__.update(kwargs)
 
-def rdz2xyz(rdz, cosmo):
+def rdz2xyz(rdz, cosmo, use_um_convention=False):
     """If cosmo=None then z is assumed to already be distance, not redshift."""
     if cosmo is None:
         dist = rdz[:,2]
@@ -324,17 +338,28 @@ def rdz2xyz(rdz, cosmo):
     z = (dist * np.cos(rdz[:,1]) * np.cos(rdz[:,0])).astype(np.float32)
     x = (dist * np.cos(rdz[:,1]) * np.sin(rdz[:,0])).astype(np.float32)
     y = (dist * np.sin(rdz[:,1])).astype(np.float32)
-    return np.vstack([x,y,z]).T # in Mpc/h
+    xyz = np.vstack([x,y,z]).T
+    if use_um_convention:
+        xyz = xyz_convention_ms2um(xyz)
+    return xyz # in Mpc/h
+
+def xyz_convention_ms2um(xyz):
+    # Convert an xyz array from mocksurvey convention (left-handed; z=los)
+    # to UniverseMachine convention (right-handed; x=los)
+    xyz = xyz[:,[2,0,1]]
+    xyz[:,1] *= -1
+    return xyz
 
 def comoving_disth(redshifts, cosmo):
-    dist = (cosmo.comoving_distance(redshifts)
-            * cosmo.h).value
-    return (dist.astype(redshifts.dtype)
+    z = np.asarray(redshifts)
+    dist = cosmo.comoving_distance(z).value * cosmo.h
+    return (dist.astype(z.dtype)
             if is_arraylike(dist) else dist)
 
 def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
     if len(dist) == 0:
         return np.array([])
+
     c_km_s = c.to('km/s').value
     dist_units = units.Mpc/cosmo.h if h_scaled else units.Mpc
     zmin,zmax = [cosmology.z_at_value(cosmo.comoving_distance,
@@ -350,7 +375,12 @@ def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
         xx *= cosmo.h
     f = interp1d(xx, yy, kind='cubic')
     z_cos = f(dist).astype(np.float32)
-    redshift = z_cos+(vr/c_km_s)*(1.0+z_cos)
+
+    # Add velocity distortion
+    if vr is None:
+        redshift = z_cos
+    else:
+        redshift = z_cos+(vr/c_km_s)*(1.0+z_cos)
     return redshift
 
 def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
@@ -434,15 +464,14 @@ def rand_rdz(N, ralim, declim, zlim, seed=None):
     """
 Returns an array of shape (N,3) with columns ra,dec,z (z is treated as distance) within the specified limits such that the selected points are chosen randomly over a uniform distribution
     """
-    N = int(N)
-    if not seed is None: np.random.seed(seed)
-    ans = np.random.random((N,3))
-    if not seed is None: np.random.seed()
-    ans[:,0] = (ralim[1] - ralim[0]) * ans[:,0] + ralim[0]
-    ans[:,1] = np.arcsin( (np.sin(declim[1]) - np.sin(declim[0])) * ans[:,1] + np.sin(declim[0]) )
-    ans[:,2] = ( (zlim[1]**3 - zlim[0]**3) * ans[:,2] + zlim[0]**3 )**(1./3.)
-    
-    return ans
+    with temp_seed(seed):
+        N = int(N)
+        ans = np.random.random((N,3))
+        ans[:,0] = (ralim[1] - ralim[0]) * ans[:,0] + ralim[0]
+        ans[:,1] = np.arcsin( (np.sin(declim[1]) - np.sin(declim[0])) * ans[:,1] + np.sin(declim[0]) )
+        ans[:,2] = ( (zlim[1]**3 - zlim[0]**3) * ans[:,2] + zlim[0]**3 )**(1./3.)
+
+        return ans
 
 def volume_rdz(ralim, declim, zlim, cosmo=None):
     """

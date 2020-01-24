@@ -8,7 +8,7 @@ import pandas as pd
 import halotools as ht
 from .. import mocksurvey as ms
 
-def makelightcones(z_low, z_high, x_arcmin, y_arcmin,
+def lightcone(z_low, z_high, x_arcmin, y_arcmin,
                    executable=None, umcfg=None, samples=1,
                    photbands=None, keep_ascii_files=False,
                    obs_mass_limit=8e8, true_mass_limit=0,
@@ -17,18 +17,18 @@ def makelightcones(z_low, z_high, x_arcmin, y_arcmin,
                    dec=0., theta=0., rseed=None):
 
     assert(vparse(ht.version.version) >= vparse("0.7dev"))
-    if not ms.UVISTACache().are_all_files_cached():
+    if not ms.UVISTAConfig().are_all_files_stored():
         raise IOError("You have not specified paths to all UltraVISTA data. "
-            "Please use UVISTACache('path/to/dir').auto_add()")
-    if not ms.UMCache().is_lightcone_ready():
+            "Please use UVISTAConfig('path/to/dir').auto_add()")
+    if not ms.UMConfig().is_lightcone_ready():
         raise IOError("You must set paths to the lightcone executable and "
-            "config files via UMCache('path/to/dir').set_lightcone_"
+            "config files via UMConfig('path/to/dir').set_lightcone_"
             "<executable/config>('path/to/file')")
 
     if executable is None:
-        executable = ms.UMCache().get_lightcone_executable()
+        executable = ms.UMConfig().get_lightcone_executable()
     if umcfg is None:
-        umcfg = ms.UMCache().get_lightcone_config()
+        umcfg = ms.UMConfig().get_lightcone_config()
 
     # Predict/generate filenames
     fake_id = "_tmp_file_made_by__mocksurvey.makelightcones_"
@@ -49,6 +49,11 @@ def makelightcones(z_low, z_high, x_arcmin, y_arcmin,
         convert_ascii_to_npy_and_json(filename,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
+
+    try:
+        ms.UMConfig().auto_add()
+    except ValueError:
+        pass
 
 
 def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
@@ -121,17 +126,21 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
                              filename, cols, row_cut_min_dict=masslimit)
     lightcone = reader.read_ascii()
 
+    lightcone["ra"] = (lightcone["ra"] + 180) % 360 - 180
     xyz_real = ms.hf.xyz_array(lightcone, keys=["x_real","y_real","z_real"])
     vel = ms.hf.xyz_array(lightcone, keys=["vx", "vy", "vz"])
     rdz = ms.hf.ra_dec_z(xyz_real, vel, cosmo=ms.bplcosmo)
-
     xyz = ms.hf.rdz2xyz(rdz, cosmo=ms.bplcosmo)
-    distmod = 5 * np.log10(np.linalg.norm(xyz_real, axis=1) * 1e5)
-    magdf = get_lightcone_UMmags(lightcone, photbands=photbands)
+
+    dlum = ms.bplcosmo.luminosity_distance(lightcone["redshift_cosmo"]
+                                           ).value * ms.bplcosmo.h
+    distmod = 5 * np.log10(dlum * 1e5)
+    magdf = get_lightcone_UMmags(lightcone, photbands=photbands
+                                 ) + distmod[:,None]
 
     # Copy all data into a new structured numpy array
     xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
-    mag_dtype = [("M_" + s.upper(), "f4") for s in magdf.columns]
+    mag_dtype = [(f"m_{s}", "f4") for s in magdf.columns]
     full_dtype = xyz_dtype + lightcone.dtype.descr + mag_dtype
     full_dtype.append(("distmod", "f4"))
     final_lightcone_array = np.zeros(lightcone.shape, full_dtype)
@@ -193,7 +202,7 @@ def _get_photbands(photbands):
 def setup_uvista_mag_regressor(photbands):
     photbands = _get_photbands(photbands)
 
-    UVISTA = ms.UVISTACache()
+    UVISTA = ms.UVISTAConfig()
     UVISTA.PHOTBANDS = {k: UVISTA.PHOTBANDS[k]
                         for k in set(photbands) | {"k"}}
     UVISTAcat = UVISTA.load()
@@ -303,6 +312,21 @@ def _default_lightcone_filenames(z_low, z_high, x_arcmin, y_arcmin,
 def _generate_lightcone_filenames(args, outfilepath=None, outfilebase=None):
     fake_id = args.pop()
     z_low, z_high, x_arcmin, y_arcmin, samples, id_tag = args
+
+    # If id_tag is provided AND outfilepath is not
+    # then store in the default location
+    if (not id_tag is None) and (outfilepath is None):
+        try:
+            outfilepath = ms.UMConfig().config["data_dir"]
+            outfilepath = os.path.join(outfilepath, f"lightcones/{id_tag}/")
+            pathlib.Path(outfilepath).mkdir(parents=True)
+        except FileExistsError:
+            outfilepath = None
+            raise FileExistsError(f"Lightcone with id-tag={id_tag} "
+                                  f"already exists")
+        except ValueError:
+            outfilepath = None
+            pass
 
     outfilepath = "" if outfilepath is None else outfilepath
     args[-1] = "" if args[-1] is None else args[-1]
