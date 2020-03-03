@@ -1,10 +1,10 @@
 import argparse
 
 def lightcone():
-    from ..ummags.ummags import makelightcones
+    from ..mocksurvey import lightcone
 
     desc = ("Creates a UniverseMachine lightcone that includes magnitudes "
-            "matched to UltraVISTA.")
+            " and spectral IDs matched to galaxies in the COSMOS field.")
     parser = argparse.ArgumentParser(description=desc,
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -16,15 +16,20 @@ def lightcone():
     parser.add_argument("Y_ARCMIN", type=float, help="Vertical field "
                                                      "of view sidelength")
     # Optional positional arguments
-    parser.add_argument("SAMPLES", type=int, default=1, nargs="?",
+    parser.add_argument("NUM_SAMPLES", type=int, default=1, nargs="?",
                         help="Number of realizations to create")
-    parser.add_argument("PHOTBANDS", type=str, nargs="?",
-        help="String of characters specifying which magnitude bands to get")
+    # parser.add_argument("NUM_NEAREST_SPECID", type=int, default=0, nargs="?",
+    #                     help="Number of nearest neighbors to match specid's")
+
+    # Argument changing which photometric bands to return
+    parser.add_argument("--photbands", type=str, metavar="STRING",
+        help="String of characters specifying which magnitude bands to get."
+             " Default is JYGR")
 
     # Arguments to specify paths
-    parser.add_argument("--id-tag", metavar="NAME", help="name the lightcone "
-                "for easy loading with LightConeConfig(id_tag).load(0) "
-                "(this may not work if outfilepath is specified)")
+    parser.add_argument("--id-tag", metavar="NAME", help="name the light"
+                "cone for easy loading with LightConeConfig(NAME).load(i). "
+                "This may not work if outfilepath is specified")
     parser.add_argument("--outfilebase", metavar="NAME", help="base of the "
                 "filename to construct the output lightcones")
 
@@ -32,8 +37,8 @@ def lightcone():
                 "lightcone executable from the UniverseMachine package")
     parser.add_argument("--umcfg", metavar="PATH", help="path to the "
                 "configuration file required by the lightcone executable")
-    parser.add_argument("--outfilepath", metavar="PATH", help="directory to "
-                "place output files")
+    parser.add_argument("--outfilepath", metavar="PATH", help="directory "
+                "to place output files")
 
     # Specify mass limit / random seed
     parser.add_argument("--obs-mass-limit", type=float, default=8e8,
@@ -57,8 +62,8 @@ def lightcone():
 
     a = parser.parse_args()
 
-    makelightcones(a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
-        executable=a.executable, umcfg=a.umcfg, samples=a.SAMPLES,
+    lightcone(a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
+        executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
         photbands=a.PHOTBANDS, keep_ascii_files=a.keep_ascii_files,
         obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
         outfilepath=a.outfilepath, outfilebase=a.outfilebase, id_tag=a.id_tag,

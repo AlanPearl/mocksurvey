@@ -19,7 +19,8 @@ def temp_seed(seed):
         do_alter = True # New state with random seed
         seed = None
     else:
-        assert(isinstance(seed, int)), f"seed={seed} must be int"
+        assert(isinstance(seed, int)), f"seed={seed} must be int, "\
+                                        "None, or 'none'"
         do_alter = True # New state with specified seed
 
     state = np.random.get_state()
@@ -513,6 +514,20 @@ def make_npoly(radius, n):
     inside = (0.,0.,1.)
     return spoly.SingleSphericalPolygon(points, inside)
 
+
+def vpmax2pimax(vpmax, z, cosmo):
+    """
+    Converts peculiar velocity (km/s) to comoving distance (Mpc/h) due to redshift distortion
+
+    pimax = dChi/dz * z_vp
+    ======================
+    where z_vp = vpmax/c * (1 + z_cosmo)
+    and dChi/dz = c/(H0*E(z))
+    """
+    H0_on_h = 100  # km/s/Mpc (use in place of H0 for h-scaling)
+    pimax = vpmax / H0_on_h * (1 + z) / cosmo.efunc(z)
+    return pimax
+
 def factor_velocity(v, halo_v, halo_vel_factor=None, gal_vel_factor=None, inplace=False):
     if not inplace:
         v = v.copy()
@@ -541,7 +556,7 @@ def reduce_dim(arr):
 
 def logggnfw(x, x0, y0, m1, m2, alpha):
     """
-    LOGarithmic Generalized Generalized NFW profile
+    LOGarithmic Generalized^2 NFW profile
     ====================================================================
     log_{base}((base**(x-x0))**m1 * (1 + base**(x-x0)**(m2-m1))) + const
     ====================================================================

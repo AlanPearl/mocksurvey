@@ -1,6 +1,5 @@
 import os
 import pathlib
-import shutil
 import json
 from packaging.version import parse as vparse
 import numpy as np
@@ -16,33 +15,36 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
                    do_collision_test=False, ra=0.,
                    dec=0., theta=0., rseed=None):
 
+    # Predict/generate filenames
+    fake_id = "_tmp_file_made_by_mocksurvey_lightcone_"
+    args = [z_low, z_high, x_arcmin, y_arcmin, samples, id_tag, fake_id]
+    files, moved_files = _generate_lightcone_filenames(args, outfilepath,
+                                                       outfilebase)
+    # Check prerequisites
     assert(vparse(ht.version.version) >= vparse("0.7dev"))
     if not ms.UVISTAConfig().are_all_files_stored():
-        raise IOError("You have not specified paths to all UltraVISTA data. "
+        raise ValueError("You have not specified paths to all "
+                      "UltraVISTA data. "
             "Please use UVISTAConfig('path/to/dir').auto_add()")
     if not ms.UMConfig().is_lightcone_ready():
-        raise IOError("You must set paths to the lightcone executable and "
-            "config files via UMConfig('path/to/dir').set_lightcone_"
-            "<executable/config>('path/to/file')")
+        raise ValueError("You must set paths to the lightcone executable and"
+            " config files via UMConfig('path/to/dir').set_lightcone_"
+            "executable/config('path/to/file')")
 
     if executable is None:
         executable = ms.UMConfig().get_lightcone_executable()
     if umcfg is None:
         umcfg = ms.UMConfig().get_lightcone_config()
 
-    # Predict/generate filenames
-    fake_id = "_tmp_file_made_by__mocksurvey.makelightcones_"
-    args = [z_low, z_high, x_arcmin, y_arcmin, samples, id_tag, fake_id]
-    files, moved_files = _generate_lightcone_filenames(args, outfilepath,
-                                                       outfilebase)
     # Execute the lightcone code in the UniverseMachine package
     if _execute_lightcone_code(*args[:4], executable, umcfg, samples,
                 fake_id, do_collision_test, ra, dec, theta, rseed):
         raise RuntimeError("lightcone code failed")
 
     # Move lightcone files to their desired locations
+    pathlib.Path(moved_files[0].parent).mkdir(parents=True, exist_ok=True)
     for origin, destination in zip(files, moved_files):
-        shutil.move(origin, destination)
+        pathlib.Path(origin).rename(destination)
 
     # Convert the enormous ascii file into a binary table + meta data
     for filename in moved_files:
@@ -50,6 +52,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
 
+    # If we used the id-tag functionality, update the config file
     try:
         ms.UMConfig().auto_add()
     except ValueError:
@@ -102,8 +105,8 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     mass lower than the specified limit. Reading the ascii table may take
     up to 20 minutes for large lightcones.
 
-    Several new columns are added, using calculations performed by functions
-    in this module. Velocity-distorted positions replace the x, y, and z
+    Several new columns are added, calculated using functions in this
+    module. Velocity-distorted positions replace the x, y, and z
     columns, and the old ones are renamed x_real, y_real, and z_real.
     Additionally, absolute magnitudes (- 5logh) and distance modulus
     (+ 5logh) are calculated. Note that the h-scaling cancels out if
@@ -121,30 +124,39 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
             "obs_sfr": (29, "f4"), "true_sm": (25, "f4"),
             "true_sfr": (27, "f4"), "halo_mvir": (16, "f4")}
 
+    # Read in the ASCII table, make mass cut (this takes a while)
     masslimit = {"obs_sm":obs_mass_limit, "true_sm":true_mass_limit}
     reader = ht.sim_manager.tabular_ascii_reader.TabularAsciiReader(
                              filename, cols, row_cut_min_dict=masslimit)
     lightcone = reader.read_ascii()
 
+    # Limit RA to the range [-180,180) (column = "ra")
     lightcone["ra"] = (lightcone["ra"] + 180) % 360 - 180
-    xyz_real = ms.hf.xyz_array(lightcone, keys=["x_real","y_real","z_real"])
+    # Calculate redshift-space-distorted positions (columns = "x","y","z")
+    xyz_real = ms.hf.xyz_array(lightcone,keys=["x_real","y_real","z_real"])
     vel = ms.hf.xyz_array(lightcone, keys=["vx", "vy", "vz"])
     rdz = ms.hf.ra_dec_z(xyz_real, vel, cosmo=ms.bplcosmo)
     xyz = ms.hf.rdz2xyz(rdz, cosmo=ms.bplcosmo)
 
+    # Calculate distance modulus (column = "distmod")
     dlum = ms.bplcosmo.luminosity_distance(lightcone["redshift_cosmo"]
                                            ).value * ms.bplcosmo.h
     distmod = 5 * np.log10(dlum * 1e5)
-    magdf = get_lightcone_UMmags(lightcone, photbands=photbands
-                                 ) + distmod[:,None]
 
-    # Copy all data into a new structured numpy array
+    # Calculate apparent magnitudes (column = "m_j", "m_y", etc.)
+    reg = MagRegressor(lightcone, photbands=photbands)
+    magdf = reg.um_mag
+
+    # Name the new columns and specify their dtypes
     xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
     mag_dtype = [(f"m_{s}", "f4") for s in magdf.columns]
-    full_dtype = xyz_dtype + lightcone.dtype.descr + mag_dtype
-    full_dtype.append(("distmod", "f4"))
-    final_lightcone_array = np.zeros(lightcone.shape, full_dtype)
+    distmod_dtype = [("distmod", "f4")]
 
+    full_dtype = (xyz_dtype + lightcone.dtype.descr + mag_dtype +
+                  distmod_dtype)
+
+    # Copy all columns into a new structured numpy array
+    final_lightcone_array = np.zeros(lightcone.shape, full_dtype)
     for i, (name, dtype) in enumerate(xyz_dtype):
         final_lightcone_array[name] = xyz[:, i]
     for (name, dtype) in mag_dtype:
@@ -155,12 +167,11 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
     return final_lightcone_array
 
-
-
-def get_lightcone_UMmags(UMhalos, photbands=None, nwin=501, zbin_min=0.05):
+def get_lightcone_UMmags(UMhalos, logssfr_uv, photbands=None,
+                         nwin=501, zbin_min=0.05):
     logm = np.log10(UMhalos["obs_sm"])
     logssfr = np.log10(UMhalos["obs_sfr"]) - logm
-    z = UMhalos["redshift"]
+    z = UMhalos["redshift_cosmo"]
 
     reg, photbands, (uvista_z, uvista_logm,
         uvista_logssfr_uv) = setup_uvista_mag_regressor(photbands)
@@ -202,9 +213,7 @@ def _get_photbands(photbands):
 def setup_uvista_mag_regressor(photbands):
     photbands = _get_photbands(photbands)
 
-    UVISTA = ms.UVISTAConfig()
-    UVISTA.PHOTBANDS = {k: UVISTA.PHOTBANDS[k]
-                        for k in set(photbands) | {"k"}}
+    UVISTA = ms.UVISTAConfig(photbands=photbands)
     UVISTAcat = UVISTA.load()
 
     uvista_z = UVISTAcat["z"]
@@ -237,10 +246,16 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, zbin_min=0.05):
     assert (vparse(ht.version.version) >= vparse("0.7dev"))
     assert (zbin_min > 0)
     zrange = z.min() - zbin_min/20, z.max() + zbin_min/20
-    nz = int((zrange[1] - zrange[0]) / zbin_min)
-    bin_edges = np.linspace(*zrange, nz+1)
+    halfrange = zrange[1] - np.mean(zrange)
 
-    new_prop = np.zeros_like(prop)
+    nz = int((zrange[1] - zrange[0]) / zbin_min)
+    if nz:
+        bin_edges = np.linspace(*zrange, nz+1)
+    else:
+        nz = 1
+        bin_edges = np.mean(zrange) + zbin_min*np.array([-0.5,0.5])
+
+    new_prop = np.full_like(prop, np.nan)
     for i in range(nz):
         lower, upper = bin_edges[i:i+2]
         s, s2 = ((lower <= a) & (a < upper) for a in (z, z2))
@@ -266,19 +281,21 @@ def _make_predictor_UMmags(regressor, logm, logssfr_uv, photbands):
 
     return predictor
 
-
 def _execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
                             executable=None, umcfg=None, samples=1,
                             id_tag="",do_collision_test=False, ra=0.,
                             dec=0., theta=0., rseed=None):
-    homedir = str(pathlib.Path.home()) + "/"
+    # homedir = str(pathlib.Path.home()) + "/"
     if executable is None:
-        executable = homedir + "local/src/universemachine/lightcone"
+        # executable = homedir + "local/src/universemachine/lightcone"
+        executable = ms.UMConfig().config["lightcone_executable"]
     if umcfg is None:
-        umcfg = homedir + "data/LightCone/um-lightcone.cfg"
+        # umcfg = homedir + "data/LightCone/um-lightcone.cfg"
+        umcfg = ms.UMConfig().config["lightcone_config"]
     if not rseed is None:
         assert(isinstance(rseed, int)), "Random seed must be an integer"
-    assert(isinstance(samples, int)), "Number of samples must be an integer"
+    assert(isinstance(samples, int)), "Number of samples must be " \
+                                      "an integer"
 
     args = ["'"+str(id_tag)+"'", str(int(do_collision_test)),
             str(float(ra)), str(float(dec)), str(float(theta)), str(rseed)]
@@ -296,8 +313,8 @@ def _execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
                         if not id_tag:
                             args.pop()
 
-    cmd = f"{str(executable)} {str(umcfg)} {float(z_low)} {float(z_high)} " \
-          f"{float(x_arcmin)} {float(y_arcmin)} {samples} {' '.join(args)}"
+    cmd=f"{str(executable)} {str(umcfg)} {float(z_low)} {float(z_high)} "\
+        f"{float(x_arcmin)} {float(y_arcmin)} {samples} {' '.join(args)}"
     print(cmd)
     return os.system(cmd)
 
@@ -309,33 +326,240 @@ def _default_lightcone_filenames(z_low, z_high, x_arcmin, y_arcmin,
             for i in range(samples)]
 
 
-def _generate_lightcone_filenames(args, outfilepath=None, outfilebase=None):
+def _generate_lightcone_filenames(args, outfilepath=None,
+                                  outfilebase=None):
     fake_id = args.pop()
     z_low, z_high, x_arcmin, y_arcmin, samples, id_tag = args
+    args[-1] = "" if args[-1] is None else args[-1]
 
     # If id_tag is provided AND outfilepath is not
     # then store in the default location
     if (not id_tag is None) and (outfilepath is None):
         try:
             outfilepath = ms.UMConfig().config["data_dir"]
-            outfilepath = os.path.join(outfilepath, f"lightcones/{id_tag}/")
-            pathlib.Path(outfilepath).mkdir(parents=True)
-        except FileExistsError:
-            outfilepath = None
-            raise FileExistsError(f"Lightcone with id-tag={id_tag} "
-                                  f"already exists")
         except ValueError:
-            outfilepath = None
-            pass
+            raise ValueError("To use an id-tag, you must first choose "
+                             "a UMConfig directory to store the files.")
 
-    outfilepath = "" if outfilepath is None else outfilepath
-    args[-1] = "" if args[-1] is None else args[-1]
+        outfilepath = os.path.join(outfilepath, "lightcones", id_tag)
+        if pathlib.Path(outfilepath).is_dir():
+            outfilepath = None
+            raise IsADirectoryError(f"Lightcone with id-tag={id_tag} "
+                                  f"already exists at {outfilepath}")
+
+    # If id_tag is NOT provided, then make sure outfilepath is valid
+    else:
+        outfilepath = "" if outfilepath is None else outfilepath
+        if not pathlib.Path(outfilepath).is_dir():
+            raise NotADirectoryError(f"outfilepath={outfilepath} "
+                                     f"must be a directory.")
+
+    # If outfilebase NOT provided, use default universemachine naming
     if outfilebase is None:
         outfilebase = _default_lightcone_filenames(*args)[0][:-6]
 
+    # Make all names of files generated by the lightcone code
     outfilebase = os.path.join(outfilepath, outfilebase)
     asciifiles = _default_lightcone_filenames(*args[:-1], fake_id)
     moved_asciifiles = [outfilebase + "_" + f.split("_")[-1]
                         for f in asciifiles]
 
     return asciifiles, moved_asciifiles
+
+
+class MagRegressor:
+    def __init__(self, UMhalos, photbands=None, snapshot_redshift=None,
+                 nwin=501, dz=0.05):
+        """
+        This is just a namespace of UltraVISTA and UniverseMachine parameters
+        used in the mass-to-light ratio fitting process.
+
+        Parameters
+        ----------
+        UMhalos
+        photbands
+        snapshot_redshift
+        nwin
+        dz
+        """
+        self.photbands = _get_photbands(photbands)
+        self.names = ["M_" + key.upper() for key in self.photbands]
+
+        # Load UltraVISTA columns: mass, sSFR_UV, redshift, mass-to-light
+        (self.uvista_z, self.uvista_logm, self.uvista_logssfr_uv,
+         self.uvista_m2l, self.uvista_id) = self.load_UVISTA()
+
+        # Extract UniverseMachine columns: mass, sSFR, and redshift
+        self.um_logm = np.log10(UMhalos["obs_sm"])
+        self.um_logssfr = np.log10(UMhalos["obs_sfr"]) - self.um_logm
+        if snapshot_redshift is None:
+            # default functionality: assume redshift column is in lightcone
+            self.um_z = UMhalos["redshift_cosmo"]
+        else:
+            self.um_z = np.full_like(self.um_logm, snapshot_redshift)
+
+        # Map UniverseMachine sSFR --> sSFR_UV via abundance matching
+        if snapshot_redshift is None:
+            self.um_logssfr_uv = cam_binned_z(m=self.um_logm, z=self.um_z,
+                        prop=self.um_logssfr, m2=self.uvista_logm,
+                        z2=self.uvista_z, prop2=self.uvista_logssfr_uv,
+                        nwin=nwin, zbin_min=dz)
+        else:
+            self.um_logssfr_uv = cam_const_z(m=self.um_logm,
+                        prop=self.um_logssfr, m2=self.uvista_logm,
+                        prop2=self.uvista_logssfr_uv, z2=self.uvista_z,
+                        z_avg=snapshot_redshift, dz=dz)
+
+        # Map (redshift, sSFR_UV) --> (mass-to-light,) via Random Forest
+        self.um_mag = self.fit_mass_to_light()
+
+    def fit_mass_to_light(self):
+        from sklearn import ensemble
+
+        s = np.isfinite(self.uvista_logssfr_uv)
+        x = np.array([self.uvista_logssfr_uv, self.uvista_z]).T
+        y = self.uvista_m2l
+
+        regressor = ensemble.RandomForestRegressor(n_estimators=10)
+        regressor.fit(x[s], y[s])
+
+        s = np.isfinite(self.um_logssfr_uv)
+        x = np.array([self.um_logssfr_uv, self.um_z]).T
+        y = regressor.predict(x[s])
+
+        um_mag = np.full((x.shape[0],y.shape[1]), np.nan, np.float32)
+        um_mag[s] = -2.5 * (np.asarray(self.um_logm)[s,None] - y)
+        return pd.DataFrame(um_mag, columns=self.photbands)
+
+    def load_UVISTA(self):
+        UVISTAcat = ms.UVISTAConfig(photbands=self.photbands).load()
+
+        uvista_z = UVISTAcat["z"].values
+        uvista_logm = UVISTAcat["logm"].values
+        uvista_logssfr_uv = (np.log10(UVISTAcat["sfr_uv"])
+                                  - UVISTAcat["logm"]).values
+        uvista_m2l = np.array([uvista_logm + UVISTAcat[name].values / 2.5
+                                for name in self.names]).T
+        uvista_id = UVISTAcat["id"].values
+
+        return (uvista_z, uvista_logm, uvista_logssfr_uv, uvista_m2l,
+                uvista_id)
+
+class NeighborSpectra:
+    def __init__(self, UMhalos, photbands=None, snapshot_redshift=None,
+                 nwin=501, dz=0.05):
+        self.Reg = MagRegressor(UMhalos, photbands=photbands,
+                                snapshot_redshift=snapshot_redshift,
+                                nwin=nwin, dz=dz)
+
+        self.config = ms.SeanSpectraConfig()
+        self.wave = self.config.wavelength()
+        self.specid = self.config.specid()
+        self.isnan = self.config.isnan()
+        self.get_specmap = self.config.specmap()
+
+        redshifts = pd.DataFrame(dict(z=self.Reg.uvista_z,
+                        uvista_idx=np.arange(len(self.Reg.uvista_z))),
+                         index=self.Reg.uvista_id)
+        fullmapper = pd.DataFrame(dict(idx=np.arange(len(self.specid)),
+                        hex=[hex(s) for s in self.specid]),
+                                  index=self.specid)
+        self.mapper = pd.merge(fullmapper.iloc[~self.isnan], redshifts,
+                          left_index=True, right_index=True)
+
+    def write_specmap(self, outfile, num_nearest, metric_weights=None,
+             cosmo=None, verbose=1, progress=True):
+        if isinstance(progress, str) and progress.lower() == "notebook":
+            import tqdm.notebook as tqdm
+            iterator = tqdm.trange
+        elif progress:
+            import tqdm
+            iterator = tqdm.trange
+        else:
+            iterator = range
+
+        redshift = self.Reg.um_z
+        f = np.memmap(outfile, self.get_specmap().dtype, "w+",
+            shape=(len(redshift), self.get_specmap().shape[1]))
+
+        nearest, lumcorr = self.find_nearest_specid(num_nearest,
+            metric_weights=metric_weights, verbose=verbose)
+
+        for i in iterator(len(nearest)):
+            f[i] = self.avg_spectrum(nearest[i], lumcorr[i],
+                                     redshift[i], cosmo=cosmo)
+
+    def avg_spectrum(self, specids, lumcorr, redshift, cosmo=None):
+        if cosmo is None:
+            cosmo = ms.bplcosmo
+        idx = self.mapper["idx"].loc[specids].values
+        z = self.mapper["z"].loc[specids].values
+
+        lumcorr = (lumcorr * (1+z) / (1+redshift) *
+                (cosmo.luminosity_distance(z).value/
+                 cosmo.luminosity_distance(redshift).value)**2)
+
+        specs = self.get_specmap()[idx, :] * lumcorr[:, None]
+        waves = self.wave[None,:] / 1 + z[:,None]
+        truewave = self.wave / (1 + redshift)
+
+        truespec = []
+        for spec,wave in zip(specs,waves):
+            truespec.append(np.interp(truewave, wave, spec,
+                                      left=np.nan, right=np.nan))
+        return np.mean(truespec, axis=0)
+
+
+    def find_nearest_specid(self, num_nearest, metric_weights=None,
+                            verbose=1):
+        if not num_nearest:
+            return None
+        else:
+            from sklearn import neighbors
+            num_nearest = int(num_nearest)
+            if metric_weights is None:
+                metric_weights = [1/1.0, 1/0.75, 1/2.0]
+
+            # Select UltraVISTA galaxies with simulated spectra
+            specid = ms.SeanSpectraConfig().specid()[
+                ~ms.SeanSpectraConfig().isnan()]
+            uvsel = np.isin(self.Reg.uvista_id, specid)
+            # Instantiate the nearest-neighbor regressor with metric
+            # d^2 = (logM/1)^2 + (logsSFR/0.75)^2 + (z/2)^2
+            reg = neighbors.NearestNeighbors(num_nearest,
+                    metric="wminkowski",
+                    metric_params=dict(w=metric_weights))
+
+            # Predictors:
+            uv_x = np.array([self.Reg.uvista_logm,
+                             self.Reg.uvista_logssfr_uv,
+                             self.Reg.uvista_z]).T
+            um_x = np.array([self.Reg.um_logm,
+                             self.Reg.um_logssfr_uv,
+                             self.Reg.um_z]).T
+            uvsel &= np.isfinite(uv_x).all(axis=1)
+            umsel = np.isfinite(um_x).all(axis=1)
+
+            # Find nearest neighbor index --> SpecID
+            reg.fit(uv_x[uvsel])
+            if verbose:
+                print("Assigning nearest-neighbor SpecIDs...")
+            neighbor_index = reg.kneighbors(um_x[umsel])[1]
+            if verbose:
+                print("SpecIDs assigned successfully.")
+            neighbor_id = np.full((len(self.Reg.um_logm),num_nearest), -99)
+            neighbor_id[umsel] = self.Reg.uvista_id[uvsel][neighbor_index]
+
+            # Calculate specific luminosity, averaged over all available
+            # bands in each UniverseMachine and UVISTA galaxy
+            uv_lum = 10**(self.Reg.uvista_logm[:,None]
+                          - self.Reg.uvista_m2l)
+            uv_lum = np.mean(uv_lum, axis=1)
+            um_lum = np.mean(10**(-0.4*self.Reg.um_mag), axis=1)
+            # Return the correction factor, which is just a constant
+            # we have to multiply into the stacked spectrum
+            lumcorr = np.full((len(umsel),num_nearest), np.nan)
+            lumcorr[umsel,:] = um_lum[umsel,None
+                               ]/uv_lum[uvsel][neighbor_index]
+
+            return neighbor_id, lumcorr

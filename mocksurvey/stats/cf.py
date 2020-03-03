@@ -7,7 +7,7 @@ except ImportError:
     import halotools.mock_observables as mockobs
 import numpy as np
 import warnings
-from . import hf
+from mocksurvey import hf
 
 class PairCounts:
     def __init__(self, Ndata, Nrand, DD, DR, RR, n_rpbins, pimax=None):

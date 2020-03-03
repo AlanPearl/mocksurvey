@@ -25,7 +25,7 @@ from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
 from .. import hf
-from .. import cf
+from ..stats import cf
 
 bplcosmo = cosmology.FlatLambdaCDM(name="Bolshoi-Planck",
                                    H0=68.,

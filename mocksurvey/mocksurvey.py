@@ -2,9 +2,7 @@
 mocksurvey.py
 Author: Alan Pearl
 
-Some useful classes for coducting mock surveys of galaxies populated by `halotools` and `UniverseMachine`.
-
-
+Some useful classes for coducting mock surveys of galaxies populated by `halotools` and `UniverseMachine` models.
 """
 
 import os
@@ -12,151 +10,38 @@ import warnings
 import json
 import numpy as np
 import pandas as pd
+import astropy.table as astropy_table
 
 # Local modules
 from . import hf
-from . import cf
-from . import tp
 # Local packages
-from .ummags import ummags
 from .httools import httools
+from .stats import stats
+from .ummags import ummags
 # Local function
-from .ummags.ummags import lightcone
-# Default cosmology
+from .ummags import lightcone
+# Default cosmology (Bolshoi-Planck)
 from .httools.httools import bplcosmo
 
 
-class Observable:
-    def __init__(self, funcs, names=None, args=None, kwargs=None):
-        N = len(funcs)
-        self.funcs = funcs
-        self.names = range(N) if names is None else names
-        self.funcdic = dict(zip(self.names,self.funcs))
-        if isinstance(args, dict):
-            self.argsdic = args.copy()
-        else:
-            self.argsdic = dict(zip(self.names,[()]*N)) if args is None else dict(zip(names,args))
-        if isinstance(kwargs, dict):
-            self.kwargsdic = kwargs.copy()
-        else:
-            self.kwargsdic = dict(zip(self.names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
-        self.indexdic = {}
-        self.lendic = {}
+def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
+                                masslim=None):
+    z_low, z_high = zlim
+    sqdeg, scheme = 15., "square"
+    randfrac = 0.7
+    max_dict = dict(m_y=22.5, m_j=22.8)
 
-        self.mean = None
-        self.mean_jack = None
-        self.covar_jack = None
-        self.mean_real = None
-        self.covar_real = None
-        self.mean_rand = None
-        self.covar_rand = None
+    if masslim is None:
+        incompsel = LightConeSelector(z_low, z_high, sqdeg, scheme,
+                                      randfrac, max_dict=max_dict)
 
-    def get_jackknife(self, name=None):
-        return self.get_data(name, method="jackknife")
+        comptest = CompletenessTester(lightcone, incompsel)
+        masslim = comptest.limit(compfrac)
+    min_dict = {"obs_sm": masslim}
 
-    def get_realization(self, name=None):
-        return self.get_data(name, method="realization")
-
-    def get_random_realization(self, name=None):
-        return self.get_data(name, method="random_realization")
-
-    def get_data(self, name=None, method=None):
-        accepted = ["jackknife", "realization", "random_realization"]
-        if not method is None and not (method in accepted):
-            raise ValueError(f"`method` must be one of {accepted}")
-        if method is None:
-            mean, covar = self.mean, None
-        else:
-            mean = self.__dict__["mean_"+method[:4]]
-            covar = self.__dict__["covar_"+method[:4]]
-        if mean is None:
-            if method is None:
-                raise ValueError("Must calculate the observables first.\n"
-                        "Use <Observable object>.obs_func(data,rands)")
-            else:
-                raise ValueError("Must run this method first.\n"
-                    f"Use <Observable object>.{method}(data,rands,...)")
-
-
-        if name is None:
-            return mean if (method is None) else (mean, covar)
-        else:
-            index0 = self.indexdic[name]
-            index1 = index0 + self.lendic[name]
-            s = slice(index0, index1)
-            return mean[s] if (method is None) else (mean[s], covar[s,s])
-
-    def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, **kwargs):
-
-        self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, **kwargs)
-        return self.mean_jack, self.covar_jack
-
-    def realization(self, rands, field, nrealization=25, **get_data_kw):
-        data = field.get_data(**get_data_kw)
-        samples = [self.obs_func(data, rands, store=False)]
-        if len(samples[0]) >= nrealization:
-            print("`nrealization` should probably be greater than the number of observables", flush=True)
-
-        for i in range(nrealization-1):
-            field.simbox.populate_mock()
-            data = type(field)(**field._kwargs_).get_data(**get_data_kw)
-            samples.append(self.obs_func(data, rands, store=False))
-
-        samples = np.array(samples)
-        self.mean_real = np.mean(samples, axis=0)
-        self.covar_real = np.cov(samples, rowvar=False)
-        return self.mean_real, self.covar_real
-
-    def random_realization(self, data, field, nrealization=25, **get_rands_kw):
-        rands = field.get_rands(**get_rands_kw)
-        samples = [self.obs_func(data, rands, store=False)]
-        if len(samples[0]) >= nrealization:
-            print("`nrealization` should probably be greater than the number of observables", flush=True)
-
-        for i in range(nrealization-1):
-            field.make_rands()
-            data = field.get_rands(**get_rands_kw)
-            samples.append(self.obs_func(data, rands, store=False))
-
-        samples = np.array(samples)
-        self.mean_real = np.mean(samples, axis=0)
-        self.covar_real = np.cov(samples, rowvar=False)
-        return self.mean_rand, self.covar_rand
-
-    def obs_func(self, data, rands=None, store=True, param_dict=None):
-        if param_dict is None:
-            param_dict = {}
-        supported_params = {"icc"}
-        if not set(param_dict.keys()).issubset(supported_params):
-            raise ValueError(f"param_dict={param_dict} contains illegal keys."
-                             f"\nAllowed keys must be in: {supported_params}")
-        answers = []
-        i = 0
-        for name in self.names:
-            func = self.funcdic[name]
-            args = self.argsdic[name]
-            kwargs = self.kwargsdic[name]
-
-            ans = np.atleast_1d(func(data,rands,*args,**kwargs))
-            # Integral constraint constant
-            # ============================
-            if "icc" in param_dict and name.lower().startswith("wp"):
-                ans -= param_dict["icc"]
-
-            answers.append(ans)
-
-            l = len(ans)
-            if not name in self.indexdic:
-                self.indexdic[name] = i
-                self.lendic[name] = l
-            i += l
-
-        answer = np.concatenate(answers)
-        if store:
-            self.mean = answer
-        return answer
-
-
+    compsel = LightConeSelector(z_low, z_high, sqdeg, scheme,
+                randfrac, max_dict=max_dict, min_dict=min_dict)
+    return compsel
 
 class LightConeSelector:
     def __init__(self, z_low, z_high, sqdeg, scheme, sample_fraction=1.,
@@ -272,6 +157,8 @@ class CompletenessTester:
 
         return mass, completeness
 
+
+
 class BaseConfig:
     """
     Abstract template class. Do not instantiate.
@@ -314,9 +201,9 @@ class BaseConfig:
     def update(self):
         """
         Update the config file to account for any changes that have been made to this object. For example:
-            -Files could be added via UMConfig.add()
-            -Files could be removed via UMConfig.remove()
-            -Data directory could be changed by instantiating this object via UMConfig(data_dir="path/to/new/dir")
+            -Files could be added via config.add()
+            -Files could be removed via config.remove()
+            -Data directory could be changed by instantiating this object via config = SomeConfig(data_dir="path/to/new/dir")
 
         Takes no arguments and returns None.
         """
@@ -418,6 +305,7 @@ class UMConfig(BaseConfig):
             self.config["z"] = []
         if not "lightcones" in self.config:
             self.config["lightcones"] = []
+        self.update()
 
     def set_lightcone_config(self, filepath):
         assert(os.path.isfile(filepath)), f"file does not exist: {filepath}"
@@ -625,6 +513,7 @@ class LightConeConfig(BaseConfig):
 
         if not "meta_files" in self.config:
             self.config["meta_files"] = []
+        self.update()
 
     def load(self, index):
         """
@@ -725,9 +614,14 @@ class UVISTAConfig(BaseConfig):
                  "g": "gp", "b": "B", "u": "u"}
     _msg1 = lambda ftype: f"File type {repr(ftype)} not recognized. " \
                           f"Must be one of {set(UVISTAFILES.keys())}"
-    def __init__(self, data_dir=None):
+    def __init__(self, data_dir=None, photbands=None):
         config_dir, config_file = "config", "uvista-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
+
+        photbands = ummags._get_photbands(photbands)
+        self.PHOTBANDS = {k: self.PHOTBANDS[k]
+                            for k in set(photbands) | {"k"}}
+        self.update()
 
 
     def get_filepath(self, filetype):
@@ -821,14 +715,14 @@ class UVISTAConfig(BaseConfig):
         if not self.are_all_files_stored():
             raise ValueError("Can't load until all files are stored")
 
-        types = ["p", "f", "z", "s", "uv", "vj"]
+        cosmo = bplcosmo
+        ftypes = ["p", "f", "z", "s", "uv", "vj"]
         dat = [pd.read_csv(self.get_filepath(s), delim_whitespace=True,
                 names=self.get_names(s), skiprows=self.get_skips(s),
-                usecols=self.names_to_keep(s)) for s in types]
+                usecols=self.names_to_keep(s)) for s in ftypes]
 
         UVrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
         VJrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
-        cosmo = bplcosmo
         z = dat[2]["z_peak"]
         sfr_tot = dat[3]["SFR_tot"]
         sfr_uv = dat[3]["SFR_UV"]
@@ -852,7 +746,7 @@ class UVISTAConfig(BaseConfig):
 
         selection = np.all([
             np.isfinite(list(absolute_mags.values())).all(axis=0),
-            np.isfinite(logm), z > 1.5e-2, relative_mags["k"] < 23.4,
+            np.isfinite(logm), z > 1.1e-2, relative_mags["k"] < 23.4,
             dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
             dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
             axis=0)
@@ -879,3 +773,68 @@ class UVISTAConfig(BaseConfig):
 
         return data
 
+class SeanSpectraConfig(BaseConfig):
+    """
+    Keeps track of the locations of locally saved files storing
+    information about Sean's simulated spectra.
+
+    Parameters
+    ----------
+    data_dir : str (required on first run)
+        The path to the directory where you plan on saving all of the files. If the directory is moved, then you must provide this argument again.
+    """
+    SEANFILES = ["cosmos_V17.fits", "specid.npy", "wavelength.npy",
+                 "specmap.npy", "isnan.npy"]
+    def __init__(self, data_dir=None):
+        config_dir, config_file = "config", "seanspec-config.py"
+        BaseConfig.__init__(self, config_dir, config_file, data_dir)
+        self.update()
+
+
+    def get_filepath(self, index=0):
+        """
+        Returns the absolute path to the requested file.
+        Just give the index of the following list:
+        """
+        filename = self.SEANFILES[index]
+        return BaseConfig.get_filepath(self, filename)
+    get_filepath.__doc__ += "\n" + repr(SEANFILES)
+
+    def add(self, filename):
+        if not filename in self.SEANFILES:
+            raise ValueError("Invalid SeanSpectra file")
+
+        BaseConfig.add(self, filename)
+        self.update()
+
+    def remove(self, filename):
+        BaseConfig.remove(self, filename)
+        self.update()
+
+    @staticmethod
+    def names_to_keep(index=0):
+        return ["id", "redshift", "L_UV", "L_IR", "SFR_UV", "SFR_IR",
+                "SFR_tot", "SFR_SED", "ltau", "metal", "lage", "Av",
+                "lmass", "lsfr", "lssfr", "m_CFHT_u", "m_Subaru_g",
+                "m_Subaru_B", "m_Subaru_V", "m_Subaru_r", "m_Subaru_i",
+                "m_Subaru_z", "m_VISTA_Y", "m_VISTA_J", "m_VISTA_H",
+                "m_VISTA_Ks"]
+
+    def are_all_files_stored(self):
+        return set(self.config["files"]) == set(self.SEANFILES)
+
+    def load(self):
+        dat = astropy_table.Table.read(self.get_filepath())
+        dat.keep_columns(self.names_to_keep())
+        return dat.to_pandas()
+
+    def specid(self):
+        return np.load(self.get_filepath(1))
+    def wavelength(self):
+        return np.load(self.get_filepath(2))
+    def isnan(self):
+        return np.load(self.get_filepath(4))
+    def specmap(self):
+        path = self.get_filepath(3)
+        shape = (self.specid().size, self.wavelength().size)
+        return lambda: np.memmap(path, dtype="<f4", shape=shape)

@@ -1,11 +1,23 @@
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import numpy as np
-from . import cf
+from .stats import cf
 
-def plot_shade_err(x, y, err=None, color=None, label=None, alpha=0.8, saf=0.5, faf=0.5, line_kwa={}, scatter_kwa={}, fill_kwa={}, errorbar_kwa={}, ax=None):
+
+def plot_shade_err(x, y, err=None, color=None, label=None, alpha=0.8, saf=0.5, faf=0.5, line_kwa=None, scatter_kwa=None, fill_kwa=None, errorbar_kwa=None, ax=None):
+    # Imports
+    import matplotlib.pyplot as plt
+
+    # Default objects
+    if fill_kwa is None:
+        fill_kwa = {}
+    if scatter_kwa is None:
+        scatter_kwa = {}
+    if line_kwa is None:
+        line_kwa = {}
+    if errorbar_kwa is None:
+        errorbar_kwa = {}
     if ax is None:
         ax = plt.gca()
+
     ax.plot(x, y, color=color, alpha=alpha, **line_kwa)
     ax.scatter(x, y, color=color, label=label, alpha=alpha*saf, **scatter_kwa)
     if not err is None:
@@ -19,6 +31,11 @@ def plot_shade_err(x, y, err=None, color=None, label=None, alpha=0.8, saf=0.5, f
 
 def plot_halo_mass(simbox, nbins=50, from_gals=False, fontsize=14, ax=None):
     """Plot the halo mass function dN/dM_halo"""
+
+    # Imports
+    import matplotlib.pyplot as plt
+
+
     try:
         simbox = simbox.simbox
     except AttributeError:
@@ -38,11 +55,17 @@ def plot_halo_mass(simbox, nbins=50, from_gals=False, fontsize=14, ax=None):
     ax.loglog()
     return ax
 
-def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, realspace=False, plot_vel=False, axes=[0,2], **scatter_kwargs):
+def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, realspace=False, plot_vel=False, axes=None, **scatter_kwargs):
+    # Imports
+    import matplotlib.pyplot as plt
+
+    # Default objects
+    if axes is None:
+        axes = [0, 2]
     data = field.get_data(realspace=realspace)
     rand = field.get_rands()
     
-    s_rand = s #/ field.rand_density_factor
+    s_rand = s * (len(data)/len(rands))**2
     
     if ax is None:
         ax = plt.gca()
@@ -57,6 +80,9 @@ def plot_pos_scatter(field, s=0.1, fontsize=14, ax=None, realspace=False, plot_v
     return ax
 
 def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, **scatter_kwargs):
+    # Imports
+    import matplotlib.pyplot as plt
+
     data = field.get_data(rdz=True) * 180./np.pi
     rand = field.get_rands(rdz=True) * 180./np.pi
     
@@ -72,14 +98,17 @@ def plot_sky_scatter(field, s=0.1, ax=None, fontsize=14, **scatter_kwargs):
     return ax
 
 def plot_xi_rp_pi(field, realspace=False, periodic=False, rmax=25, fontsize=14, ax=None):
+    # Imports
+    import matplotlib.pyplot as plt
+
     rpbins = pibins = np.linspace(1e-5,rmax,31)
 #    pimax = pibins[-1]
     contour_levels = np.logspace(-2, 3, 21) # every 0.25 in log space
     linewidths = np.array([.2]*len(contour_levels))
     linewidths[contour_levels==1] = .6
     
-    norm = mpl.colors.LogNorm()
-    sm = mpl.cm.ScalarMappable(norm=norm); sm.set_array([])
+    norm = plt.matplotlib.colors.LogNorm()
+    sm = plt.matplotlib.cm.ScalarMappable(norm=norm); sm.set_array([])
     
     data = field.get_data(realspace=realspace)
     rand = None if periodic else field.get_rands()
@@ -101,6 +130,9 @@ def plot_xi_rp_pi(field, realspace=False, periodic=False, rmax=25, fontsize=14, 
     return ax
 
 def plot_wp_rp(field, realspace=False, periodic=False, fontsize=14, ax=None):
+    # Imports
+    import matplotlib.pyplot as plt
+
     rpbins = np.logspace(-0.87, 1.73, 14) # these bins approximately match those of Zehavi 2011
     rp = np.sqrt(rpbins[:-1]*rpbins[1:])
     pimax = 50.
@@ -122,6 +154,9 @@ def plot_wp_rp(field, realspace=False, periodic=False, fontsize=14, ax=None):
     return ax
     
 def plot_hod_occupation(simbox, mass=None, **haloprop_kwargs):
+    # Imports
+    import matplotlib.pyplot as plt
+
     mass = np.logspace(11,15,501) if mass is None else mass
     ntot = simbox.get_halo_moments(mass, **haloprop_kwargs)
     ncen = simbox.get_halo_moments(mass, "central", **haloprop_kwargs)
