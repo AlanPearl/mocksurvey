@@ -500,7 +500,7 @@ class NeighborSpectra:
                  cosmo.luminosity_distance(redshift).value)**2)
 
         specs = self.get_specmap()[idx, :] * lumcorr[:, None]
-        waves = self.wave[None,:] / 1 + z[:,None]
+        waves = self.wave[None,:] / (1 + z[:,None])
         truewave = self.wave / (1 + redshift)
 
         truespec = []
