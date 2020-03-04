@@ -64,7 +64,7 @@ def lightcone():
 
     lightcone(a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
         executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
-        photbands=a.PHOTBANDS, keep_ascii_files=a.keep_ascii_files,
+        photbands=a.photbands, keep_ascii_files=a.keep_ascii_files,
         obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
         outfilepath=a.outfilepath, outfilebase=a.outfilebase, id_tag=a.id_tag,
         do_collision_test=a.do_collision_test, ra=a.ra_center,
