@@ -115,14 +115,17 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     """
     photbands = _get_photbands(photbands)
 
-    cols = {"id": (5, "i8"), "upid": (7, "i8"),
-            "x_real": (10, "f4"), "y_real": (11, "f4"),
-            "z_real": (12, "f4"), "vx": (13, "f4"), "vy": (14, "f4"),
-            "vz": (15, "f4"), "ra": (0, "f4"), "dec": (1, "f4"),
-            "redshift": (2, "f4"), "redshift_cosmo": (3, "f4"),
-            "scale_snapshot": (4, "f4"), "obs_sm": (28, "f4"),
-            "obs_sfr": (29, "f4"), "true_sm": (25, "f4"),
-            "true_sfr": (27, "f4"), "halo_mvir": (16, "f4")}
+    cols = {"id": (5, "<i8"), "upid": (7, "<i8"),
+            "x_real": (10, "<f4"), "y_real": (11, "<f4"),
+            "z_real": (12, "<f4"), "vx": (13, "<f4"), "vy": (14, "<f4"),
+            "vz": (15, "<f4"), "ra": (0, "<f4"), "dec": (1, "<f4"),
+            "redshift": (2, "<f4"), "redshift_cosmo": (3, "<f4"),
+            "scale_snapshot": (4, "<f4"), "obs_sm": (28, "<f4"),
+            "obs_sfr": (29, "<f4"), "true_sm": (25, "<f4"),
+            "true_sfr": (27, "<f4"), "halo_mvir": (16, "<f4"),
+            "halo_mvir_peak": (18, "<f4"), "halo_vmax": (17, "<f4"),
+            "halo_vmax_peak": (19, "<f4"), "halo_rvir": (20, "<f4"),
+            "halo_delta_vmax_rank": (21, "<f4")}
 
     # Read in the ASCII table, make mass cut (this takes a while)
     masslimit = {"obs_sm":obs_mass_limit, "true_sm":true_mass_limit}
@@ -139,18 +142,21 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     xyz = ms.hf.rdz2xyz(rdz, cosmo=ms.bplcosmo)
 
     # Calculate distance modulus (column = "distmod")
-    dlum = ms.bplcosmo.luminosity_distance(lightcone["redshift_cosmo"]
+    dlum = ms.bplcosmo.luminosity_distance(lightcone["redshift"]
                                            ).value * ms.bplcosmo.h
     distmod = 5 * np.log10(dlum * 1e5)
+    dlum_true = ms.bplcosmo.luminosity_distance(lightcone["redshift_cosmo"]
+                                           ).value * ms.bplcosmo.h
+    distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
 
     # Calculate apparent magnitudes (column = "m_j", "m_y", etc.)
     reg = MagRegressor(lightcone, photbands=photbands)
-    magdf = reg.um_mag
+    magdf = reg.um_abs_mag + distmod_cosmo
 
     # Name the new columns and specify their dtypes
     xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
     mag_dtype = [(f"m_{s}", "f4") for s in magdf.columns]
-    distmod_dtype = [("distmod", "f4")]
+    distmod_dtype = [("distmod", "<f4"), ("distmod_cosmo", "<f4")]
 
     full_dtype = (xyz_dtype + lightcone.dtype.descr + mag_dtype +
                   distmod_dtype)
@@ -164,6 +170,7 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     for (name, dtype) in lightcone.dtype.descr:
         final_lightcone_array[name] = lightcone[name]
     final_lightcone_array["distmod"] = distmod
+    final_lightcone_array["distmod_cosmo"] = distmod_cosmo
 
     return final_lightcone_array
 
@@ -411,7 +418,7 @@ class MagRegressor:
                         z_avg=snapshot_redshift, dz=dz)
 
         # Map (redshift, sSFR_UV) --> (mass-to-light,) via Random Forest
-        self.um_mag = self.fit_mass_to_light()
+        self.um_abs_mag = self.fit_mass_to_light()
 
     def fit_mass_to_light(self):
         from sklearn import ensemble
@@ -555,7 +562,7 @@ class NeighborSpectra:
             uv_lum = 10**(self.Reg.uvista_logm[:,None]
                           - self.Reg.uvista_m2l)
             uv_lum = np.mean(uv_lum, axis=1)
-            um_lum = np.mean(10**(-0.4*self.Reg.um_mag), axis=1)
+            um_lum = np.mean(10**(-0.4*self.Reg.um_abs_mag), axis=1)
             # Return the correction factor, which is just a constant
             # we have to multiply into the stacked spectrum
             lumcorr = np.full((len(umsel),num_nearest), np.nan)

@@ -47,8 +47,6 @@ class LightConeSelector:
     def __init__(self, z_low, z_high, sqdeg, scheme, sample_fraction=1.,
                  min_dict=None, max_dict=None, cosmo=bplcosmo,
                  center_rdz=None, deg=True):
-        if deg and not center_rdz is None:
-            center_rdz = np.pi / 180 * np.asarray(center_rdz)
         self.z_low, self.z_high = z_low, z_high
         self.sample_fraction = sample_fraction
         self.min_dict, self.max_dict = min_dict, max_dict
@@ -56,7 +54,7 @@ class LightConeSelector:
 
         simbox = httools.SimBox(empty=True)
         self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=scheme,
-                                  center_rdz=center_rdz)
+                                  center_rdz=np.asarray(center_rdz))
         self.field_selector = self.field.field_selector
 
     def __call__(self, lightcone, seed=None):
