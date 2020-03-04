@@ -42,7 +42,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
         raise RuntimeError("lightcone code failed")
 
     # Move lightcone files to their desired locations
-    pathlib.Path(moved_files[0].parent).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(moved_files[0]).parent.mkdir(parents=True, exist_ok=True)
     for origin, destination in zip(files, moved_files):
         pathlib.Path(origin).rename(destination)
 
