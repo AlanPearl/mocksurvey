@@ -54,7 +54,7 @@ class LightConeSelector:
 
         simbox = httools.SimBox(empty=True)
         self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=scheme,
-                                  center_rdz=np.asarray(center_rdz))
+                                  center_rdz=center_rdz)
         self.field_selector = self.field.field_selector
 
     def __call__(self, lightcone, seed=None):
