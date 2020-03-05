@@ -175,7 +175,7 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     return final_lightcone_array
 
 def get_lightcone_UMmags(UMhalos, logssfr_uv, photbands=None,
-                         nwin=501, zbin_min=0.05):
+                         nwin=501, dz=0.05):
     logm = np.log10(UMhalos["obs_sm"])
     logssfr = np.log10(UMhalos["obs_sfr"]) - logm
     z = UMhalos["redshift_cosmo"]
@@ -184,7 +184,7 @@ def get_lightcone_UMmags(UMhalos, logssfr_uv, photbands=None,
         uvista_logssfr_uv) = setup_uvista_mag_regressor(photbands)
 
     logssfr_uv = cam_binned_z(m=logm, z=z, prop=logssfr, m2=uvista_logm,
-        z2=uvista_z, prop2=uvista_logssfr_uv, nwin=nwin, zbin_min=zbin_min)
+        z2=uvista_z, prop2=uvista_logssfr_uv, nwin=nwin, dz=dz)
 
     predictor = _make_predictor_UMmags(reg, logm, logssfr_uv, photbands)
     return predictor(slice(None), redshifts=z)
@@ -249,23 +249,29 @@ def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz):
     return logssfr_uv
 
 
-def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, zbin_min=0.05):
+def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
     assert (vparse(ht.version.version) >= vparse("0.7dev"))
-    assert (zbin_min > 0)
-    zrange = z.min() - zbin_min/20, z.max() + zbin_min/20
-    halfrange = zrange[1] - np.mean(zrange)
-
-    nz = int((zrange[1] - zrange[0]) / zbin_min)
+    assert (dz > 0)
+    zrange = z.min() - dz/20, z.max() + dz/20
+    nz = int((zrange[1] - zrange[0]) / dz)
     if nz:
         bin_edges = np.linspace(*zrange, nz+1)
     else:
         nz = 1
-        bin_edges = np.mean(zrange) + zbin_min*np.array([-0.5,0.5])
+        bin_edges = np.mean(zrange) + dz*np.array([-0.5,0.5])
+    zmin, zmax = bin_edges.min(), bin_edges.max()
+    s, s2 = (zmin < z) & (z < zmax), (zmin < z2) & (z2 < zmax)
+    assert np.all(s)
+    m2 = m2[s2]
+    z2 = z2[s2]
+    prop2 = prop2[s2]
+
+    inds = ht.utils.fuzzy_digitize(z, bin_edges)
+    inds2 = ht.utils.fuzzy_digitize(z2, bin_edges)
 
     new_prop = np.full_like(prop, np.nan)
-    for i in range(nz):
-        lower, upper = bin_edges[i:i+2]
-        s, s2 = ((lower <= a) & (a < upper) for a in (z, z2))
+    for i in range(nz+1):
+        s, s2 = inds==i, inds2==i
         nwin1 = min([nwin, s2.sum()//2*2-1])
         new_prop[s] = ht.empirical_models.conditional_abunmatch(
             m[s], prop[s], m2[s2], prop2[s2], nwin)
@@ -411,7 +417,7 @@ class MagRegressor:
             self.um_logssfr_uv = cam_binned_z(m=self.um_logm, z=self.um_z,
                         prop=self.um_logssfr, m2=self.uvista_logm,
                         z2=self.uvista_z, prop2=self.uvista_logssfr_uv,
-                        nwin=nwin, zbin_min=dz)
+                        nwin=nwin, dz=dz)
         else:
             self.um_logssfr_uv = cam_const_z(m=self.um_logm,
                         prop=self.um_logssfr, m2=self.uvista_logm,
