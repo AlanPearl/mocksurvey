@@ -266,8 +266,8 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
     z2 = z2[s2]
     prop2 = prop2[s2]
 
-    inds = ht.utils.fuzzy_digitize(z, bin_edges)
-    inds2 = ht.utils.fuzzy_digitize(z2, bin_edges)
+    inds = ht.utils.fuzzy_digitize(z, bin_edges, min_counts=4)
+    inds2 = ht.utils.fuzzy_digitize(z2, bin_edges, min_counts=4)
 
     new_prop = np.full_like(prop, np.nan)
     for i in range(nz+1):
