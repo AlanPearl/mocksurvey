@@ -255,12 +255,12 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
     zrange = z.min() - dz/20, z.max() + dz/20
     nz = int((zrange[1] - zrange[0]) / dz)
     if nz:
-        bin_edges = np.linspace(*zrange, nz+1)
+        centroids = np.linspace(*zrange, nz+1)
     else:
         nz = 1
-        bin_edges = np.mean(zrange) + dz*np.array([-0.5,0.5])
+        centroids = np.mean(zrange) + dz*np.array([-0.5,0.5])
 
-    zmin, zmax = bin_edges.min(), bin_edges.max()
+    zmin, zmax = centroids.min(), centroids.max()
     s, s2 = (zmin < z) & (z < zmax), (zmin < z2) & (z2 < zmax)
     assert np.all(s)
 
@@ -268,13 +268,17 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
     z2 = z2[s2]
     prop2 = prop2[s2]
 
-    inds = ht.utils.fuzzy_digitize(z, bin_edges, min_counts=4)
-    inds2 = ht.utils.fuzzy_digitize(z2, bin_edges, min_counts=4)
+    inds = ht.utils.fuzzy_digitize(z, centroids, min_counts=0)
+    inds2 = ht.utils.fuzzy_digitize(z2, centroids, min_counts=0)
 
     new_prop = np.full_like(prop, np.nan)
     for i in range(nz+1):
         s, s2 = inds==i, inds2==i
         nwin1 = min([nwin, s2.sum()//2*2-1])
+        if nwin1 < 2:
+            print(f"Warning: Only {s2.sum()} galaxies in the z"
+                  f"={centroids[i]} bin. You should use a larger"
+                  f"value of dz than {dz}")
         new_prop[s] = ht.empirical_models.conditional_abunmatch(
             m[s], prop[s], m2[s2], prop2[s2], nwin1)
 
