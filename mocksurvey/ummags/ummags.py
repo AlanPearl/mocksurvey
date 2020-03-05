@@ -249,7 +249,8 @@ def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz):
     return logssfr_uv
 
 
-def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
+def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
+                 min_counts_in_z2_bin=50):
     assert (vparse(ht.version.version) >= vparse("0.7dev"))
     assert (dz > 0)
     zrange = z.min() - dz/20, z.max() + dz/20
@@ -259,22 +260,29 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
     else:
         nz = 1
         bin_edges = np.mean(zrange) + dz*np.array([-0.5,0.5])
+
     zmin, zmax = bin_edges.min(), bin_edges.max()
     s, s2 = (zmin < z) & (z < zmax), (zmin < z2) & (z2 < zmax)
     assert np.all(s)
+
     m2 = m2[s2]
     z2 = z2[s2]
     prop2 = prop2[s2]
 
+    inds2 = ht.utils.fuzzy_digitize(z2, bin_edges,
+                                    min_counts=min_counts_in_z2_bin)
+    # Before digitizing z, remove centroids with missing z2 data
+    inds_exist = np.isin(np.arange(len(bin_edges)), np.unique(inds2))
+    ind_correction = np.cumsum(~inds_exist)[:-np.sum(~inds_exist)]
+    bin_edges = bin_edges[inds_exist]
     inds = ht.utils.fuzzy_digitize(z, bin_edges, min_counts=4)
-    inds2 = ht.utils.fuzzy_digitize(z2, bin_edges, min_counts=4)
 
     new_prop = np.full_like(prop, np.nan)
-    for i in range(nz+1):
-        s, s2 = inds==i, inds2==i
+    for i,j in enumerate(ind_correction):
+        s, s2 = inds==i, inds2==i+j
         nwin1 = min([nwin, s2.sum()//2*2-1])
         new_prop[s] = ht.empirical_models.conditional_abunmatch(
-            m[s], prop[s], m2[s2], prop2[s2], nwin)
+            m[s], prop[s], m2[s2], prop2[s2], nwin1)
 
     return new_prop
 
