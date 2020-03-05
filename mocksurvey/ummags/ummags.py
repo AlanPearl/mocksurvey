@@ -266,6 +266,7 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, zbin_min=0.05):
     for i in range(nz):
         lower, upper = bin_edges[i:i+2]
         s, s2 = ((lower <= a) & (a < upper) for a in (z, z2))
+        nwin1 = min([nwin, (s2.sum()+1)//2*2-1])
         new_prop[s] = ht.empirical_models.conditional_abunmatch(
             m[s], prop[s], m2[s2], prop2[s2], nwin)
 
