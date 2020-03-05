@@ -5,6 +5,9 @@ from packaging.version import parse as vparse
 import numpy as np
 import pandas as pd
 import halotools as ht
+import halotools.utils as ht_utils
+import halotools.empirical_models as ht_empirical_models
+import halotools.sim_manager as ht_sim_manager
 from .. import mocksurvey as ms
 
 def lightcone(z_low, z_high, x_arcmin, y_arcmin,
@@ -54,7 +57,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
 
     # If we used the id-tag functionality, update the config file
     try:
-        ms.UMConfig().auto_add()
+        ms.UMConfig().auto_add_lightcones()
     except ValueError:
         pass
 
@@ -129,7 +132,7 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
     # Read in the ASCII table, make mass cut (this takes a while)
     masslimit = {"obs_sm":obs_mass_limit, "true_sm":true_mass_limit}
-    reader = ht.sim_manager.tabular_ascii_reader.TabularAsciiReader(
+    reader = ht_sim_manager.tabular_ascii_reader.TabularAsciiReader(
                              filename, cols, row_cut_min_dict=masslimit)
     lightcone = reader.read_ascii()
 
@@ -151,7 +154,7 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
     # Calculate apparent magnitudes (column = "m_j", "m_y", etc.)
     reg = MagRegressor(lightcone, photbands=photbands)
-    magdf = reg.um_abs_mag + distmod_cosmo
+    magdf = reg.um_abs_mag + distmod_cosmo[:,None]
 
     # Name the new columns and specify their dtypes
     xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
@@ -249,9 +252,13 @@ def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz):
     return logssfr_uv
 
 
-def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
+def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
+                 min_counts_in_z2_bins=None):
     assert (vparse(ht.version.version) >= vparse("0.7dev"))
     assert (dz > 0)
+    if min_counts_in_z2_bins is None:
+        min_counts_in_z2_bins = nwin+1
+
     zrange = z.min() - dz/20, z.max() + dz/20
     nz = int((zrange[1] - zrange[0]) / dz)
     if nz:
@@ -268,8 +275,12 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
     z2 = z2[s2]
     prop2 = prop2[s2]
 
-    inds = ht.utils.fuzzy_digitize(z, centroids, min_counts=0)
-    inds2 = ht.utils.fuzzy_digitize(z2, centroids, min_counts=0)
+    inds2 = ht_utils.fuzzy_digitize(z2, centroids,
+                                    min_counts=min_counts_in_z2_bins)
+    centroids, inds2 = ms.hf.correction_for_empty_bins(centroids, inds2)
+    inds = ms.hf.fuzzy_digitize_improved(z, centroids,
+                                    min_counts=min_counts_in_z2_bins)
+
 
     new_prop = np.full_like(prop, np.nan)
     for i in range(nz+1):
@@ -279,7 +290,7 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05):
             print(f"Warning: Only {s2.sum()} galaxies in the z"
                   f"={centroids[i]} bin. You should use a larger"
                   f"value of dz than {dz}")
-        new_prop[s] = ht.empirical_models.conditional_abunmatch(
+        new_prop[s] = ht_empirical_models.conditional_abunmatch(
             m[s], prop[s], m2[s2], prop2[s2], nwin1)
 
     return new_prop
@@ -396,7 +407,8 @@ class MagRegressor:
 
         Parameters
         ----------
-        UMhalos
+        UMhalos : dictionary or structured array
+            Must contain the columns 'obs_sm', 'obs_sfr', 'redshift'
         photbands
         snapshot_redshift
         nwin
@@ -414,7 +426,7 @@ class MagRegressor:
         self.um_logssfr = np.log10(UMhalos["obs_sfr"]) - self.um_logm
         if snapshot_redshift is None:
             # default functionality: assume redshift column is in lightcone
-            self.um_z = UMhalos["redshift_cosmo"]
+            self.um_z = UMhalos["redshift"]
         else:
             self.um_z = np.full_like(self.um_logm, snapshot_redshift)
 

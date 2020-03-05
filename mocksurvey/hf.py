@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 from astropy.constants import c  # the speed of light
 from astropy import cosmology
 from astropy import units
+import halotools.utils as ht_utils
 
 
 @contextmanager
@@ -663,3 +664,66 @@ def logggnfw_taylor(x, x0, y0, m1, m2, base):
             np.log(base) ** 3 / 192. * (m1 - m2) * x ** 4 +
             np.log(base) ** 5 / 2880. * (m2 - m1) * x ** 6 +
             17. * np.log(base) ** 7 / 645120. * (m1 - m2) * x ** 8)
+
+
+def fuzzy_digitize_improved(x, centroids, **args):
+    """
+    Added functionality to halotools.utils.fuzzy_digitize
+    allowing data to be above and below the highest and
+    lowest centroid, respectively. In these cases, the data
+    are assigned the the highest and lowest centroid with 100%
+    probability, respectively. See original docstring below.
+
+    """
+    # Add a new centroid above and below the lowest and highest data values
+    vals = np.concatenate([np.ravel(x), centroids])
+    centroids = np.concatenate([[-2 * abs(vals.min()) - 1], centroids,
+                                [2 * abs(vals.max()) + 1]])
+
+    # Use fuzzy_digitize normally and reindex bins
+    centroid_indices = ht_utils.fuzzy_digitize(x, centroids, **args)
+    centroid_indices[centroid_indices != 0] -= 1
+    centroid_indices[centroid_indices == len(centroids) - 2] -= 1
+
+    return centroid_indices
+
+
+fuzzy_digitize_improved.__doc__ += ht_utils.fuzzy_digitize.__doc__
+
+
+def correction_for_empty_bins(original_centroids, original_indices):
+    """
+    You may want to use this function after using
+    halotools.utils.fuzzy_digitize (or the modified version of it)
+    In case there were centroids with fewer than `min_count` data
+    in the bin, this function will remove those centroids and
+    shift the centroid_indices down so that no numbers are skipped.
+
+    Arguments
+    ---------
+    original_centroids : 1d array of floats/ints
+        The centroids you passed to fuzzy_digitize
+
+    original_indices : array of floats/ints
+        The array returned to you by fuzzy_digitize
+
+    Returns
+    -------
+    new_centroids : 1d array of floats/ints
+        similar to `original_centroids`, but removing any points
+        corresponding to not a single index in `original_indices`
+
+    new_indices : array of floats/ints
+        array with same shape as `original_indices`, but indices
+        are shifted to correspond to `new_centroids`
+    """
+    bin_is_empty = ~np.isin(np.arange(len(original_centroids)),
+                            np.unique(original_indices))
+
+    find_inds = (original_indices[..., None] ==
+                 np.arange(len(original_centroids)))
+    correction = np.sum(find_inds * np.cumsum(bin_is_empty), axis=-1)
+
+    new_centroids = np.asarray(original_centroids)[~bin_is_empty]
+    new_indices = original_indices - correction
+    return new_centroids, new_indices
