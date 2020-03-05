@@ -283,7 +283,7 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
 
 
     new_prop = np.full_like(prop, np.nan)
-    for i in range(nz+1):
+    for i in range(len(centroids)):
         s, s2 = inds==i, inds2==i
         nwin1 = min([nwin, s2.sum()//2*2-1])
         if nwin1 < 2:
