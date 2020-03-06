@@ -154,7 +154,8 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
     # Calculate apparent magnitudes (column = "m_j", "m_y", etc.)
     reg = MagRegressor(lightcone, photbands=photbands)
-    magdf = reg.um_abs_mag + distmod_cosmo[:,None]
+    magdf = pd.DataFrame({k: reg.um_abs_mag[k] + distmod_cosmo
+                             for k in reg.um_abs_mag.columns})
 
     # Name the new columns and specify their dtypes
     xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
