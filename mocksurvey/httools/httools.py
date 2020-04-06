@@ -15,6 +15,7 @@ MockSurvey:
 """
 
 import gc
+import warnings
 import functools
 import math
 import scipy
@@ -41,7 +42,7 @@ class RedshiftSelector:
         self.zlim = self.mean_redshift + np.array([-.5, .5]) * self.delta_z
         self.dlim = hf.comoving_disth(self.zlim, self.cosmo)
 
-    def make_selection(self, redshift, input_is_distance=False):
+    def __call__(self, redshift, input_is_distance=False):
         lower, upper = self.dlim if input_is_distance else self.zlim
         return (lower < redshift) & (redshift < upper)
 
@@ -56,6 +57,9 @@ class FieldSelector:
         self.delta_z = mockfield.delta_z
         self.scheme = mockfield.scheme
         self.make_selection, self.get_fieldshape = self.choose_selector()
+    
+    def __call__(self, *args, **kwargs):
+        return self.make_selection(*args, **kwargs)
 
     def choose_selector(self):
         scheme = self.scheme
@@ -765,9 +769,9 @@ class MockField:
 
     def get_selectors(self):
         if self.cartesian_selection:
-            return CartesianSelector(self).make_selection, RedshiftSelector(self).make_selection
+            return CartesianSelector(self), RedshiftSelector(self)
         else:
-            return CelestialSelector(self).make_selection, RedshiftSelector(self).make_selection
+            return CelestialSelector(self), RedshiftSelector(self)
 
     # Public member functions for data access
     # =======================================

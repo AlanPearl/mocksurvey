@@ -24,7 +24,7 @@ def lightcone():
     # Argument changing which photometric bands to return
     parser.add_argument("--photbands", type=str, metavar="STRING",
         help="String of characters specifying which magnitude bands to get."
-             " Default is JYGR")
+             " Default is GRYJ")
 
     # Arguments to specify paths
     parser.add_argument("--id-tag", metavar="NAME", help="name the light"

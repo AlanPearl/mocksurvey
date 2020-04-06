@@ -15,14 +15,17 @@ import halotools.utils as ht_utils
 @contextmanager
 def temp_seed(seed):
     if seed is None:
-        do_alter = False # Don't alter state
-    elif isinstance(seed, str):
-        do_alter = True # New state with random seed
-        seed = None
+        # Do NOT alter random state
+        do_alter = False
+    elif isinstance(seed, int):
+        # New state with specified seed
+        do_alter = True
     else:
-        assert(isinstance(seed, int)), f"seed={seed} must be int, "\
-                                        "None, or 'none'"
-        do_alter = True # New state with specified seed
+        # New state with random seed
+        assert(isinstance(seed, str)), (f"seed={seed} not understood. "
+                                        f"Must be int, None, or 'none'")
+        do_alter = True
+        seed = None
 
     state = np.random.get_state()
     if do_alter:

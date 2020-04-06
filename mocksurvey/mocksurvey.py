@@ -84,11 +84,11 @@ class LightConeSelector:
         ones = np.ones(len(lightcone), dtype=bool)
 
         cond1 = ones
-        if not self.min_dict is None:
+        if self.min_dict:
             cond1 = np.all([lightcone[key] >= self.min_dict[key]
                             for key in self.min_dict], axis=0)
         cond2 = ones
-        if not self.max_dict is None:
+        if self.max_dict:
             cond2 = np.all([lightcone[key] <= self.max_dict[key]
                             for key in self.max_dict], axis=0)
 
@@ -782,7 +782,7 @@ class SeanSpectraConfig(BaseConfig):
         The path to the directory where you plan on saving all of the files. If the directory is moved, then you must provide this argument again.
     """
     SEANFILES = ["cosmos_V17.fits", "specid.npy", "wavelength.npy",
-                 "specmap.npy", "isnan.npy"]
+                 "specmap.npy", "isnan.npy", "cosmos_V17_old.fits"]
     def __init__(self, data_dir=None):
         config_dir, config_file = "config", "seanspec-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
@@ -821,8 +821,9 @@ class SeanSpectraConfig(BaseConfig):
     def are_all_files_stored(self):
         return set(self.config["files"]) == set(self.SEANFILES)
 
-    def load(self):
-        dat = astropy_table.Table.read(self.get_filepath())
+    def load(self, old_version=False):
+        i = 5 if old_version else 0
+        dat = astropy_table.Table.read(self.get_filepath(i))
         dat.keep_columns(self.names_to_keep())
         return dat.to_pandas()
 

@@ -61,7 +61,6 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     except ValueError:
         pass
 
-
 def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
                     remove_ascii_file=False, **kwargs):
     if outfilebase is None:
@@ -153,9 +152,10 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
 
     # Calculate apparent magnitudes (column = "m_j", "m_y", etc.)
-    reg = MagRegressor(lightcone, photbands=photbands)
-    magdf = pd.DataFrame({k: reg.um_abs_mag[k] + distmod_cosmo
-                             for k in reg.um_abs_mag.columns})
+    uvdat = UVData(photbands=photbands)
+    umdat = UMData(lightcone, uvdat=uvdat)
+    magdf = pd.DataFrame({k: umdat.abs_mag[k] + distmod_cosmo
+                             for k in umdat.abs_mag.columns})
 
     # Name the new columns and specify their dtypes
     xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
@@ -178,39 +178,9 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
     return final_lightcone_array
 
-def get_lightcone_UMmags(UMhalos, logssfr_uv, photbands=None,
-                         nwin=501, dz=0.05):
-    logm = np.log10(UMhalos["obs_sm"])
-    logssfr = np.log10(UMhalos["obs_sfr"]) - logm
-    z = UMhalos["redshift_cosmo"]
-
-    reg, photbands, (uvista_z, uvista_logm,
-        uvista_logssfr_uv) = setup_uvista_mag_regressor(photbands)
-
-    logssfr_uv = cam_binned_z(m=logm, z=z, prop=logssfr, m2=uvista_logm,
-        z2=uvista_z, prop2=uvista_logssfr_uv, nwin=nwin, dz=dz)
-
-    predictor = _make_predictor_UMmags(reg, logm, logssfr_uv, photbands)
-    return predictor(slice(None), redshifts=z)
-
-
-def make_predictor_UMmags(UMhalos, z_avg, photbands=None, nwin=501, dz=0.2):
-    logm = np.log10(UMhalos["obs_sm"])
-    logssfr = np.log10(UMhalos["obs_sfr"]) - logm
-
-    reg, photbands, (uvista_z, uvista_logm,
-        uvista_logssfr_uv) = setup_uvista_mag_regressor(photbands)
-
-    logssfr_uv = cam_const_z(m=logm, prop=logssfr, m2=uvista_logm,
-        z2=uvista_z, prop2=uvista_logssfr_uv, z_avg=z_avg, dz=dz)
-
-    predictor = _make_predictor_UMmags(reg, logm, logssfr_uv, photbands)
-    return predictor
-
-
 def _get_photbands(photbands):
     if photbands is None:
-        photbands = ["j", "y", "g", "r"]
+        photbands = ["g", "r", "y", "j"]
     else:
         photbands = [s.lower() for s in photbands]
     #         if not ("i" in photbands):
@@ -220,30 +190,28 @@ def _get_photbands(photbands):
 
     return photbands
 
-
-def setup_uvista_mag_regressor(photbands):
-    photbands = _get_photbands(photbands)
-
-    UVISTA = ms.UVISTAConfig(photbands=photbands)
-    UVISTAcat = UVISTA.load()
-
-    uvista_z = UVISTAcat["z"]
-    uvista_logm = UVISTAcat["logm"]
-    uvista_logssfr_uv = np.log10(UVISTAcat["sfr_uv"]) - uvista_logm
-
-    names = ["M_" + key.upper() for key in photbands]
-    uvista_m2l = [uvista_logm + UVISTAcat[name] / 2.5 for name in names]
-
-    s = np.isfinite(uvista_logssfr_uv)
-    x = np.array([uvista_logssfr_uv, uvista_z]).T[s]
-    y = np.array(uvista_m2l).T[s]
-
-    from sklearn import ensemble
-    reg = ensemble.RandomForestRegressor(n_estimators=10)
-    reg.fit(x, y)
-
-    return reg, photbands, (uvista_z, uvista_logm, uvista_logssfr_uv)
-
+# def setup_uvista_mag_regressor(photbands):
+#     photbands = _get_photbands(photbands)
+#
+#     UVISTA = ms.UVISTAConfig(photbands=photbands)
+#     UVISTAcat = UVISTA.load()
+#
+#     uvista_z = UVISTAcat["z"]
+#     uvista_logm = UVISTAcat["logm"]
+#     uvista_logssfr_uv = np.log10(UVISTAcat["sfr_uv"]) - uvista_logm
+#
+#     names = ["M_" + key.upper() for key in photbands]
+#     uvista_m2l = [uvista_logm + UVISTAcat[name] / 2.5 for name in names]
+#
+#     s = np.isfinite(uvista_logssfr_uv)
+#     x = np.array([uvista_logssfr_uv, uvista_z]).T[s]
+#     y = np.array(uvista_m2l).T[s]
+#
+#     from sklearn import ensemble
+#     reg = ensemble.RandomForestRegressor(n_estimators=10)
+#     reg.fit(x, y)
+#
+#     return reg, photbands, (uvista_z, uvista_logm, uvista_logssfr_uv)
 
 def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz):
     assert (vparse(ht.version.version) >= vparse("0.7dev"))
@@ -251,7 +219,6 @@ def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz):
     new_prop = empirical_models.conditional_abunmatch(m, prop,
                                 m2[z_sel], prop2[z_sel], nwin=nwin)
     return logssfr_uv
-
 
 def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
                  min_counts_in_z2_bins=None):
@@ -295,23 +262,6 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
             m[s], prop[s], m2[s2], prop2[s2], nwin1)
 
     return new_prop
-
-
-def _make_predictor_UMmags(regressor, logm, logssfr_uv, photbands):
-    """Define predictor in another function to
-    reduce the memory required for closure"""
-
-    def predictor(selection, redshifts):
-        """
-        predict absolute magnitudes for UniverseMachine galaxies,
-        given individual observed redshifts for each galaxy
-        """
-        x = np.array([logssfr_uv[selection], redshifts]).T
-        y = regressor.predict(x)
-        Mag = -2.5 * (np.asarray(logm)[selection, None] - y)
-        return pd.DataFrame(Mag, columns=photbands)
-
-    return predictor
 
 def _execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
                             executable=None, umcfg=None, samples=1,
@@ -357,7 +307,6 @@ def _default_lightcone_filenames(z_low, z_high, x_arcmin, y_arcmin,
             f"x{x_arcmin:.2f}_y{y_arcmin:.2f}_{i}.dat"
             for i in range(samples)]
 
-
 def _generate_lightcone_filenames(args, outfilepath=None,
                                   outfilebase=None):
     fake_id = args.pop()
@@ -398,12 +347,40 @@ def _generate_lightcone_filenames(args, outfilepath=None,
 
     return asciifiles, moved_asciifiles
 
+class UVData:
+    def __init__(self, photbands=None):
+        self.photbands = _get_photbands(photbands)
+        self.names = ["M_" + key.upper() for key in self.photbands]
 
-class MagRegressor:
-    def __init__(self, UMhalos, photbands=None, snapshot_redshift=None,
-                 nwin=501, dz=0.05):
+        # Load UltraVISTA columns: mass, sSFR_UV, redshift, mass-to-light
+        (self.z, self.logm, self.logssfr_uv,
+         self.abs_mag, self.id) = self.load_UVISTA()
+
+    @property
+    def m2l(self):
+        return self.logm[:,None] + self.abs_mag.values / 2.5
+
+    def load_UVISTA(self):
+        UVISTAcat = ms.UVISTAConfig(photbands=self.photbands).load()
+
+        z = UVISTAcat["z"].values
+        logm = UVISTAcat["logm"].values
+        logssfr_uv = (np.log10(UVISTAcat["sfr_uv"])
+                                  - UVISTAcat["logm"]).values
+        abs_mag = pd.DataFrame({name[-1].lower():
+                UVISTAcat[name].values for name in self.names})
+        # m2l = np.array([logm + UVISTAcat[name].values / 2.5
+        #                         for name in self.names]).T
+        uvista_id = UVISTAcat["id"].values
+
+        return (z, logm, logssfr_uv, abs_mag, uvista_id)
+
+
+class UMData:
+    def __init__(self, UMhalos, uvdat=None, snapshot_redshift=None,
+                 nwin=501, dz=0.05, seed=None):
         """
-        This is just a namespace of UltraVISTA and UniverseMachine parameters
+        This is just a namespace of UniverseMachine observables
         used in the mass-to-light ratio fitting process.
 
         Parameters
@@ -415,90 +392,154 @@ class MagRegressor:
         nwin
         dz
         """
-        self.photbands = _get_photbands(photbands)
-        self.names = ["M_" + key.upper() for key in self.photbands]
-
-        # Load UltraVISTA columns: mass, sSFR_UV, redshift, mass-to-light
-        (self.uvista_z, self.uvista_logm, self.uvista_logssfr_uv,
-         self.uvista_m2l, self.uvista_id) = self.load_UVISTA()
+        self.seed = seed
+        self.uvdat = uvdat
+        self.snapshot_redshift = snapshot_redshift
+        self.nwin = nwin
+        self.dz = dz
+        if self.uvdat is None:
+            self.uvdat = UVData()
 
         # Extract UniverseMachine columns: mass, sSFR, and redshift
-        self.um_logm = np.log10(UMhalos["obs_sm"])
-        self.um_logssfr = np.log10(UMhalos["obs_sfr"]) - self.um_logm
+        self.logm = np.log10(UMhalos["obs_sm"])
+        self.logssfr = np.log10(UMhalos["obs_sfr"]) - self.logm
         if snapshot_redshift is None:
             # default functionality: assume redshift column is in lightcone
-            self.um_z = UMhalos["redshift"]
+            self.z = UMhalos["redshift"]
         else:
-            self.um_z = np.full_like(self.um_logm, snapshot_redshift)
+            self.z = np.full_like(self.logm, snapshot_redshift)
 
-        # Map UniverseMachine sSFR --> sSFR_UV via abundance matching
-        if snapshot_redshift is None:
-            self.um_logssfr_uv = cam_binned_z(m=self.um_logm, z=self.um_z,
-                        prop=self.um_logssfr, m2=self.uvista_logm,
-                        z2=self.uvista_z, prop2=self.uvista_logssfr_uv,
-                        nwin=nwin, dz=dz)
-        else:
-            self.um_logssfr_uv = cam_const_z(m=self.um_logm,
-                        prop=self.um_logssfr, m2=self.uvista_logm,
-                        prop2=self.uvista_logssfr_uv, z2=self.uvista_z,
-                        z_avg=snapshot_redshift, dz=dz)
+    @property
+    def m2l(self):
+        return self.logm[:,None] + self.abs_mag.values / 2.5
 
-        # Map (redshift, sSFR_UV) --> (mass-to-light,) via Random Forest
-        self.um_abs_mag = self.fit_mass_to_light()
+    # Map UniverseMachine sSFR --> sSFR_UV via abundance matching
+    @property
+    def logssfr_uv(self):
+        if "_logssfr_uv" in self.__dict__:
+            return self._logssfr_uv
+        with ms.hf.temp_seed(self.seed):
+            if self.snapshot_redshift is None:
+                self._logssfr_uv = cam_binned_z(m=self.logm,
+                            z=self.z, prop=self.logssfr,
+                            m2=self.uvdat.logm,
+                            z2=self.uvdat.z,
+                            prop2=self.uvdat.logssfr_uv,
+                            nwin=self.nwin, dz=self.dz)
+            else:
+                self._logssfr_uv = cam_const_z(m=self.logm,
+                            prop=self.logssfr,
+                            m2=self.uvdat.logm,
+                            prop2=self.uvdat.logssfr_uv,
+                            z2=self.uvdat.z,
+                            z_avg=self.snapshot_redshift, dz=self.dz)
+        return self._logssfr_uv
+
+    # Map (redshift, sSFR_UV) --> (mass-to-light,) via Random Forest
+    @property
+    def abs_mag(self):
+        if not "_abs_mag" in self.__dict__:
+            with ms.hf.temp_seed(self.seed):
+                self._abs_mag = self.fit_mass_to_light()
+        return self._abs_mag
 
     def fit_mass_to_light(self):
         from sklearn import ensemble
 
-        s = np.isfinite(self.uvista_logssfr_uv)
-        x = np.array([self.uvista_logssfr_uv, self.uvista_z]).T
-        y = self.uvista_m2l
+        s = np.isfinite(self.uvdat.logssfr_uv)
+        x = np.array([self.uvdat.logssfr_uv,
+                      self.uvdat.z]).T
+        y = self.uvdat.m2l
 
         regressor = ensemble.RandomForestRegressor(n_estimators=10)
         regressor.fit(x[s], y[s])
 
-        s = np.isfinite(self.um_logssfr_uv)
-        x = np.array([self.um_logssfr_uv, self.um_z]).T
+        s = np.isfinite(self.logssfr_uv)
+        x = np.array([self.logssfr_uv, self.z]).T
         y = regressor.predict(x[s])
 
-        um_mag = np.full((x.shape[0],y.shape[1]), np.nan, np.float32)
-        um_mag[s] = -2.5 * (np.asarray(self.um_logm)[s,None] - y)
-        return pd.DataFrame(um_mag, columns=self.photbands)
+        abs_mag = np.full((x.shape[0],y.shape[1]), np.nan, np.float32)
+        abs_mag[s] = 2.5 * (y - np.asarray(self.logm)[s,None])
+        return pd.DataFrame(abs_mag, columns=self.uvdat.photbands)
 
-    def load_UVISTA(self):
-        UVISTAcat = ms.UVISTAConfig(photbands=self.photbands).load()
 
-        uvista_z = UVISTAcat["z"].values
-        uvista_logm = UVISTAcat["logm"].values
-        uvista_logssfr_uv = (np.log10(UVISTAcat["sfr_uv"])
-                                  - UVISTAcat["logm"]).values
-        uvista_m2l = np.array([uvista_logm + UVISTAcat[name].values / 2.5
-                                for name in self.names]).T
-        uvista_id = UVISTAcat["id"].values
-
-        return (uvista_z, uvista_logm, uvista_logssfr_uv, uvista_m2l,
-                uvista_id)
-
-class NeighborSpectra:
-    def __init__(self, UMhalos, photbands=None, snapshot_redshift=None,
-                 nwin=501, dz=0.05):
-        self.Reg = MagRegressor(UMhalos, photbands=photbands,
-                                snapshot_redshift=snapshot_redshift,
-                                nwin=nwin, dz=dz)
-
+class SeanSpecStacker:
+    def __init__(self, uvista_z, uvista_id):
         self.config = ms.SeanSpectraConfig()
         self.wave = self.config.wavelength()
         self.specid = self.config.specid()
         self.isnan = self.config.isnan()
         self.get_specmap = self.config.specmap()
 
-        redshifts = pd.DataFrame(dict(z=self.Reg.uvista_z,
-                        uvista_idx=np.arange(len(self.Reg.uvista_z))),
-                         index=self.Reg.uvista_id)
+        redshifts = pd.DataFrame(dict(z=uvista_z,
+                        uvista_idx=np.arange(len(uvista_z))),
+                        index=uvista_id)
         fullmapper = pd.DataFrame(dict(idx=np.arange(len(self.specid)),
                         hex=[hex(s) for s in self.specid]),
-                                  index=self.specid)
+                        index=self.specid)
         self.mapper = pd.merge(fullmapper.iloc[~self.isnan], redshifts,
-                          left_index=True, right_index=True)
+                        left_index=True, right_index=True)
+
+    def avg_spectrum(self, specids, lumcorr, redshift, cosmo=None,
+                     return_each_spec=False):
+        if cosmo is None:
+            cosmo = ms.bplcosmo
+        idx = self.id2idx_specmap(specids)
+        z = self.id2redshift(specids)
+
+        lumcorr = (lumcorr * (1+z) / (1+redshift) *
+                (cosmo.luminosity_distance(z).value/
+                 cosmo.luminosity_distance(redshift).value)**2)
+
+        specs = self.get_specmap()[idx, :] * lumcorr[:, None]
+        waves = self.wave[None,:] / (1 + z[:,None])
+        truewave = self.wave / (1 + redshift)
+
+        eachspec = []
+        for spec,wave in zip(specs,waves):
+            eachspec.append(np.interp(truewave, wave, spec,
+                                      left=np.nan, right=np.nan))
+        avgspec = np.mean(eachspec, axis=0)
+        if return_each_spec:
+            return avgspec, eachspec
+        else:
+            return avgspec
+
+    def id2redshift(self, uvista_id):
+        return np.reshape(self.mapper["z"].loc[
+                        np.ravel(uvista_id)].values, np.shape(uvista_id))
+
+    def id2idx_uvista(self, uvista_id):
+        return np.reshape(self.mapper["uvista_idx"].loc[
+                        np.ravel(uvista_id)].values, np.shape(uvista_id))
+
+    def id2idx_specmap(self, uvista_id):
+        return np.reshape(self.mapper["idx"].loc[
+                        np.ravel(uvista_id)].values, np.shape(uvista_id))
+
+
+class NeighborSeanSpecFinder:
+    def __init__(self, UMhalos, photbands=None, snapshot_redshift=None,
+                 nwin=501, dz=0.05, seed=None):
+        self.uvdat = UVData(photbands=photbands)
+        self.umdat = UMData(UMhalos, uvdat=self.uvdat,
+                            snapshot_redshift=snapshot_redshift,
+                            nwin=nwin, dz=dz, seed=seed)
+        self.stacker = SeanSpecStacker(self.uvdat.z,
+                                       self.uvdat.id)
+
+    def id2redshift(self, uvista_id):
+        return self.stacker.id2redshift(uvista_id)
+
+    def id2idx_uvista(self, uvista_id):
+        return self.stacker.id2idx_uvista(uvista_id)
+
+    def id2idx_specmap(self, uvista_id):
+        return self.stacker.id2idx_specmap(uvista_id)
+
+    def avg_spectrum(self, specids, lumcorr, redshift, cosmo=None):
+        return self.stacker.avg_spectrum(specids, lumcorr, redshift,
+                                         cosmo=cosmo)
 
     def write_specmap(self, outfile, num_nearest, metric_weights=None,
              cosmo=None, verbose=1, progress=True):
@@ -511,9 +552,9 @@ class NeighborSpectra:
         else:
             iterator = range
 
-        redshift = self.Reg.um_z
-        f = np.memmap(outfile, self.get_specmap().dtype, "w+",
-            shape=(len(redshift), self.get_specmap().shape[1]))
+        redshift = self.umdat.z
+        f = np.memmap(outfile, self.stacker.get_specmap().dtype, "w+",
+            shape=(len(redshift), self.stacker.get_specmap().shape[1]))
 
         nearest, lumcorr = self.find_nearest_specid(num_nearest,
             metric_weights=metric_weights, verbose=verbose)
@@ -521,27 +562,6 @@ class NeighborSpectra:
         for i in iterator(len(nearest)):
             f[i] = self.avg_spectrum(nearest[i], lumcorr[i],
                                      redshift[i], cosmo=cosmo)
-
-    def avg_spectrum(self, specids, lumcorr, redshift, cosmo=None):
-        if cosmo is None:
-            cosmo = ms.bplcosmo
-        idx = self.mapper["idx"].loc[specids].values
-        z = self.mapper["z"].loc[specids].values
-
-        lumcorr = (lumcorr * (1+z) / (1+redshift) *
-                (cosmo.luminosity_distance(z).value/
-                 cosmo.luminosity_distance(redshift).value)**2)
-
-        specs = self.get_specmap()[idx, :] * lumcorr[:, None]
-        waves = self.wave[None,:] / (1 + z[:,None])
-        truewave = self.wave / (1 + redshift)
-
-        truespec = []
-        for spec,wave in zip(specs,waves):
-            truespec.append(np.interp(truewave, wave, spec,
-                                      left=np.nan, right=np.nan))
-        return np.mean(truespec, axis=0)
-
 
     def find_nearest_specid(self, num_nearest, metric_weights=None,
                             verbose=1):
@@ -556,7 +576,7 @@ class NeighborSpectra:
             # Select UltraVISTA galaxies with simulated spectra
             specid = ms.SeanSpectraConfig().specid()[
                 ~ms.SeanSpectraConfig().isnan()]
-            uvsel = np.isin(self.Reg.uvista_id, specid)
+            uvsel = np.isin(self.uvdat.id, specid)
             # Instantiate the nearest-neighbor regressor with metric
             # d^2 = (logM/1)^2 + (logsSFR/0.75)^2 + (z/2)^2
             reg = neighbors.NearestNeighbors(num_nearest,
@@ -564,12 +584,12 @@ class NeighborSpectra:
                     metric_params=dict(w=metric_weights))
 
             # Predictors:
-            uv_x = np.array([self.Reg.uvista_logm,
-                             self.Reg.uvista_logssfr_uv,
-                             self.Reg.uvista_z]).T
-            um_x = np.array([self.Reg.um_logm,
-                             self.Reg.um_logssfr_uv,
-                             self.Reg.um_z]).T
+            uv_x = np.array([self.uvdat.logm,
+                             self.uvdat.logssfr_uv,
+                             self.uvdat.z]).T
+            um_x = np.array([self.umdat.logm,
+                             self.umdat.logssfr_uv,
+                             self.umdat.z]).T
             uvsel &= np.isfinite(uv_x).all(axis=1)
             umsel = np.isfinite(um_x).all(axis=1)
 
@@ -580,15 +600,16 @@ class NeighborSpectra:
             neighbor_index = reg.kneighbors(um_x[umsel])[1]
             if verbose:
                 print("SpecIDs assigned successfully.")
-            neighbor_id = np.full((len(self.Reg.um_logm),num_nearest), -99)
-            neighbor_id[umsel] = self.Reg.uvista_id[uvsel][neighbor_index]
+            neighbor_id = np.full((len(self.umdat.logm),num_nearest), -99)
+            neighbor_id[umsel] = self.uvdat.id[uvsel][neighbor_index]
 
             # Calculate specific luminosity, averaged over all available
             # bands in each UniverseMachine and UVISTA galaxy
-            uv_lum = 10**(self.Reg.uvista_logm[:,None]
-                          - self.Reg.uvista_m2l)
-            uv_lum = np.mean(uv_lum, axis=1)
-            um_lum = np.mean(10**(-0.4*self.Reg.um_abs_mag), axis=1)
+            # uv_lum = 10**(self.uvdat.logm[:,None]
+            #               - self.uvdat.m2l)
+            # uv_lum = np.mean(uv_lum, axis=1)
+            uv_lum = np.mean(10**(-0.4*self.uvdat.abs_mag.values), axis=1)
+            um_lum = np.mean(10**(-0.4*self.umdat.abs_mag.values), axis=1)
             # Return the correction factor, which is just a constant
             # we have to multiply into the stacked spectrum
             lumcorr = np.full((len(umsel),num_nearest), np.nan)
