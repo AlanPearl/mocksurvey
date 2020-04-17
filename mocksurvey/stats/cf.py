@@ -632,7 +632,10 @@ def _assignblocks(data, rands, bins_info):
 def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=False):
     if data is None or len(data) == 0 or (rands is not None and len(rands) == 0):
         raise ValueError("data_to_bin: %s \nrands_to_bin: %s" %(str(data), str(rands)))
-    
+
+    nbins = (2,2,1) if nbins is None else nbins
+    nbins = (*nbins, 1, 1, 1)[:3]
+    nx, ny, nz = nbins
     # Make sure centers.shape = (numfields,3)
     centers = np.atleast_2d(centers); assert(centers.shape[-1] == 3); assert(len(centers.shape) < 3)
     
@@ -666,7 +669,7 @@ def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=
             #     lower[2] -= 100.
             #     upper[2] += 100.
             
-            nx,ny,nz = nbins
+
             xbins,ybins,zbins = [np.linspace(lower[i], upper[i], nbins[i]+1) for i in range(3)]
             xbins[0] = -np.inf; xbins[-1] = np.inf
             ybins[0] = -np.inf; ybins[-1] = np.inf

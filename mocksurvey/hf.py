@@ -438,10 +438,7 @@ def xyz_array(struc_array, keys=None, attributes=False):
     if attributes:
         struc_array = struc_array.__dict__
 
-    x = struc_array[keys[0]]
-    y = struc_array[keys[1]]
-    z = struc_array[keys[2]]
-    return np.vstack([x, y, z]).T
+    return np.vstack([struc_array[key] for key in keys]).T
 
 def logN(data, rands, njackknife=None, volume_factor=1):
     del rands

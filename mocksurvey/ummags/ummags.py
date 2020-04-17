@@ -213,12 +213,19 @@ def _get_photbands(photbands):
 #
 #     return reg, photbands, (uvista_z, uvista_logm, uvista_logssfr_uv)
 
-def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz):
+def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz, nwin=501):
     assert (vparse(ht.version.version) >= vparse("0.7dev"))
     z_sel = (z_avg - dz/2 <= z2) & (z2 <= z_avg + dz/2)
-    new_prop = empirical_models.conditional_abunmatch(m, prop,
-                                m2[z_sel], prop2[z_sel], nwin=nwin)
-    return logssfr_uv
+
+    nwin1 = min([nwin, z_sel.sum() // 2 * 2 - 1])
+    if nwin1 < 2:
+        print(f"Warning: Only {z_sel.sum()} galaxies in the z"
+              f"={z_avg} +/- {dz}/2 bin. You should use a larger"
+              f" value of dz than {dz}")
+
+    new_prop = ht_empirical_models.conditional_abunmatch(m, prop,
+                                m2[z_sel], prop2[z_sel], nwin=nwin1)
+    return new_prop
 
 def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
                  min_counts_in_z2_bins=None):

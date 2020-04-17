@@ -151,7 +151,7 @@ def config():
     }
 
 
-    desc = ("Configure data storage used by mocksurvey")
+    desc = "Configure data storage used by mocksurvey"
 
     # noinspection PyTypeChecker
     parser = argparse.ArgumentParser(description=desc,
@@ -162,19 +162,21 @@ def config():
 
     # Optional positional arguments
     parser.add_argument("COMMAND", type=str, default=[], nargs="+",
-                        help=f"Options: {set(cmds.keys())}")
+                        help=f"Options: {set(cmds.keys())} followed by "
+                             f"any relevant arguments")
 
     a = parser.parse_args()
     assert len(a.COMMAND) > 0, "Usage: supply a command (and any relevant arguments)"
 
-    config = datasets[a.DATASET]
+    cfg = datasets[a.DATASET]
     if a.COMMAND[0] == "set-path":
-        config(*a.COMMAND[1:]).update()
+        cfg(*a.COMMAND[1:]).update()
 
     {
-        "auto-add": config().auto_add,
-        "reset": config().reset,
-        "add": config().add,
-        "remove": config().remove,
-        "set-lightcone-executable": config().set_lightcone_executable
+        "auto-add": cfg().auto_add,
+        "reset": cfg().reset,
+        "add": cfg().add,
+        "remove": cfg().remove,
+        "set-lightcone-executable": (cfg().set_lightcone_executable
+                                     if a.DATASET == "UM" else None)
     }[a.COMMAND[0]](*a.COMMAND[1:])

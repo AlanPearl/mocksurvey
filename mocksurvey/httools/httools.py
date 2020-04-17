@@ -16,17 +16,20 @@ MockSurvey:
 
 import gc
 import warnings
-import functools
+# import functools
 import math
-import scipy
+from scipy import optimize
 import numpy as np
+# import pandas as pd
 from inspect import getfullargspec
 from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
 from .. import hf
+# from .. import mocksurvey as ms
 from ..stats import cf
+# from ..ummags import ummags
 
 bplcosmo = cosmology.FlatLambdaCDM(name="Bolshoi-Planck",
                                    H0=68.,
@@ -83,7 +86,7 @@ class FieldSelector:
         omega = self.sqdeg * np.pi ** 2 / 180. ** 2
         f = lambda angle: hf.make_npoly(angle, n).area() - omega
 
-        angle = scipy.optimize.brentq(f, 0, np.pi / 2.)
+        angle = optimize.brentq(f, 0, np.pi / 2.)
 
         if return_angle:
             return angle
@@ -114,9 +117,9 @@ class FieldSelector:
         fp = lambda angle: 2 * math.sin(angle / 2.
                                         ) + angle * math.cos(angle / 2.)
         if angle0 < np.pi / 6.:
-            angle = scipy.optimize.newton(f, fprime=fp, x0=angle0) / 2.
+            angle = optimize.newton(f, fprime=fp, x0=angle0) / 2.
         else:
-            angle = scipy.optimize.brentq(f, 0, np.pi) / 2.
+            angle = optimize.brentq(f, 0, np.pi) / 2.
 
         if return_angle:
             return angle
@@ -134,9 +137,9 @@ class FieldSelector:
         f = lambda angle: angle * math.sin(angle) - math.cos(angle) + cnst
         fp = lambda angle: angle * math.cos(angle) + 2 * math.sin(angle)
         if angle0 < np.pi / 6.:
-            angle = scipy.optimize.newton(f, fprime=fp, x0=angle0)
+            angle = optimize.newton(f, fprime=fp, x0=angle0)
         else:
-            angle = scipy.optimize.brentq(f, 0, np.pi / 2.)
+            angle = optimize.brentq(f, 0, np.pi / 2.)
 
         if return_angle:
             return angle
@@ -556,7 +559,7 @@ class BoxField:
             If true, return Celestial shape (length along ra, dec, redshift) instead of the Cartesian shape (length along x, y, z)
         """
         if rdz:
-            raise ValueError("Sorry, I haven't implemented get_shape(rdz=True) for a BoxField yet.")
+            raise ValueError("I haven't implemented get_shape(rdz=True) for a BoxField yet.")
         if self.shape is None:
             return self.simbox.Lbox
         else:
@@ -803,16 +806,19 @@ class MockField:
     def get_mgid(self):
         return np.asarray(self.simbox.gals["mgid"][self.selection])
 
-    def get_shape(self, rdz=False):
+    def get_shape(self, rdz=False, deg=False):
         if self.cartesian_selection:
             selector = CartesianSelector(self)
         else:
             selector = CelestialSelector(self)
 
-        return selector.get_fieldshape(rdz=rdz)
+        shape = selector.get_fieldshape(rdz=rdz)
+        if deg:
+            shape[:2] *= 180./np.pi
+        return shape
 
-    def get_lims(self, rdz=False, overestimation_factor=1.):
-        shape = self.get_shape(rdz=rdz) * overestimation_factor
+    def get_lims(self, rdz=False, overestimation_factor=1., deg=False):
+        shape = self.get_shape(rdz=rdz, deg=deg) * overestimation_factor
         center = self.center_rdz if rdz else self.center
 
         xlim = [center[0] - shape[0] / 2., center[0] + shape[0] / 2.]
@@ -1719,81 +1725,81 @@ GalBox.__doc__ = HaloBox.__doc__ = SimBox.__doc__
 
 
 
-class UniverseMachine(GalBox):
-    def __init__(self, redshift=0, thresh=None, ztol=0.05):
-        GalBox.__init__(self)
-        posnames = []
-        for s in ["", "halo_"]:
-            posnames += [f"{s}x", f"{s}y", f"{s}z",
-                         f"{s}vx", f"{s}vy", f"{s}vz"]
-
-        h,z = UMConfig().load(redshift=redshift, thresh=thresh, ztol=ztol)
-        pos = pd.DataFrame(np.concatenate([h["pos"]] * 2, axis=1),
-                           columns=posnames)
-
-        othernames = list(h.dtype.names)
-        othernames.remove("pos")
-        halos = pd.DataFrame(h[othernames])
-
-        halos = pd.concat([pos, halos], axis=1, copy=False)
-        self.halos = self.gals = halos
-
-        self.redshift = z
-        self.populated = True
-        self.simname, self.Lbox, self.empty = ("bolplanck",
-                            np.array([250.,250.,250.]), False)
-
-    def field(self, rotation=None, **kwargs):
-        return UMMockField(self, rotation=None, **kwargs)
-
-    def boxfield(self, rotation=None, **kwargs):
-        return UMBoxField(self, rotation=None, **kwargs)
-
-    def survey(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    # Use @functools.cached_property (requires Python 3.8)
-    @property
-    @functools.lru_cache(maxsize=None)
-    def mag_predictor(self, photbands=None):
-        return ummags.make_predictor_UMmags(self.halos, self.redshift, photbands)
-
-class UMField:
-    """
-    Abstract template class. Do not instantiate
-    """
-    def get_abs_mag(self, band):
-        band = band.lower()
-        data = self._get_abs_mags()
-
-        try:
-            return data[band]
-        except KeyError:
-            raise KeyError(f"{band} is not an allowed band. "
-                             f"Use one of {data.columns.tolist()}.")
-
-    def get_rel_mag(self, band):
-        d_on_10pc = self._get_lum_dist()
-        return self.get_abs_mag(band) + 5. * np.log10(d_on_10pc)
-
-    @functools.lru_cache(maxsize=None)
-    def _get_lum_dist(self):
-        return 1e5 * self.simbox.cosmo.luminosity_distance(
-            self.get_redshift(realspace=True)).value
-
-    @functools.lru_cache(maxsize=None)
-    def _get_abs_mags(self):
-        return self.simbox.mag_predictor(self.selection,
-                        self.get_redshift(realspace=False))
-
-class UMMockField(MockField, UMField):
-    def __init__(self, um, rotation=None, **kwargs):
-        um.rotate(rotation)
-        MockField.__init__(self, um, **kwargs)
-UMMockField.__doc__ = MockField.__doc__
-
-class UMBoxField(BoxField, UMField):
-    def __init__(self, um, rotation=None, **kwargs):
-        um.rotate(rotation)
-        BoxField.__init__(self, um, **kwargs)
-UMBoxField.__doc__ = BoxField.__doc__
+# class UniverseMachine(GalBox):
+#     def __init__(self, redshift=0, thresh=None, ztol=0.05):
+#         GalBox.__init__(self)
+#         posnames = []
+#         for s in ["", "halo_"]:
+#             posnames += [f"{s}x", f"{s}y", f"{s}z",
+#                          f"{s}vx", f"{s}vy", f"{s}vz"]
+#
+#         h,z = ms.UMConfig().load(redshift=redshift, thresh=thresh, ztol=ztol)
+#         pos = pd.DataFrame(np.concatenate([h["pos"]] * 2, axis=1),
+#                            columns=posnames)
+#
+#         othernames = list(h.dtype.names)
+#         othernames.remove("pos")
+#         halos = pd.DataFrame(h[othernames])
+#
+#         halos = pd.concat([pos, halos], axis=1, copy=False)
+#         self.halos = self.gals = halos
+#
+#         self.redshift = z
+#         self.populated = True
+#         self.simname, self.Lbox, self.empty = ("bolplanck",
+#                             np.array([250.,250.,250.]), False)
+#
+#     def field(self, rotation=None, **kwargs):
+#         return UMMockField(self, rotation=None, **kwargs)
+#
+#     def boxfield(self, rotation=None, **kwargs):
+#         return UMBoxField(self, rotation=None, **kwargs)
+#
+#     def survey(self, *args, **kwargs):
+#         raise NotImplementedError()
+#
+#     # Use @functools.cached_property (requires Python 3.8)
+#     @property
+#     @functools.lru_cache(maxsize=None)
+#     def mag_predictor(self, photbands=None):
+#         return ummags.make_predictor_UMmags(self.halos, self.redshift, photbands)
+#
+# class UMField:
+#     """
+#     Abstract template class. Do not instantiate
+#     """
+#     def get_abs_mag(self, band):
+#         band = band.lower()
+#         data = self._get_abs_mags()
+#
+#         try:
+#             return data[band]
+#         except KeyError:
+#             raise KeyError(f"{band} is not an allowed band. "
+#                              f"Use one of {data.columns.tolist()}.")
+#
+#     def get_rel_mag(self, band):
+#         d_on_10pc = self._get_lum_dist()
+#         return self.get_abs_mag(band) + 5. * np.log10(d_on_10pc)
+#
+#     @functools.lru_cache(maxsize=None)
+#     def _get_lum_dist(self):
+#         return 1e5 * self.simbox.cosmo.luminosity_distance(
+#             self.get_redshift(realspace=True)).value
+#
+#     @functools.lru_cache(maxsize=None)
+#     def _get_abs_mags(self):
+#         return self.simbox.mag_predictor(self.selection,
+#                         self.get_redshift(realspace=False))
+#
+# class UMMockField(MockField, UMField):
+#     def __init__(self, um, rotation=None, **kwargs):
+#         um.rotate(rotation)
+#         MockField.__init__(self, um, **kwargs)
+# UMMockField.__doc__ = MockField.__doc__
+#
+# class UMBoxField(BoxField, UMField):
+#     def __init__(self, um, rotation=None, **kwargs):
+#         um.rotate(rotation)
+#         BoxField.__init__(self, um, **kwargs)
+# UMBoxField.__doc__ = BoxField.__doc__

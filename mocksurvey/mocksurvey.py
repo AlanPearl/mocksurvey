@@ -18,6 +18,7 @@ import astropy.table as astropy_table
 # Local modules
 from . import hf
 # Local packages
+from .stats import cf
 from .httools import httools
 from .ummags import ummags
 # Default cosmology (Bolshoi-Planck)
@@ -46,15 +47,17 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
 class LightConeSelector:
     def __init__(self, z_low, z_high, sqdeg, scheme, sample_fraction=1.,
                  min_dict=None, max_dict=None, cosmo=bplcosmo,
-                 center_rdz=None, deg=True):
+                 center_radec=None, deg=True):
         self.z_low, self.z_high = z_low, z_high
         self.sample_fraction = sample_fraction
         self.min_dict, self.max_dict = min_dict, max_dict
         self.cosmo, self.deg = cosmo, deg
 
-        simbox = httools.SimBox(empty=True)
+        z,dz = (z_high+z_low)/2., z_high - z_low
+
+        simbox = httools.SimBox(redshift=z, empty=True)
         self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=scheme,
-                                  center_rdz=center_rdz)
+                                  center_rdz=center_radec, delta_z=dz)
         self.field_selector = self.field.field_selector
 
     def __call__(self, lightcone, seed=None):
@@ -110,11 +113,19 @@ class LightConeSelector:
             rands = hf.rdz2xyz(rands, cosmo=None, use_um_convention=True)
         else:
             rands[:, 2] = hf.distance2redshift(rands[:, 2],
-                                                  vr=None, cosmo=self.cosmo)
+                                                vr=None, cosmo=self.cosmo)
             # Convert radians to degrees
             if self.deg:
                 rands[:, :2] *= 180 / np.pi
         return rands
+
+    def block_digitize(self, lightcone, nbins=(2,2,1)):
+        data = hf.xyz_array(lightcone, ["ra", "dec", "redshift"])
+        fieldshape = self.field.get_shape(rdz=True, deg=self.deg)
+        center = self.field.center_rdz
+
+        return cf._assign_block_indices(data, None, center,
+                                        fieldshape, nbins)[0]
 
 
 class CompletenessTester:
