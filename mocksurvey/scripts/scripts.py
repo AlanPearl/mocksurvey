@@ -1,10 +1,12 @@
 import argparse
 
-def lightcone():
-    from ..mocksurvey import lightcone
 
+def lightcone():
+    from .. import lightcone
     desc = ("Creates a UniverseMachine lightcone that includes magnitudes "
             " and spectral IDs matched to galaxies in the COSMOS field.")
+
+    # noinspection PyTypeChecker
     parser = argparse.ArgumentParser(description=desc,
                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -69,3 +71,110 @@ def lightcone():
         outfilepath=a.outfilepath, outfilebase=a.outfilebase, id_tag=a.id_tag,
         do_collision_test=a.do_collision_test, ra=a.ra_center,
         dec=a.dec_center, theta=a.theta_center, rseed=a.rseed)
+
+
+def set_data_path():
+    import os
+    import pathlib
+    from .. import mocksurvey as ms
+
+    desc = "Set the path where you would like all the data to be stored"
+
+    # noinspection PyTypeChecker
+    parser = argparse.ArgumentParser(description=desc,
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    # Mandatory positional arguments
+    parser.add_argument("DATAPATH", type=str)
+
+    a = parser.parse_args()
+    path = os.path.join(a.DATAPATH, "UniverseMachine")
+    pathlib.Path(path).mkdir(exist_ok=True)
+    ms.UMConfig(path).update()
+
+    path = os.path.join(a.DATAPATH, "UVISTA")
+    pathlib.Path(path).mkdir(exist_ok=True)
+    ms.UVISTAConfig(path).update()
+
+    path = os.path.join(a.DATAPATH, "SeanSpectra")
+    pathlib.Path(path).mkdir(exist_ok=True)
+    ms.SeanSpectraConfig(path).update()
+
+
+def download_um():
+    from .. import mocksurvey as ms
+
+    desc = ("Download all UniverseMachine SFR catalogs from peterbehroozi.com "
+            "closest to specified redshift (or between a range of redshifts)")
+
+    # noinspection PyTypeChecker
+    parser = argparse.ArgumentParser(description=desc,
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    # Mandatory positional arguments
+    parser.add_argument("Z_LOW", type=float, help="Lower redshift bound. If "
+                "upper bound not supplied, download closest redshift to Z_LOW")
+
+    # Optional positional arguments
+    parser.add_argument("Z_HIGH", type=float, default=None, nargs="?",
+                        help="Upper redshift bound to download catalogs")
+
+    a = parser.parse_args()
+    redshift = a.Z_LOW if a.Z_HIGH is None else [a.Z_LOW, a.Z_HIGH]
+
+    ms.UMWgetter().download_sfrcat_redshift(redshift)
+
+
+def download_uvista():
+    from .. import mocksurvey as ms
+
+    wgetter = ms.UVISTAWgetter()
+    wgetter.download_uvista()
+    wgetter.download_seanspectra()
+
+
+def config():
+    from .. import mocksurvey as ms
+    datasets = {
+        "UM": ms.UMConfig,
+        "UVISTA": ms.UVISTAConfig,
+        "SeanSpectra": ms.SeanSpectraConfig,
+        "LightCone": ms.LightConeConfig,
+    }
+    cmds = {
+        "set-path": None,
+        "auto-add": None,
+        "reset": None,
+        "add": None,
+        "remove": None,
+        "set-lightcone-executable (UM only)": None,
+    }
+
+
+    desc = ("Configure data storage used by mocksurvey")
+
+    # noinspection PyTypeChecker
+    parser = argparse.ArgumentParser(description=desc,
+                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    # Mandatory positional arguments
+    parser.add_argument("DATASET", type=str, help=f"Options: {set(datasets.keys())}")
+
+    # Optional positional arguments
+    parser.add_argument("COMMAND", type=str, default=[], nargs="+",
+                        help=f"Options: {set(cmds.keys())}")
+
+    a = parser.parse_args()
+    assert len(a.COMMAND) > 0, "Usage: supply a command (and any relevant arguments)"
+
+    config = datasets[a.DATASET]
+    if a.COMMAND[0] == "set-path":
+        config(*a.COMMAND[1:]).update()
+
+    {
+        "auto-add": config().auto_add,
+        "reset": config().reset,
+        "add": config().add,
+        "remove": config().remove,
+        "set-lightcone-executable": config().set_lightcone_executable
+    }[a.COMMAND[0]](*a.COMMAND[1:])

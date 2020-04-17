@@ -730,3 +730,22 @@ def correction_for_empty_bins(original_centroids, original_indices):
     new_centroids = np.asarray(original_centroids)[~bin_is_empty]
     new_indices = original_indices - correction
     return new_centroids, new_indices
+
+
+def choose_close_index(value, values, tolerance=0.05):
+    if isinstance(tolerance, str):
+        # Return the closest index, regardless of how far away the value is
+        return np.argmin(np.abs(value - np.asarray(values)))
+    else:
+        # Demand exactly one value within the tolerance
+        # else raise ValueError
+        wh = np.where(np.isclose(values, value,
+                                 rtol=0, atol=tolerance))[0]
+        if len(wh) < 1:
+            raise ValueError(f"No values matching {value}. Try "
+                             f"increasing tolerance from {tolerance}. Available "
+                             f"values: {values}")
+        if len(wh) > 1:
+            raise ValueError("Multiple matching redshifts:" 
+                             f"{values[wh]}")
+        return wh[0]

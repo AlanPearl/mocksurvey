@@ -20,3 +20,5 @@ MockSurvey:
 """
 
 from .mocksurvey import *
+from .stats import stats
+from .ummags import lightcone

@@ -10,6 +10,7 @@ setup(name="mocksurvey",
       packages=find_packages(),
       python_requires=">=3.7",
       install_requires = [
+            "wget",
             "h5py",
             "numpy",
             "scipy",

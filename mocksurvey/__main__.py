@@ -1,9 +1,13 @@
 from sys import argv
 from .scripts import scripts
 
-available_scripts = dict(
-    lightcone = scripts.lightcone,
-)
+available_scripts = {
+    "lightcone": scripts.lightcone,
+    "set-data-path": scripts.set_data_path,
+    "download-um": scripts.download_um,
+    "download-uvista": scripts.download_uvista,
+    "config": scripts.config,
+}
 
 if __name__ == "__main__":
     # Error message if first argument is not a valid command

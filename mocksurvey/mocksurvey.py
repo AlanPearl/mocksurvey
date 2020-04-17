@@ -6,8 +6,11 @@ Some useful classes for coducting mock surveys of galaxies populated by `halotoo
 """
 
 import os
+import pathlib
 import warnings
 import json
+import tarfile
+import wget
 import numpy as np
 import pandas as pd
 import astropy.table as astropy_table
@@ -16,10 +19,7 @@ import astropy.table as astropy_table
 from . import hf
 # Local packages
 from .httools import httools
-from .stats import stats
 from .ummags import ummags
-# Local function
-from .ummags import lightcone
 # Default cosmology (Bolshoi-Planck)
 from .httools.httools import bplcosmo
 
@@ -376,7 +376,9 @@ class UMConfig(BaseConfig):
         """
         BaseConfig.auto_add(self)
         self.auto_add_lightcones()
-    auto_add.__doc__ = BaseConfig.auto_add.__doc__
+        self.setup_snaps_txt()
+        self.setup_lightcone_cfg()
+    auto_add.__doc__ += "\n" + BaseConfig.auto_add.__doc__
 
     def add(self, filename, redshift=None):
         """
@@ -421,11 +423,52 @@ class UMConfig(BaseConfig):
         self.update()
         return i
 
+    def setup_snaps_txt(self):
+        sfr_cats = UMWgetter().sfr_cats
+        scales = [i.split("_")[-1][:-4] for i in sfr_cats]
+        indices = list(range(len(scales)))
+        lines = []
+        for fname,scale,index in zip(sfr_cats,scales,indices):
+            if fname in self.config["files"]:
+                line = f"{index} {scale}"
+                lines.append(line)
+        snaps_txt = "\n".join(lines)
+        snaps_file = os.path.join(self.config["data_dir"], "snaps.txt")
+        open(snaps_file, mode="w").write(snaps_txt)
+
+    def setup_lightcone_cfg(self):
+        lightcone_txt = f"""#Input/output locations and details
+INBASE = {self.config["data_dir"]} # directory with snaps.txt
+OUTBASE = {self.config["data_dir"]} # directory with sfr_catalogs
+NUM_BLOCKS = 144 #The number of cat.box* files
+
+#Box size / cosmology
+BOX_SIZE = 250 #In Mpc/h
+Om = 0.307     #Omega_matter
+Ol = 0.693     #Omega_lambda
+h0 = 0.68      #h0 = H0 / (100 km/s/Mpc)
+fb = 0.158     #cosmic baryon fraction
+
+#Parallel node setup
+NUM_NODES = 48           #Total number of nodes used
+BLOCKS_PER_NODE = 24    #Parallel tasks per node
+#This will generate 8 universes in parallel:
+#24 x 48 = 1152 = 144 (NUM_BLOCKS) x 8
+#A minimum of NUM_NODES = 6 should be used to generate one universe if
+#BLOCKS_PER_NODE = 24, since 144 = 24 x 6.
+
+#Option to calculate ICL
+CALC_ICL = 1"""
+        lightcone_file = os.path.join(self.config["data_dir"], "lightcone.cfg")
+        open(lightcone_file, mode="w").write(lightcone_txt)
+        self.set_lightcone_config(lightcone_file)
+
     def auto_add_lightcones(self):
         """
         Automatically add all lightcones found via add_lightcone
         """
         path = os.path.join(self.config["data_dir"], "lightcones")
+        pathlib.Path(path).mkdir(exist_ok=True)
         candidates = [os.path.join(path, name) for name in os.listdir(path)]
         dirs = [c for c in candidates if os.path.isdir(c)]
         names = [os.path.split(d)[1] for d in dirs]
@@ -456,16 +499,8 @@ class UMConfig(BaseConfig):
         raise NotImplementedError()
 
     def _get_file_at_redshift(self, redshift, ztol):
-        wh = np.where(np.isclose(self.config["z"], redshift,
-                                 rtol=0, atol=ztol))[0]
-        if len(wh) < 1:
-            raise ValueError(f"No redshifts matching {redshift}. Try "
-                             f"increasing ztol from {ztol}. Available "
-                             f"redshifts: {self.config['z']}")
-        if len(wh) > 1:
-            raise ValueError("Multiple matching redshifts:" 
-                             f"{self.config['z'][wh]}")
-        return self.config["files"][wh[0]], self.config["z"][wh[0]]
+        i = hf.choose_close_index(redshift, self.config["z"], ztol)
+        return self.config["files"][i], self.config["z"][i]
 
     @staticmethod
     def _infer_redshift(filename):
@@ -607,11 +642,14 @@ class UVISTAConfig(BaseConfig):
         "uv": "UVISTA_final_v4.1.153-155.rf", # rest-frame U,V
         "vj": "UVISTA_final_v4.1.155-161.rf", # rest-frame V,J
     }
+    def _msg1(self, ftype):
+        return f"File type {repr(ftype)} not recognized. " \
+               f"Must be one of {set(self.UVISTAFILES.keys())}"
+
     PHOTBANDS = {"k": "Ks", "h": "H", "j": "J", "y": "Y",
                  "z": "zp", "i": "ip", "r": "rp", "v": "V",
                  "g": "gp", "b": "B", "u": "u"}
-    _msg1 = lambda ftype: f"File type {repr(ftype)} not recognized. " \
-                          f"Must be one of {set(UVISTAFILES.keys())}"
+
     def __init__(self, data_dir=None, photbands=None):
         config_dir, config_file = "config", "uvista-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
@@ -643,8 +681,7 @@ class UVISTAConfig(BaseConfig):
         BaseConfig.remove(self, filename)
         self.update()
 
-    @staticmethod
-    def get_names(filetype):
+    def get_names(self, filetype):
         if filetype == "p":
          return ['id','ra','dec','xpix','ypix','Ks_tot','eKs_tot','Ks',
          'eKs', 'H', 'eH', 'J', 'eJ', 'Y', 'eY', 'ch4', 'ech4', 'ch3',
@@ -673,7 +710,7 @@ class UVISTAConfig(BaseConfig):
         elif filetype == "vj":
          return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L155', 'L161']
         else:
-            raise ValueError(_msg1(filetype))
+            raise ValueError(self._msg1(filetype))
 
     def names_to_keep(self, filetype):
         if filetype == "p":
@@ -691,10 +728,9 @@ class UVISTAConfig(BaseConfig):
         elif filetype == "vj":
             return ["L155", "L161"]
         else:
-            raise ValueError(_msg1(filetype))
+            raise ValueError(self._msg1(filetype))
 
-    @staticmethod
-    def get_skips(filetype):
+    def get_skips(self, filetype):
         if filetype == "p" or filetype == "z":
             return 1
         elif filetype == "f":
@@ -704,7 +740,7 @@ class UVISTAConfig(BaseConfig):
         elif filetype == "uv" or filetype == "vj":
             return 11
         else:
-            raise ValueError(_msg1(filetype))
+            raise ValueError(self._msg1(filetype))
 
     def are_all_files_stored(self):
         return len(self.config["files"]) == len(self.UVISTAFILES)
@@ -837,3 +873,72 @@ class SeanSpectraConfig(BaseConfig):
         path = self.get_filepath(3)
         shape = (self.specid().size, self.wavelength().size)
         return lambda: np.memmap(path, dtype="<f4", shape=shape)
+
+class UMWgetter:
+    def __init__(self):
+        """
+        Class designed to handle downloading UniverseMachine SFR catalogs
+        from peterbehroozi.com/data
+        """
+        self.url = "http://behroozi.users.hpc.arizona.edu/UniverseMachine/DR1/SFR/"
+        self.webpage = """[   ] sfr_catalog_0.055623.bin          01-Dec-2019 10:16  11K
+[   ] sfr_catalog_0.060123.bin          01-Dec-2019 10:16  126K
+[   ] sfr_catalog_0.062373.bin          01-Dec-2019 10:16  296K\n[   ] sfr_catalog_0.064623.bin          01-Dec-2019 10:16  632K\n[   ] sfr_catalog_0.066873.bin          01-Dec-2019 10:16  1.2M\n[   ] sfr_catalog_0.069123.bin          01-Dec-2019 10:16  2.2M\n[   ] sfr_catalog_0.071373.bin          01-Dec-2019 10:16  3.7M\n[   ] sfr_catalog_0.073623.bin          01-Dec-2019 10:16  6.1M\n[   ] sfr_catalog_0.075873.bin          01-Dec-2019 10:16  9.4M\n[   ] sfr_catalog_0.078123.bin          01-Dec-2019 10:16  14M\n[   ] sfr_catalog_0.080373.bin          01-Dec-2019 10:16  20M\n[   ] sfr_catalog_0.082623.bin          01-Dec-2019 10:16  27M\n[   ] sfr_catalog_0.085998.bin          01-Dec-2019 10:16  42M\n[   ] sfr_catalog_0.089373.bin          01-Dec-2019 10:16  62M\n[   ] sfr_catalog_0.092748.bin          01-Dec-2019 10:16  88M\n[   ] sfr_catalog_0.096123.bin          01-Dec-2019 10:16  120M\n[   ] sfr_catalog_0.099498.bin          01-Dec-2019 10:16  159M\n[   ] sfr_catalog_0.102873.bin          01-Dec-2019 10:16  203M\n[   ] sfr_catalog_0.106248.bin          01-Dec-2019 10:16  253M\n[   ] sfr_catalog_0.109623.bin          01-Dec-2019 10:16  308M\n[   ] sfr_catalog_0.112998.bin          01-Dec-2019 10:16  368M\n[   ] sfr_catalog_0.116373.bin          01-Dec-2019 10:16  432M\n[   ] sfr_catalog_0.119748.bin          01-Dec-2019 10:16  498M\n[   ] sfr_catalog_0.123123.bin          01-Dec-2019 10:17  565M\n[   ] sfr_catalog_0.126498.bin          01-Dec-2019 10:17  634M\n[   ] sfr_catalog_0.129873.bin          01-Dec-2019 10:17  705M\n[   ] sfr_catalog_0.133248.bin          01-Dec-2019 10:17  777M\n[   ] sfr_catalog_0.136623.bin          01-Dec-2019 10:17  850M\n[   ] sfr_catalog_0.141685.bin          01-Dec-2019 10:17  957M\n[   ] sfr_catalog_0.146748.bin          01-Dec-2019 10:18  1.0G\n[   ] sfr_catalog_0.151810.bin          01-Dec-2019 10:18  1.1G\n[   ] sfr_catalog_0.156873.bin          01-Dec-2019 10:18  1.3G\n[   ] sfr_catalog_0.161935.bin          01-Dec-2019 10:18  1.4G\n[   ] sfr_catalog_0.166998.bin          01-Dec-2019 10:19  1.5G\n[   ] sfr_catalog_0.172060.bin          01-Dec-2019 10:19  1.5G\n[   ] sfr_catalog_0.177123.bin          01-Dec-2019 10:20  1.6G\n[   ] sfr_catalog_0.182185.bin          01-Dec-2019 10:20  1.7G\n[   ] sfr_catalog_0.187248.bin          01-Dec-2019 10:20  1.8G\n[   ] sfr_catalog_0.192310.bin          01-Dec-2019 10:21  1.8G\n[   ] sfr_catalog_0.197373.bin          01-Dec-2019 10:21  1.9G\n[   ] sfr_catalog_0.202435.bin          01-Dec-2019 10:22  1.9G\n[   ] sfr_catalog_0.207498.bin          01-Dec-2019 10:22  2.0G\n[   ] sfr_catalog_0.212560.bin          01-Dec-2019 10:23  2.0G\n[   ] sfr_catalog_0.217623.bin          01-Dec-2019 10:23  2.1G\n[   ] sfr_catalog_0.222685.bin          01-Dec-2019 10:24  2.1G\n[   ] sfr_catalog_0.227748.bin          01-Dec-2019 10:24  2.1G\n[   ] sfr_catalog_0.232810.bin          01-Dec-2019 10:24  2.1G\n[   ] sfr_catalog_0.237873.bin          01-Dec-2019 10:25  2.2G\n[   ] sfr_catalog_0.242935.bin          01-Dec-2019 10:25  2.2G\n[   ] sfr_catalog_0.247998.bin          01-Dec-2019 10:26  2.2G\n[   ] sfr_catalog_0.253060.bin          01-Dec-2019 10:27  2.2G\n[   ] sfr_catalog_0.258123.bin          01-Dec-2019 10:27  2.2G\n[   ] sfr_catalog_0.263185.bin          01-Dec-2019 10:28  2.2G\n[   ] sfr_catalog_0.268248.bin          01-Dec-2019 10:28  2.3G\n[   ] sfr_catalog_0.273310.bin          01-Dec-2019 10:29  2.3G\n[   ] sfr_catalog_0.278373.bin          01-Dec-2019 10:29  2.3G\n[   ] sfr_catalog_0.283435.bin          01-Dec-2019 10:30  2.3G\n[   ] sfr_catalog_0.288498.bin          01-Dec-2019 10:30  2.3G\n[   ] sfr_catalog_0.293560.bin          01-Dec-2019 10:31  2.3G\n[   ] sfr_catalog_0.298623.bin          01-Dec-2019 10:32  2.3G\n[   ] sfr_catalog_0.303685.bin          01-Dec-2019 10:32  2.3G\n[   ] sfr_catalog_0.308748.bin          01-Dec-2019 10:33  2.3G\n[   ] sfr_catalog_0.313810.bin          01-Dec-2019 10:33  2.3G\n[   ] sfr_catalog_0.318873.bin          01-Dec-2019 10:33  2.3G\n[   ] sfr_catalog_0.323935.bin          01-Dec-2019 10:34  2.3G\n[   ] sfr_catalog_0.328997.bin          01-Dec-2019 10:34  2.3G\n[   ] sfr_catalog_0.334060.bin          01-Dec-2019 10:35  2.3G\n[   ] sfr_catalog_0.339122.bin          01-Dec-2019 10:35  2.3G\n[   ] sfr_catalog_0.344185.bin          01-Dec-2019 10:35  2.3G\n[   ] sfr_catalog_0.349247.bin          01-Dec-2019 10:36  2.3G\n[   ] sfr_catalog_0.354310.bin          01-Dec-2019 10:36  2.3G\n[   ] sfr_catalog_0.359372.bin          01-Dec-2019 10:37  2.3G\n[   ] sfr_catalog_0.364435.bin          01-Dec-2019 10:37  2.3G\n[   ] sfr_catalog_0.369497.bin          01-Dec-2019 10:38  2.3G\n[   ] sfr_catalog_0.374560.bin          01-Dec-2019 10:39  2.3G\n[   ] sfr_catalog_0.379622.bin          01-Dec-2019 10:39  2.2G\n[   ] sfr_catalog_0.384685.bin          01-Dec-2019 10:40  2.2G\n[   ] sfr_catalog_0.389747.bin          01-Dec-2019 10:40  2.2G\n[   ] sfr_catalog_0.394810.bin          01-Dec-2019 10:41  2.2G\n[   ] sfr_catalog_0.399872.bin          01-Dec-2019 10:41  2.2G\n[   ] sfr_catalog_0.404935.bin          01-Dec-2019 10:42  2.2G\n[   ] sfr_catalog_0.409997.bin          01-Dec-2019 10:42  2.2G\n[   ] sfr_catalog_0.415060.bin          01-Dec-2019 10:43  2.2G\n[   ] sfr_catalog_0.420122.bin          01-Dec-2019 10:43  2.2G\n[   ] sfr_catalog_0.425185.bin          01-Dec-2019 10:44  2.2G\n[   ] sfr_catalog_0.430247.bin          01-Dec-2019 10:44  2.2G\n[   ] sfr_catalog_0.435310.bin          01-Dec-2019 10:45  2.2G\n[   ] sfr_catalog_0.440372.bin          01-Dec-2019 10:45  2.2G\n[   ] sfr_catalog_0.445435.bin          01-Dec-2019 10:46  2.1G\n[   ] sfr_catalog_0.450497.bin          01-Dec-2019 10:47  2.1G\n[   ] sfr_catalog_0.455560.bin          01-Dec-2019 10:47  2.1G\n[   ] sfr_catalog_0.460622.bin          01-Dec-2019 10:48  2.1G\n[   ] sfr_catalog_0.465685.bin          01-Dec-2019 10:48  2.1G\n[   ] sfr_catalog_0.470747.bin          01-Dec-2019 10:48  2.1G\n[   ] sfr_catalog_0.475810.bin          01-Dec-2019 10:49  2.1G\n[   ] sfr_catalog_0.480872.bin          01-Dec-2019 10:49  2.1G\n[   ] sfr_catalog_0.485935.bin          01-Dec-2019 10:50  2.1G\n[   ] sfr_catalog_0.490997.bin          01-Dec-2019 10:50  2.1G\n[   ] sfr_catalog_0.496060.bin          01-Dec-2019 10:51  2.1G\n[   ] sfr_catalog_0.501122.bin          01-Dec-2019 10:51  2.0G\n[   ] sfr_catalog_0.506185.bin          01-Dec-2019 10:52  2.0G\n[   ] sfr_catalog_0.511247.bin          01-Dec-2019 10:52  2.0G\n[   ] sfr_catalog_0.516310.bin          01-Dec-2019 10:53  2.0G\n[   ] sfr_catalog_0.521372.bin          01-Dec-2019 10:53  2.0G\n[   ] sfr_catalog_0.526435.bin          01-Dec-2019 10:53  2.0G\n[   ] sfr_catalog_0.531497.bin          01-Dec-2019 10:54  2.0G\n[   ] sfr_catalog_0.536560.bin          01-Dec-2019 10:54  2.0G\n[   ] sfr_catalog_0.541622.bin          01-Dec-2019 10:55  2.0G\n[   ] sfr_catalog_0.546685.bin          01-Dec-2019 10:55  2.0G\n[   ] sfr_catalog_0.551747.bin          01-Dec-2019 10:56  2.0G\n[   ] sfr_catalog_0.556810.bin          01-Dec-2019 10:57  2.0G\n[   ] sfr_catalog_0.561872.bin          01-Dec-2019 10:57  1.9G\n[   ] sfr_catalog_0.566935.bin          01-Dec-2019 10:58  1.9G\n[   ] sfr_catalog_0.571997.bin          01-Dec-2019 10:58  1.9G\n[   ] sfr_catalog_0.577060.bin          01-Dec-2019 10:58  1.9G\n[   ] sfr_catalog_0.582123.bin          01-Dec-2019 10:59  1.9G\n[   ] sfr_catalog_0.587185.bin          01-Dec-2019 10:59  1.9G\n[   ] sfr_catalog_0.592248.bin          01-Dec-2019 11:00  1.9G\n[   ] sfr_catalog_0.597310.bin          01-Dec-2019 11:00  1.9G\n[   ] sfr_catalog_0.602373.bin          01-Dec-2019 11:01  1.9G\n[   ] sfr_catalog_0.607435.bin          01-Dec-2019 11:01  1.9G\n[   ] sfr_catalog_0.612498.bin          01-Dec-2019 11:02  1.9G\n[   ] sfr_catalog_0.617560.bin          01-Dec-2019 11:02  1.9G\n[   ] sfr_catalog_0.622623.bin          01-Dec-2019 11:03  1.9G\n[   ] sfr_catalog_0.627685.bin          01-Dec-2019 11:03  1.9G\n[   ] sfr_catalog_0.632748.bin          01-Dec-2019 11:04  1.8G\n[   ] sfr_catalog_0.637810.bin          01-Dec-2019 11:04  1.8G\n[   ] sfr_catalog_0.642873.bin          01-Dec-2019 11:05  1.8G\n[   ] sfr_catalog_0.647935.bin          01-Dec-2019 11:05  1.8G\n[   ] sfr_catalog_0.652998.bin          01-Dec-2019 11:05  1.8G\n[   ] sfr_catalog_0.658060.bin          01-Dec-2019 11:06  1.8G\n[   ] sfr_catalog_0.663123.bin          01-Dec-2019 11:06  1.8G\n[   ] sfr_catalog_0.668185.bin          01-Dec-2019 11:07  1.8G\n[   ] sfr_catalog_0.673248.bin          01-Dec-2019 11:07  1.8G\n[   ] sfr_catalog_0.678310.bin          01-Dec-2019 11:07  1.8G\n[   ] sfr_catalog_0.683373.bin          01-Dec-2019 11:08  1.8G\n[   ] sfr_catalog_0.690967.bin          01-Dec-2019 11:08  1.8G\n[   ] sfr_catalog_0.698560.bin          01-Dec-2019 11:09  1.8G\n[   ] sfr_catalog_0.706154.bin          01-Dec-2019 11:09  1.8G\n[   ] sfr_catalog_0.713748.bin          01-Dec-2019 11:09  1.8G\n[   ] sfr_catalog_0.721342.bin          01-Dec-2019 11:10  1.7G\n[   ] sfr_catalog_0.728935.bin          01-Dec-2019 11:10  1.7G\n[   ] sfr_catalog_0.736529.bin          01-Dec-2019 11:10  1.7G\n[   ] sfr_catalog_0.744123.bin          01-Dec-2019 11:11  1.7G\n[   ] sfr_catalog_0.751717.bin          01-Dec-2019 11:11  1.7G\n[   ] sfr_catalog_0.759310.bin          01-Dec-2019 11:12  1.7G\n[   ] sfr_catalog_0.766904.bin          01-Dec-2019 11:12  1.7G\n[   ] sfr_catalog_0.774498.bin          01-Dec-2019 11:13  1.7G\n[   ] sfr_catalog_0.782092.bin          01-Dec-2019 11:13  1.7G\n[   ] sfr_catalog_0.789685.bin          01-Dec-2019 11:13  1.7G\n[   ] sfr_catalog_0.797279.bin          01-Dec-2019 11:14  1.7G\n[   ] sfr_catalog_0.804873.bin          01-Dec-2019 11:14  1.7G\n[   ] sfr_catalog_0.812467.bin          01-Dec-2019 11:14  1.7G\n[   ] sfr_catalog_0.820060.bin          01-Dec-2019 11:15  1.7G\n[   ] sfr_catalog_0.827654.bin          01-Dec-2019 11:15  1.7G\n[   ] sfr_catalog_0.835248.bin          01-Dec-2019 11:16  1.7G\n[   ] sfr_catalog_0.842842.bin          01-Dec-2019 11:16  1.7G\n[   ] sfr_catalog_0.850435.bin          01-Dec-2019 11:16  1.6G\n[   ] sfr_catalog_0.858029.bin          01-Dec-2019 11:17  1.6G\n[   ] sfr_catalog_0.865623.bin          01-Dec-2019 11:17  1.6G\n[   ] sfr_catalog_0.873217.bin          01-Dec-2019 11:18  1.6G\n[   ] sfr_catalog_0.880810.bin          01-Dec-2019 11:18  1.6G\n[   ] sfr_catalog_0.888404.bin          01-Dec-2019 11:19  1.6G\n[   ] sfr_catalog_0.895998.bin          01-Dec-2019 11:19  1.6G\n[   ] sfr_catalog_0.903592.bin          01-Dec-2019 11:20  1.6G\n[   ] sfr_catalog_0.911185.bin          01-Dec-2019 11:20  1.6G\n[   ] sfr_catalog_0.918779.bin          01-Dec-2019 11:21  1.6G\n[   ] sfr_catalog_0.926373.bin          01-Dec-2019 11:21  1.6G\n[   ] sfr_catalog_0.933967.bin          01-Dec-2019 11:21  1.6G\n[   ] sfr_catalog_0.941560.bin          01-Dec-2019 11:22  1.6G\n[   ] sfr_catalog_0.949154.bin          01-Dec-2019 11:22  1.6G\n[   ] sfr_catalog_0.956748.bin          01-Dec-2019 11:23  1.6G\n[   ] sfr_catalog_0.964342.bin          01-Dec-2019 11:24  1.6G\n[   ] sfr_catalog_0.971935.bin          01-Dec-2019 11:25  1.6G\n[   ] sfr_catalog_0.979529.bin          01-Dec-2019 11:26  1.6G\n[   ] sfr_catalog_0.987123.bin          01-Dec-2019 11:26  1.6G\n[   ] sfr_catalog_0.994717.bin          01-Dec-2019 11:26  1.6G\n[   ] sfr_catalog_1.002310.bin          01-Dec-2019 11:27  1.6G"""
+        self.sfr_cats = [i.split()[2] for i in self.webpage.split("\n")]
+        self.scales = np.array([float(i.split("_")[-1][:-4]) for i in self.sfr_cats])
+        self.redshifts = 1/self.scales - 1
+
+        unitsize = dict(K=2 ** 10, M=2 ** 20, G=2 ** 30)
+        sizes = [i.split()[-1] for i in self.webpage.split("\n")]
+        self.sizes = [float(i[:-1]) * unitsize[i[-1]] for i in sizes]
+
+    def download_sfrcat_index(self, i, verbose=1):
+        file_url = self.url + self.sfr_cats[i]
+        if verbose:
+            print("wget " + file_url)
+        wget.download(file_url, out=UMConfig().config["data_dir"])
+
+    def download_sfrcat_redshift(self, redshift):
+        zmin, zmax = np.min(redshift), np.max(redshift)
+        imin = hf.choose_close_index(zmax, self.redshifts, "any")
+        imax = hf.choose_close_index(zmin, self.redshifts, "any")
+        for i in range(imin,imax+1):
+            self.download_sfrcat_index(i)
+        UMConfig().auto_add()
+
+class UVISTAWgetter:
+    def __init__(self):
+        """
+        Class designed to handle downloading UltraVISTA and SeanSpectra files
+        """
+
+        self.uvista_url = "https://pitt.box.com/shared/static/75iv3bi05jv69marxr9393gaue4qgn52.gz"
+        self.sean_url = "https://pitt.box.com/shared/static/cg2ma677ebl9fujdyv8pcay3jq533pkf.gz"
+
+        self.uvista_path = UVISTAConfig().config["data_dir"]
+        self.sean_path = SeanSpectraConfig().config["data_dir"]
+
+        self.uvista_tarf = os.path.join(self.uvista_path, "UVISTA_data.tar.gz")
+        self.sean_tarf = os.path.join(self.sean_path, "SeanSpectra_data.tar.gz")
+
+    def download_uvista(self):
+        wget.download(self.uvista_url, out=self.uvista_path)
+        uvista_tar = tarfile.open(self.uvista_tarf)
+
+        for member in uvista_tar.getmembers():
+            member.path = member.path.split("/")[-1]
+
+        uvista_tar.extractall(path=self.uvista_path)
+        os.remove(self.uvista_tarf)
+        UVISTAConfig().auto_add()
+
+    def download_seanspectra(self):
+        wget.download(self.sean_url, out=self.sean_path)
+        sean_tar = tarfile.open(self.sean_tarf)
+
+        for member in sean_tar.getmembers():
+            member.path = member.path.split("/")[-1]
+
+        sean_tar.extractall(path=self.sean_path)
+        os.remove(self.sean_tarf)
+        SeanSpectraConfig().auto_add()
