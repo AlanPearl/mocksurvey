@@ -1,4 +1,5 @@
 from sys import argv
+import argparse
 from .scripts import scripts
 
 available_scripts = {
@@ -10,12 +11,25 @@ available_scripts = {
 }
 
 if __name__ == "__main__":
-    # Error message if first argument is not a valid command
-    msg = f"Usage: python -m mocksurvey {set(available_scripts.keys())}"
-    if len(argv) < 2:
-        raise IOError(msg)
+    argv[0] = "python -m mocksurvey"
+    desc = "You can execute several mocksurvey functions from the command line"
+
+    # noinspection PyTypeChecker
+    parser = argparse.ArgumentParser(description=desc)
+
+    # Mandatory positional arguments
+    parser.add_argument("COMMAND", type=str, help="Options: "
+                                                  f"{set(available_scripts.keys())}")
+
+    # Optional positional arguments
+    parser.add_argument("ARGS", type=str, default=[], nargs="*",
+                        help="Positional arguments for COMMAND")
+
+    a = parser.parse_args()
+
     if not argv[1] in available_scripts:
-        raise IOError(f"Unknown command \"{argv[1]}\".\n{msg}")
+        raise IOError(f"Unknown command \"{argv[1]}\".\nOptions: "
+                      f"{set(available_scripts.keys())}")
 
     # Run the specified command
     argv.pop(0)
