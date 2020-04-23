@@ -670,7 +670,6 @@ class UVISTAConfig(BaseConfig):
                             for k in set(photbands) | {"k"}}
         self.update()
 
-
     def get_filepath(self, filetype):
         """
         Returns the absolute path to the requested file.
@@ -682,7 +681,7 @@ class UVISTAConfig(BaseConfig):
     get_filepath.__doc__ += "\n" + repr(UVISTAFILES)
 
     def add(self, filename):
-        if not filename in self.UVISTAFILES.values():
+        if filename not in self.UVISTAFILES.values():
             raise ValueError("That's not a UVISTA file")
 
         BaseConfig.add(self, filename)
@@ -776,8 +775,8 @@ class UVISTAConfig(BaseConfig):
         logssfr = dat[1]["lssfr"]
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
-            d_com = cosmo.comoving_distance(z).value * cosmo.h
-            d_lum = cosmo.luminosity_distance(z).value * cosmo.h
+            d_com = cosmo.comoving_distance(z.values).value * cosmo.h
+            d_lum = cosmo.luminosity_distance(z.values).value * cosmo.h
 
             aperture_factor = dat[0]["Ks_tot"] / dat[0]["Ks"]
             relative_mags = {

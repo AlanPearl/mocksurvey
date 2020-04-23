@@ -10,6 +10,7 @@ import halotools.empirical_models as ht_empirical_models
 import halotools.sim_manager as ht_sim_manager
 from .. import mocksurvey as ms
 
+
 def lightcone(z_low, z_high, x_arcmin, y_arcmin,
                    executable=None, umcfg=None, samples=1,
                    photbands=None, keep_ascii_files=False,
@@ -24,7 +25,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     files, moved_files = _generate_lightcone_filenames(args, outfilepath,
                                                        outfilebase)
     # Check prerequisites
-    assert(vparse(ht.version.version) >= vparse("0.7dev"))
+    assert(vparse(ht.__version__) >= vparse("0.7dev"))
     if not ms.UVISTAConfig().are_all_files_stored():
         raise ValueError("You have not specified paths to all "
                       "UltraVISTA data. "
@@ -214,7 +215,7 @@ def _get_photbands(photbands):
 #     return reg, photbands, (uvista_z, uvista_logm, uvista_logssfr_uv)
 
 def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz, nwin=501):
-    assert (vparse(ht.version.version) >= vparse("0.7dev"))
+    assert (vparse(ht.__version__) >= vparse("0.7dev"))
     z_sel = (z_avg - dz/2 <= z2) & (z2 <= z_avg + dz/2)
 
     nwin1 = min([nwin, z_sel.sum() // 2 * 2 - 1])
@@ -229,7 +230,7 @@ def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz, nwin=501):
 
 def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
                  min_counts_in_z2_bins=None):
-    assert (vparse(ht.version.version) >= vparse("0.7dev"))
+    assert (vparse(ht.__version__) >= vparse("0.7dev"))
     assert (dz > 0)
     if min_counts_in_z2_bins is None:
         min_counts_in_z2_bins = nwin+1
@@ -281,7 +282,7 @@ def _execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
     if umcfg is None:
         # umcfg = homedir + "data/LightCone/um-lightcone.cfg"
         umcfg = ms.UMConfig().config["lightcone_config"]
-    if not rseed is None:
+    if rseed is not None:
         assert(isinstance(rseed, int)), "Random seed must be an integer"
     assert(isinstance(samples, int)), "Number of samples must be " \
                                       "an integer"
@@ -302,8 +303,8 @@ def _execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
                         if not id_tag:
                             args.pop()
 
-    cmd=f"{str(executable)} {str(umcfg)} {float(z_low)} {float(z_high)} "\
-        f"{float(x_arcmin)} {float(y_arcmin)} {samples} {' '.join(args)}"
+    cmd = f"{str(executable)} {str(umcfg)} {float(z_low)} {float(z_high)} "\
+          f"{float(x_arcmin)} {float(y_arcmin)} {samples} {' '.join(args)}"
     print(cmd)
     return os.system(cmd)
 
@@ -373,7 +374,7 @@ class UVData:
         z = UVISTAcat["z"].values
         logm = UVISTAcat["logm"].values
         logssfr_uv = (np.log10(UVISTAcat["sfr_uv"])
-                                  - UVISTAcat["logm"]).values
+                      - UVISTAcat["logm"]).values
         abs_mag = pd.DataFrame({name[-1].lower():
                 UVISTAcat[name].values for name in self.names})
         # m2l = np.array([logm + UVISTAcat[name].values / 2.5
@@ -394,10 +395,11 @@ class UMData:
         ----------
         UMhalos : dictionary or structured array
             Must contain the columns 'obs_sm', 'obs_sfr', 'redshift'
-        photbands
+        uvdat
         snapshot_redshift
         nwin
         dz
+        seed
         """
         self.seed = seed
         self.uvdat = uvdat
@@ -495,7 +497,7 @@ class SeanSpecStacker:
         z = self.id2redshift(specids)
 
         lumcorr = (lumcorr * (1+z) / (1+redshift) *
-                (cosmo.luminosity_distance(z).value/
+                (cosmo.luminosity_distance(z).value /
                  cosmo.luminosity_distance(redshift).value)**2)
 
         specs = self.get_specmap()[idx, :] * lumcorr[:, None]

@@ -1,198 +1,222 @@
 import argparse
 
 
-def lightcone():
-    from .. import lightcone
+class LightCone:
     desc = ("Creates a UniverseMachine lightcone that includes magnitudes "
             " and spectral IDs matched to galaxies in the COSMOS field.")
 
-    # noinspection PyTypeChecker
-    parser = argparse.ArgumentParser(
-                description=desc,
-                formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    def __init__(self, parser):
+        parser.description = self.desc
+        parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
 
-    # Mandatory positional arguments
-    parser.add_argument("Z_LOW", type=float, help="Minimum redshift")
-    parser.add_argument("Z_HIGH", type=float, help="Maximum redshift")
-    parser.add_argument("X_ARCMIN", type=float, help="Horizontal field "
-                                                     "of view side length")
-    parser.add_argument("Y_ARCMIN", type=float, help="Vertical field "
-                                                     "of view side length")
-    # Optional positional arguments
-    parser.add_argument("NUM_SAMPLES", type=int, default=1, nargs="?",
-                        help="Number of realizations to create")
-    # parser.add_argument("NUM_NEAREST_SPECID", type=int, default=0, nargs="?",
-    #                     help="Number of nearest neighbors to match specid's")
+        # Mandatory positional arguments
+        parser.add_argument("Z_LOW", type=float, help="Minimum redshift")
+        parser.add_argument("Z_HIGH", type=float, help="Maximum redshift")
+        parser.add_argument("X_ARCMIN", type=float, help="Horizontal field "
+                                                         "of view side length")
+        parser.add_argument("Y_ARCMIN", type=float, help="Vertical field "
+                                                         "of view side length")
+        # Optional positional arguments
+        parser.add_argument("NUM_SAMPLES", type=int, default=1, nargs="?",
+                            help="Number of realizations to create")
+        # parser.add_argument("NUM_NEAREST_SPECID", type=int, default=0, nargs="?",
+        #                     help="Number of nearest neighbors to match specid's")
 
-    # Argument changing which photometric bands to return
-    parser.add_argument(
-        "--photbands", type=str, metavar="STRING",
-        help="String of characters specifying which magnitude bands to get."
-             " Default is GRYJ")
+        # Argument changing which photometric bands to return
+        parser.add_argument(
+            "--photbands", type=str, metavar="STRING",
+            help="String of characters specifying which magnitude bands to get."
+                 " Default is GRYJ")
 
-    # Arguments to specify paths
-    parser.add_argument(
-                "--id-tag", metavar="NAME", help="name the light"
-                "cone for easy loading with LightConeConfig(NAME).load(i). "
-                "This may not work if outfilepath is specified")
-    parser.add_argument(
-                "--outfilebase", metavar="NAME", help="base of the "
-                "filename to construct the output lightcones")
+        # Arguments to specify paths
+        parser.add_argument(
+                    "--id-tag", metavar="NAME", help="name the light"
+                    "cone for easy loading with LightConeConfig(NAME).load(i). "
+                    "This may not work if outfilepath is specified")
+        parser.add_argument(
+                    "--outfilebase", metavar="NAME", help="base of the "
+                    "filename to construct the output lightcones")
 
-    parser.add_argument(
-                "--executable", metavar="PATH", help="path to the "
-                "lightcone executable from the UniverseMachine package")
-    parser.add_argument(
-                "--umcfg", metavar="PATH", help="path to the "
-                "configuration file required by the lightcone executable")
-    parser.add_argument(
-                "--outfilepath", metavar="PATH", help="directory "
-                "to place output files")
+        parser.add_argument(
+                    "--executable", metavar="PATH", help="path to the "
+                    "lightcone executable from the UniverseMachine package")
+        parser.add_argument(
+                    "--umcfg", metavar="PATH", help="path to the "
+                    "configuration file required by the lightcone executable")
+        parser.add_argument(
+                    "--outfilepath", metavar="PATH", help="directory "
+                    "to place output files")
 
-    # Specify mass limit / random seed
-    parser.add_argument(
-                    "--obs-mass-limit", type=float, default=8e8,
-                    metavar="CUT", help="cut to place on 'obs_sm' column")
-    parser.add_argument(
-                    "--true-mass-limit", type=float, default=0,
-                    metavar="CUT", help="cut to place on 'true_sm' column")
-    parser.add_argument("--rseed", type=int, metavar="R",
-                        help="random seed for this realization")
+        # Specify mass limit / random seed
+        parser.add_argument(
+                        "--obs-mass-limit", type=float, default=8e8,
+                        metavar="CUT", help="cut to place on 'obs_sm' column")
+        parser.add_argument(
+                        "--true-mass-limit", type=float, default=0,
+                        metavar="CUT", help="cut to place on 'true_sm' column")
+        parser.add_argument("--rseed", type=int, metavar="SEED",
+                            help="random seed for this realization")
 
-    # Arguments with not much use
-    parser.add_argument(
-                "--ra-center", type=float, default=0, metavar="X",
-                help="center around this right-ascension")
-    parser.add_argument(
-                "--dec-center", type=float, default=0, metavar="Y",
-                help="center around this declination")
-    parser.add_argument(
-                "--theta-center", type=float, default=0, metavar="Z",
-                help="third rotation angle around ra/dec center")
-    parser.add_argument("--do-collision-test", action="store_true",
-                        help="not recommended for large lightcones")
-    parser.add_argument(
-            "--keep-ascii-files", action="store_true",
-            help="keep the huge ascii tables generated by UniverseMachine")
+        # Arguments with not much use
+        parser.add_argument(
+                    "--ra-center", type=float, default=0, metavar="X",
+                    help="center around this right-ascension")
+        parser.add_argument(
+                    "--dec-center", type=float, default=0, metavar="Y",
+                    help="center around this declination")
+        parser.add_argument(
+                    "--theta-center", type=float, default=0, metavar="Z",
+                    help="third rotation angle around ra/dec center")
+        parser.add_argument("--do-collision-test", action="store_true",
+                            help="not recommended for large lightcones")
+        parser.add_argument(
+                "--keep-ascii-files", action="store_true",
+                help="keep the huge ascii tables generated by UniverseMachine")
 
-    a = parser.parse_args()
+        self.parser = parser
 
-    lightcone(
-        a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
-        executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
-        photbands=a.photbands, keep_ascii_files=a.keep_ascii_files,
-        obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
-        outfilepath=a.outfilepath, outfilebase=a.outfilebase, id_tag=a.id_tag,
-        do_collision_test=a.do_collision_test, ra=a.ra_center,
-        dec=a.dec_center, theta=a.theta_center, rseed=a.rseed)
+    def __call__(self):
+        from .. import lightcone
+
+        a = self.parser.parse_args()
+
+        lightcone(
+            a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
+            executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
+            photbands=a.photbands, keep_ascii_files=a.keep_ascii_files,
+            obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
+            outfilepath=a.outfilepath, outfilebase=a.outfilebase, id_tag=a.id_tag,
+            do_collision_test=a.do_collision_test, ra=a.ra_center,
+            dec=a.dec_center, theta=a.theta_center, rseed=a.rseed)
 
 
-def set_data_path():
-    import os
-    import pathlib
-    from .. import mocksurvey as ms
-
+class SetDataPath:
     desc = "Set the path where you would like all the data to be stored"
 
-    # noinspection PyTypeChecker
-    parser = argparse.ArgumentParser(description=desc)
+    def __init__(self, parser):
+        parser.description = self.desc
+        parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
 
-    # Mandatory positional arguments
-    parser.add_argument("DATAPATH", type=str)
+        # Mandatory positional arguments
+        parser.add_argument("DATAPATH", type=str)
 
-    a = parser.parse_args()
-    path = os.path.join(a.DATAPATH, "UniverseMachine")
-    pathlib.Path(path).mkdir(exist_ok=True)
-    ms.UMConfig(path).update()
+        self.parser = parser
 
-    path = os.path.join(a.DATAPATH, "UVISTA")
-    pathlib.Path(path).mkdir(exist_ok=True)
-    ms.UVISTAConfig(path).update()
+    def __call__(self):
+        import os
+        import pathlib
+        from .. import mocksurvey as ms
 
-    path = os.path.join(a.DATAPATH, "SeanSpectra")
-    pathlib.Path(path).mkdir(exist_ok=True)
-    ms.SeanSpectraConfig(path).update()
+        a = self.parser.parse_args()
+
+        path = os.path.join(a.DATAPATH, "UniverseMachine")
+        pathlib.Path(path).mkdir(exist_ok=True)
+        ms.UMConfig(path).update()
+
+        path = os.path.join(a.DATAPATH, "UVISTA")
+        pathlib.Path(path).mkdir(exist_ok=True)
+        ms.UVISTAConfig(path).update()
+
+        path = os.path.join(a.DATAPATH, "SeanSpectra")
+        pathlib.Path(path).mkdir(exist_ok=True)
+        ms.SeanSpectraConfig(path).update()
 
 
-def download_um():
-    from .. import mocksurvey as ms
-
+class DownloadUM:
     desc = ("Download all UniverseMachine SFR catalogs from peterbehroozi.com "
             "closest to specified redshift (or between a range of redshifts)")
 
-    # noinspection PyTypeChecker
-    parser = argparse.ArgumentParser(description=desc)
+    def __init__(self, parser):
+        parser.description = self.desc
+        parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
 
-    # Mandatory positional arguments
-    parser.add_argument(
-                "Z_LOW", type=float, help="Lower redshift bound. If "
-                "upper bound not supplied, download closest redshift to Z_LOW")
+        # Mandatory positional arguments
+        parser.add_argument(
+                    "Z_LOW", type=float, help="Lower redshift bound. If "
+                    "upper bound not supplied, download closest redshift to Z_LOW")
 
-    # Optional positional arguments
-    parser.add_argument("Z_HIGH", type=float, default=None, nargs="?",
-                        help="Upper redshift bound to download catalogs")
+        # Optional positional arguments
+        parser.add_argument("Z_HIGH", type=float, default=None, nargs="?",
+                            help="Upper redshift bound to download catalogs")
 
-    a = parser.parse_args()
-    redshift = a.Z_LOW if a.Z_HIGH is None else [a.Z_LOW, a.Z_HIGH]
+        self.parser = parser
 
-    ms.UMWgetter().download_sfrcat_redshift(redshift)
+    def __call__(self):
+        from .. import mocksurvey as ms
+
+        a = self.parser.parse_args()
+
+        redshift = a.Z_LOW if a.Z_HIGH is None else [a.Z_LOW, a.Z_HIGH]
+        ms.UMWgetter().download_sfrcat_redshift(redshift)
 
 
-def download_uvista():
-    from .. import mocksurvey as ms
-    
+class DownloadUVISTA:
     desc = "This script downloads all data required by " \
            "mocksurvey for fitting to UltraVISTA"
 
-    parser = argparse.ArgumentParser(description=desc)
-    parser.parse_args()
+    def __init__(self, parser):
+        parser.description = self.desc
+        parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
+        self.parser = parser
 
-    wgetter = ms.UVISTAWgetter()
-    wgetter.download_uvista()
-    wgetter.download_seanspectra()
+    def __call__(self):
+        from .. import mocksurvey as ms
+
+        self.parser.parse_args()
+
+        wgetter = ms.UVISTAWgetter()
+        wgetter.download_uvista()
+        wgetter.download_seanspectra()
 
 
-def config():
-    from .. import mocksurvey as ms
-    datasets = {
-        "UM": ms.UMConfig,
-        "UVISTA": ms.UVISTAConfig,
-        "SeanSpectra": ms.SeanSpectraConfig,
-        "LightCone": ms.LightConeConfig,
-    }
-    cmds = {
-        "set-path": None,
-        "auto-add": None,
-        "reset": None,
-        "add": None,
-        "remove": None,
-        "set-lightcone-executable (UM only)": None,
-    }
-
+class Config:
     desc = "Configure data storage used by mocksurvey"
 
-    # noinspection PyTypeChecker
-    parser = argparse.ArgumentParser(description=desc)
+    def __init__(self, parser):
+        from .. import mocksurvey as ms
+
+        parser.description = self.desc
+        parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
+
+        self.datasets = {
+            "UM": ms.UMConfig,
+            "UVISTA": ms.UVISTAConfig,
+            "SeanSpectra": ms.SeanSpectraConfig,
+            "LightCone": ms.LightConeConfig,
+        }
+        self.cmds = {
+            "set-path": None,
+            "auto-add": None,
+            "reset": None,
+            "add": None,
+            "remove": None,
+            "set-lightcone-executable (UM only)": None,
+        }
 
     # Mandatory positional arguments
-    parser.add_argument("DATASET", type=str, help=f"Options: {set(datasets.keys())}")
-    parser.add_argument("COMMAND", type=str, help=f"Options: {set(cmds.keys())}")
+        parser.add_argument("DATASET", type=str,
+                            help=f"Options: {set(self.datasets.keys())}")
+        parser.add_argument("COMMAND", type=str,
+                            help=f"Options: {set(self.cmds.keys())}")
 
-    # Optional positional arguments
-    parser.add_argument("ARGS", type=str, default=[], nargs="*",
-                        help="Positional arguments for COMMAND")
+        # Optional positional arguments
+        parser.add_argument("ARGS", type=str, default=[], nargs="*",
+                            help="Positional arguments for COMMAND")
 
-    a = parser.parse_args()
+        self.parser = parser
 
-    cfg = datasets[a.DATASET]
-    if a.COMMAND == "set-path":
-        cfg(*a.ARGS).update()
+    def __call__(self):
+        a = self.parser.parse_args()
 
-    {
-        "auto-add": cfg().auto_add,
-        "reset": cfg().reset,
-        "add": cfg().add,
-        "remove": cfg().remove,
-        "set-lightcone-executable": (cfg().set_lightcone_executable
-                                     if a.DATASET == "UM" else None)
-    }[a.COMMAND](*a.ARGS)
+        cfg = self.datasets[a.DATASET]
+        if a.COMMAND == "set-path":
+            cfg(*a.ARGS).update()
+
+        {
+            "auto-add": cfg().auto_add,
+            "reset": cfg().reset,
+            "add": cfg().add,
+            "remove": cfg().remove,
+            "set-lightcone-executable": (cfg().set_lightcone_executable
+                                         if a.DATASET == "UM" else None)
+        }[a.COMMAND](*a.ARGS)
