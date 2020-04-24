@@ -139,6 +139,10 @@ class DownloadUM:
         parser.add_argument("Z_HIGH", type=float, default=None, nargs="?",
                             help="Upper redshift bound to download catalogs")
 
+        # Options
+        parser.add_argument("--verbose", "-v", action="store_true")
+        parser.add_argument("--overwrite", "-o", action="store_true")
+
         self.parser = parser
 
     def __call__(self):
@@ -147,7 +151,8 @@ class DownloadUM:
         a = self.parser.parse_args()
 
         redshift = a.Z_LOW if a.Z_HIGH is None else [a.Z_LOW, a.Z_HIGH]
-        ms.UMWgetter().download_sfrcat_redshift(redshift)
+        ms.UMWgetter().download_sfrcat_redshift(
+            redshift, verbose=a.verbose, overwrite=a.overwrite)
 
 
 class DownloadUVISTA:
@@ -157,16 +162,21 @@ class DownloadUVISTA:
     def __init__(self, parser):
         parser.description = self.desc
         parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
+
+        # Options
+        parser.add_argument("--verbose", "-v", action="store_true")
+        parser.add_argument("--overwrite", "-o", action="store_true")
+
         self.parser = parser
 
     def __call__(self):
         from .. import mocksurvey as ms
 
-        self.parser.parse_args()
+        a = self.parser.parse_args()
 
         wgetter = ms.UVISTAWgetter()
-        wgetter.download_uvista()
-        wgetter.download_seanspectra()
+        wgetter.download_uvista(verbose=a.verbose, overwrite=a.overwrite)
+        wgetter.download_seanspectra(verbose=a.verbose, overwrite=a.overwrite)
 
 
 class Config:

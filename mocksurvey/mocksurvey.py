@@ -2,7 +2,8 @@
 mocksurvey.py
 Author: Alan Pearl
 
-Some useful classes for coducting mock surveys of galaxies populated by `halotools` and `UniverseMachine` models.
+A collection of useful tools for coducting mock surveys of galaxies
+populated by `halotools` and `UniverseMachine` models.
 """
 
 import os
@@ -10,7 +11,6 @@ import pathlib
 import warnings
 import json
 import tarfile
-import wget
 import numpy as np
 import pandas as pd
 import astropy.table as astropy_table
@@ -26,7 +26,7 @@ from .httools.httools import bplcosmo
 
 
 def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
-                                masslim=None):
+                               masslim=None):
     z_low, z_high = zlim
     sqdeg, scheme = 15., "square"
     randfrac = 0.7
@@ -40,9 +40,11 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
         masslim = comptest.limit(compfrac)
     min_dict = {"obs_sm": masslim}
 
-    compsel = LightConeSelector(z_low, z_high, sqdeg, scheme,
-                randfrac, max_dict=max_dict, min_dict=min_dict)
+    compsel = LightConeSelector(
+        z_low, z_high, sqdeg, scheme, randfrac,
+        max_dict=max_dict, min_dict=min_dict)
     return compsel
+
 
 class LightConeSelector:
     def __init__(self, z_low, z_high, sqdeg, scheme, sample_fraction=1.,
@@ -53,7 +55,7 @@ class LightConeSelector:
         self.min_dict, self.max_dict = min_dict, max_dict
         self.cosmo, self.deg = cosmo, deg
 
-        z,dz = (z_high+z_low)/2., z_high - z_low
+        z, dz = (z_high+z_low)/2., z_high - z_low
 
         simbox = httools.SimBox(redshift=z, empty=True)
         self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=scheme,
@@ -97,13 +99,13 @@ class LightConeSelector:
 
         return cond1 & cond2
 
-    def make_rands(self, N, rdz=False, seed=None):
+    def make_rands(self, n, rdz=False, seed=None):
         # Calculate limits in ra, dec, and distance
         fieldshape = self.field.get_shape(rdz=True)[:2, None]
         rdlims = self.field.center_rdz[:2, None] + np.array([[.5, -.5]]) * fieldshape
         distlim = hf.comoving_disth([self.z_low, self.z_high], self.cosmo)
 
-        rands = hf.rand_rdz(N, *rdlims, distlim, seed=seed)
+        rands = hf.rand_rdz(n, *rdlims, distlim, seed=seed)
         # This only works perfectly if the field scheme is a square
         # Cut randoms that fall outside the shape of the field
         # if not self.scheme == "sq":
@@ -113,17 +115,18 @@ class LightConeSelector:
             rands = hf.rdz2xyz(rands, cosmo=None, use_um_convention=True)
         else:
             rands[:, 2] = hf.distance2redshift(rands[:, 2],
-                                                vr=None, cosmo=self.cosmo)
+                                               vr=None, cosmo=self.cosmo)
             # Convert radians to degrees
             if self.deg:
                 rands[:, :2] *= 180 / np.pi
         return rands
 
-    def block_digitize(self, lightcone, nbins=(2,2,1)):
+    def block_digitize(self, lightcone, nbins=(2, 2, 1)):
         data = hf.xyz_array(lightcone, ["ra", "dec", "redshift"])
         fieldshape = self.field.get_shape(rdz=True, deg=self.deg)
         center = self.field.center_rdz
 
+        # noinspection PyProtectedMember
         return cf._assign_block_indices(data, None, center,
                                         fieldshape, nbins)[0]
 
@@ -144,28 +147,25 @@ class CompletenessTester:
             column = np.array(column)
         else:
             raise ValueError(f"column={column} but must "
-                              "be a string or an array")
+                             f"be a string or an array")
 
         # Get all galaxies selected by position only
         no_selection = self.selector.pos_selection(self.lightcone)
         gals = self.lightcone[no_selection]
         column = column[no_selection]
 
-
         order = np.argsort(column)
         gals, column = gals[order], column[order]
         gals = gals if max_val else gals[::-1]
         column = column if max_val else column[::-1]
 
-
         selection = self.selector.dict_selection(gals)
-        frac = np.cumsum(selection) / (np.arange(1,len(gals)+1))
+        frac = np.cumsum(selection) / (np.arange(1, len(gals)+1))
 
         mass = column[::-1]
         completeness = frac[::-1]
 
         return mass, completeness
-
 
 
 class BaseConfig:
@@ -177,12 +177,12 @@ class BaseConfig:
         if data_dir:
             self.config["data_dir"] = os.path.abspath(data_dir)
             self.update()
-        if data_dir is None and not "data_dir" in self.config:
+        if data_dir is None and "data_dir" not in self.config:
             raise ValueError("Your first time running this, you "
                              "must provide the path to where you "
                              "will be storing the files.")
 
-        if not "files" in self.config:
+        if "files" not in self.config:
             self.config["files"] = []
 
     def get_filepath(self, filename):
@@ -196,7 +196,7 @@ class BaseConfig:
         """
         d = self.config["data_dir"]
         files = [f for f in os.listdir(d)
-                 if os.path.isfile(os.path.join(d,f))]
+                 if os.path.isfile(os.path.join(d, f))]
 
         n = len(files)
         for f in files:
@@ -209,10 +209,12 @@ class BaseConfig:
 
     def update(self):
         """
-        Update the config file to account for any changes that have been made to this object. For example:
+        Update the config file to account for any changes that have
+        been made to this object. For example:
             -Files could be added via config.add()
             -Files could be removed via config.remove()
-            -Data directory could be changed by instantiating this object via config = SomeConfig(data_dir="path/to/new/dir")
+            -Data directory could be changed by instantiating this
+            object via config = SomeConfig(data_dir="path/to/new/dir")
 
         Takes no arguments and returns None.
         """
@@ -265,7 +267,7 @@ class BaseConfig:
             i = self.config["files"].index(filename)
         except ValueError:
             raise ValueError(f"Cannot remove {filename}, as it is not"
-                              " currently stored. Currently stored "
+                             f" currently stored. Currently stored "
                              f"files: {self.config['files']}")
 
         del self.config["files"][i]
@@ -292,27 +294,31 @@ class BaseConfig:
 
         config, empty = {}, {}
         exec(code, config)
-        exec("", empty); [config.pop(i) for i in empty]
+        exec("", empty)
+        [config.pop(i) for i in empty]
 
         self.config = config.copy()
         self._filepath = filepath
 
+
 class UMConfig(BaseConfig):
     """
-    Keeps track of the locations of locally saved binary files that come from the UniverseMachine data release.
+    Keeps track of the locations of locally saved binary files that
+    come from the UniverseMachine data release.
 
     Parameters
     ----------
     data_dir : str (required on first run)
-        The path to the directory where you plan on saving all of the binary files. If the directory is moved, then you must provide this argument again.
+        The path to the directory where you plan on saving all of the binary files.
+        If the directory is moved, then you must provide this argument again.
     """
     def __init__(self, data_dir=None):
         config_dir, config_file = "config", "um-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
 
-        if not "z" in self.config:
+        if "z" not in self.config:
             self.config["z"] = []
-        if not "lightcones" in self.config:
+        if "lightcones" not in self.config:
             self.config["lightcones"] = []
         self.update()
 
@@ -348,7 +354,11 @@ class UMConfig(BaseConfig):
             Desired redshift of the snapshot
 
         thresh : callable, None, or "none" (optional)
-            Callable which takes a halo catalog as input and returns a boolean array to select the halos on before loading them into memory. By default, ``thresh = lambda cat: cat["obs_sm"] > 3e9``. "none" loads the entire table and is equivalent to ``thresh = lambda cat: slice(None)``
+            Callable which takes a halo catalog as input and returns a boolean
+            array to select the halos on before loading them into memory.
+            By default, ``thresh = lambda cat: cat["obs_sm"] > 3e9``.
+            "none" loads the entire table and is equivalent to
+            ``thresh = lambda cat: slice(None)``
 
         ztol : float (default = 0.05)
             A match must be within redshift +/- ztol
@@ -359,16 +369,17 @@ class UMConfig(BaseConfig):
             Structured array of the requested halo catalog
         """
         if thresh is None:
-            thresh = lambda cat: cat["obs_sm"] > 3e9
-        dtype = np.dtype([('id','i8'),('descid','i8'),('upid','i8'),
-                          ('flags','i4'),('uparent_dist','f4'),
-                          ('pos','f4',6),('vmp','f4'),('lvmp','f4'),
-                          ('mp','f4'),('m','f4'),('v','f4'),('r','f4'),
-                          ('rank1','f4'),('rank2','f4'),('ra','f4'),
-                          ('rarank','f4'),('A_UV','f4'),('sm','f4'),
-                          ('icl','f4'),('sfr','f4'),('obs_sm','f4'),
-                          ('obs_sfr','f4'),('obs_uv','f4'),
-                          ('empty','f4')], align=True)
+            def thresh(cat):
+                return cat["obs_sm"] > 3e9
+        dtype = np.dtype([('id', 'i8'), ('descid', 'i8'), ('upid', 'i8'),
+                          ('flags', 'i4'), ('uparent_dist', 'f4'),
+                          ('pos', 'f4', 6), ('vmp', 'f4'), ('lvmp', 'f4'),
+                          ('mp', 'f4'), ('m', 'f4'), ('v', 'f4'), ('r', 'f4'),
+                          ('rank1', 'f4'), ('rank2', 'f4'), ('ra', 'f4'),
+                          ('rarank', 'f4'), ('A_UV', 'f4'), ('sm', 'f4'),
+                          ('icl', 'f4'), ('sfr', 'f4'), ('obs_sm', 'f4'),
+                          ('obs_sfr', 'f4'), ('obs_uv', 'f4'),
+                          ('empty', 'f4')], align=True)
 
         filename, true_z = self._get_file_at_redshift(redshift, ztol)
         fullpath = self.get_filepath(filename)
@@ -400,7 +411,9 @@ class UMConfig(BaseConfig):
         filename : str
             The name of the file (do not include path)
         redshift : float (optional)
-            If given, the redshift of this snapshot. If not given, redshift will be inferred from the filename, by assuming that the filename is of form "*_{scalefactor}.bin"
+            If given, the redshift of this snapshot. If not given, redshift
+            will be inferred from the filename, by assuming that the
+            filename is of form "*_{scalefactor}.bin"
 
         Returns
         -------
@@ -439,7 +452,7 @@ class UMConfig(BaseConfig):
         scales = [i.split("_")[-1][:-4] for i in sfr_cats]
         indices = list(range(len(scales)))
         lines = []
-        for fname,scale,index in zip(sfr_cats,scales,indices):
+        for fname, scale, index in zip(sfr_cats, scales, indices):
             if fname in self.config["files"]:
                 line = f"{index} {scale}"
                 lines.append(line)
@@ -493,7 +506,8 @@ CALC_ICL = 1"""
         Parameters
         ----------
         name : str
-            The name of the lightcone sample. It is also the name of the directory located at {data_dir}/lightcones/{name}
+            The name of the lightcone sample. It is also the name
+            of the directory located at {data_dir}/lightcones/{name}
 
         Returns
         -------
@@ -502,7 +516,7 @@ CALC_ICL = 1"""
         data_dir = self.config["data_dir"]
         path = os.path.join(data_dir, "lightcones", name)
         LightConeConfig(path).auto_add()
-        if not path in self.config["lightcones"]:
+        if path not in self.config["lightcones"]:
             self.config["lightcones"].append(path)
         self.update()
 
@@ -526,14 +540,17 @@ CALC_ICL = 1"""
         except:
             raise ValueError("Cannot infer a redshift from this filename.")
 
+
 class LightConeConfig(BaseConfig):
     """
-    Keeps track of the locations of locally saved binary files that come from the UniverseMachine data release.
+    Keeps track of the locations of locally saved binary files
+    that come from the UniverseMachine data release.
 
     Parameters
     ----------
     data_dir : str (required on first run)
-        The path to the directory where you plan on saving all of the binary files. If the directory is moved, then you must provide this argument again.
+        The path to the directory where you plan on saving all of the binary files.
+        If the directory is moved, then you must provide this argument again.
     """
     def __init__(self, data_dir):
         path, name = os.path.split(data_dir)
@@ -544,7 +561,7 @@ class LightConeConfig(BaseConfig):
 
         # If path is explicit and exists, interpret argument as actual path
         if (data_dir.startswith((os.extsep, os.path.sep))) and \
-                                        os.path.isdir(data_dir):
+                os.path.isdir(data_dir):
             data_dir = os.path.abspath(data_dir)
         # Otherwise, interpret argument as name to go in standard location
         else:
@@ -555,7 +572,7 @@ class LightConeConfig(BaseConfig):
         config_dir, config_file = "config", f"lightcone-{name}-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
 
-        if not "meta_files" in self.config:
+        if "meta_files" not in self.config:
             self.config["meta_files"] = []
         self.update()
 
@@ -643,16 +660,18 @@ class UVISTAConfig(BaseConfig):
     Parameters
     ----------
     data_dir : str (required on first run)
-        The path to the directory where you plan on saving all of the files. If the directory is moved, then you must provide this argument again.
+        The path to the directory where you plan on saving all of the files.
+        If the directory is moved, then you must provide this argument again.
     """
     UVISTAFILES = {
         "p": "UVISTA_final_v4.1.cat",  # photometric catalog
         "z": "UVISTA_final_v4.1.zout",  # EAZY output
         "f": "UVISTA_final_BC03_v4.1.fout",  # FAST output
-        "s": "UVISTA_final_colors_sfrs_v4.1.dat", # IR+UV lum/sfr
-        "uv": "UVISTA_final_v4.1.153-155.rf", # rest-frame U,V
-        "vj": "UVISTA_final_v4.1.155-161.rf", # rest-frame V,J
+        "s": "UVISTA_final_colors_sfrs_v4.1.dat",  # IR+UV lum/sfr
+        "uv": "UVISTA_final_v4.1.153-155.rf",  # rest-frame U,V
+        "vj": "UVISTA_final_v4.1.155-161.rf",  # rest-frame V,J
     }
+
     def _msg1(self, ftype):
         return f"File type {repr(ftype)} not recognized. " \
                f"Must be one of {set(self.UVISTAFILES.keys())}"
@@ -665,9 +684,10 @@ class UVISTAConfig(BaseConfig):
         config_dir, config_file = "config", "uvista-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
 
+        # noinspection PyProtectedMember
         photbands = ummags._get_photbands(photbands)
         self.PHOTBANDS = {k: self.PHOTBANDS[k]
-                            for k in set(photbands) | {"k"}}
+                          for k in set(photbands) | {"k"}}
         self.update()
 
     def get_filepath(self, filetype):
@@ -693,32 +713,32 @@ class UVISTAConfig(BaseConfig):
 
     def get_names(self, filetype):
         if filetype == "p":
-         return ['id','ra','dec','xpix','ypix','Ks_tot','eKs_tot','Ks',
-         'eKs', 'H', 'eH', 'J', 'eJ', 'Y', 'eY', 'ch4', 'ech4', 'ch3',
-         'ech3', 'ch2', 'ech2', 'ch1', 'ech1', 'zp', 'ezp', 'ip', 'eip',
-         'rp', 'erp', 'V', 'eV', 'gp', 'egp', 'B', 'eB', 'u', 'eu',
-         'IA484', 'eIA484', 'IA527', 'eIA527', 'IA624', 'eIA624',
-         'IA679', 'eIA679', 'IA738', 'eIA738', 'IA767', 'eIA767',
-         'IB427', 'eIB427', 'IB464', 'eIB464', 'IB505', 'eIB505', 'IB574',
-         'eIB574', 'IB709', 'eIB709', 'IB827', 'eIB827', 'fuv', 'efuv',
-         'nuv', 'enuv', 'mips24', 'emips24', 'K_flag', 'K_star',
-         'K_Kron', 'apcor', 'z_spec', 'z_spec_cc', 'z_spec_id', 'star',
-         'contamination', 'nan_contam', 'orig_cat_id', 'orig_cat_field',
-         'USE']
+            return ['id', 'ra', 'dec', 'xpix', 'ypix', 'Ks_tot', 'eKs_tot', 'Ks',
+                    'eKs', 'H', 'eH', 'J', 'eJ', 'Y', 'eY', 'ch4', 'ech4', 'ch3',
+                    'ech3', 'ch2', 'ech2', 'ch1', 'ech1', 'zp', 'ezp', 'ip', 'eip',
+                    'rp', 'erp', 'V', 'eV', 'gp', 'egp', 'B', 'eB', 'u', 'eu',
+                    'IA484', 'eIA484', 'IA527', 'eIA527', 'IA624', 'eIA624',
+                    'IA679', 'eIA679', 'IA738', 'eIA738', 'IA767', 'eIA767',
+                    'IB427', 'eIB427', 'IB464', 'eIB464', 'IB505', 'eIB505', 'IB574',
+                    'eIB574', 'IB709', 'eIB709', 'IB827', 'eIB827', 'fuv', 'efuv',
+                    'nuv', 'enuv', 'mips24', 'emips24', 'K_flag', 'K_star',
+                    'K_Kron', 'apcor', 'z_spec', 'z_spec_cc', 'z_spec_id', 'star',
+                    'contamination', 'nan_contam', 'orig_cat_id', 'orig_cat_field',
+                    'USE']
         elif filetype == "z":
-         return ['id', 'z_spec', 'z_a', 'z_m1', 'chi_a', 'z_p', 'chi_p',
-         'z_m2', 'odds', 'l68', 'u68', 'l95', 'u95', 'l99', 'u99',
-         'nfilt', 'q_z', 'z_peak', 'peak_prob', 'z_mc']
+            return ['id', 'z_spec', 'z_a', 'z_m1', 'chi_a', 'z_p', 'chi_p',
+                    'z_m2', 'odds', 'l68', 'u68', 'l95', 'u95', 'l99', 'u99',
+                    'nfilt', 'q_z', 'z_peak', 'peak_prob', 'z_mc']
         elif filetype == "f":
-         return ['id', 'z', 'ltau', 'metal', 'lage', 'Av', 'lmass',
-         'lsfr', 'lssfr', 'la2t', 'chi2']
+            return ['id', 'z', 'ltau', 'metal', 'lage', 'Av', 'lmass',
+                    'lsfr', 'lssfr', 'la2t', 'chi2']
         elif filetype == "s":
-         return ['ID', 'z_peak', 'UmV', 'VmJ', 'L_UV', 'L_IR', 'SFR_UV',
-                 'SFR_IR', 'SFR_tot', 'SFR_SED', 'LMASS', 'USE']
+            return ['ID', 'z_peak', 'UmV', 'VmJ', 'L_UV', 'L_IR', 'SFR_UV',
+                    'SFR_IR', 'SFR_tot', 'SFR_SED', 'LMASS', 'USE']
         elif filetype == "uv":
-         return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L153', 'L155']
+            return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L153', 'L155']
         elif filetype == "vj":
-         return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L155', 'L161']
+            return ['id', 'z', 'DM', 'nfilt_fit', 'chi2_fit', 'L155', 'L161']
         else:
             raise ValueError(self._msg1(filetype))
 
@@ -761,12 +781,13 @@ class UVISTAConfig(BaseConfig):
 
         cosmo = bplcosmo
         ftypes = ["p", "f", "z", "s", "uv", "vj"]
-        dat = [pd.read_csv(self.get_filepath(s), delim_whitespace=True,
+        dat = [pd.read_csv(
+                self.get_filepath(s), delim_whitespace=True,
                 names=self.get_names(s), skiprows=self.get_skips(s),
                 usecols=self.names_to_keep(s)) for s in ftypes]
 
-        UVrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
-        VJrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
+        uvrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
+        vjrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
         z = dat[2]["z_peak"]
         sfr_tot = dat[3]["SFR_tot"]
         sfr_uv = dat[3]["SFR_UV"]
@@ -781,11 +802,11 @@ class UVISTAConfig(BaseConfig):
             aperture_factor = dat[0]["Ks_tot"] / dat[0]["Ks"]
             relative_mags = {
                 key: -2.5 * np.log10(dat[0][val] * aperture_factor) + 25
-                    for (key,val) in self.PHOTBANDS.items()
+                for (key, val) in self.PHOTBANDS.items()
             }
             absolute_mags = {
                 key: val - 5 * np.log10(d_lum * 1e5)
-                    for (key,val) in relative_mags.items()
+                for (key, val) in relative_mags.items()
             }
 
         selection = np.all([
@@ -807,15 +828,16 @@ class UVISTAConfig(BaseConfig):
                  "d_com", "d_lum", "UVrest", "VJrest", *rel_keys,
                  *abs_keys, "sfr_uv", "sfr_ir"]
         cols = [dat[0]["id"], dat[0]["ra"], dat[0]["dec"], z, logm,
-                sfr_tot, logssfr, d_com, d_lum, UVrest, VJrest, *rel_vals,
+                sfr_tot, logssfr, d_com, d_lum, uvrest, vjrest, *rel_vals,
                 *abs_vals, sfr_uv, sfr_ir]
 
-        data = dict(zip(names,cols))
+        data = dict(zip(names, cols))
         data = pd.DataFrame(data)
         data = data[selection]
         data.index = np.arange(len(data))
 
         return data
+
 
 class SeanSpectraConfig(BaseConfig):
     """
@@ -825,15 +847,16 @@ class SeanSpectraConfig(BaseConfig):
     Parameters
     ----------
     data_dir : str (required on first run)
-        The path to the directory where you plan on saving all of the files. If the directory is moved, then you must provide this argument again.
+        The path to the directory where you plan on saving all of the files.
+        If the directory is moved, then you must provide this argument again.
     """
     SEANFILES = ["cosmos_V17.fits", "specid.npy", "wavelength.npy",
                  "specmap.npy", "isnan.npy", "cosmos_V17_old.fits"]
+
     def __init__(self, data_dir=None):
         config_dir, config_file = "config", "seanspec-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
         self.update()
-
 
     def get_filepath(self, index=0):
         """
@@ -845,7 +868,7 @@ class SeanSpectraConfig(BaseConfig):
     get_filepath.__doc__ += "\n" + repr(SEANFILES)
 
     def add(self, filename):
-        if not filename in self.SEANFILES:
+        if filename not in self.SEANFILES:
             raise ValueError("Invalid SeanSpectra file")
 
         BaseConfig.add(self, filename)
@@ -857,6 +880,7 @@ class SeanSpectraConfig(BaseConfig):
 
     @staticmethod
     def names_to_keep(index=0):
+        assert index == 0
         return ["id", "redshift", "L_UV", "L_IR", "SFR_UV", "SFR_IR",
                 "SFR_tot", "SFR_SED", "ltau", "metal", "lage", "Av",
                 "lmass", "lsfr", "lssfr", "m_CFHT_u", "m_Subaru_g",
@@ -875,25 +899,206 @@ class SeanSpectraConfig(BaseConfig):
 
     def specid(self):
         return np.load(self.get_filepath(1))
+
     def wavelength(self):
         return np.load(self.get_filepath(2))
+
     def isnan(self):
         return np.load(self.get_filepath(4))
+
     def specmap(self):
         path = self.get_filepath(3)
         shape = (self.specid().size, self.wavelength().size)
         return lambda: np.memmap(path, dtype="<f4", shape=shape)
 
+
 class UMWgetter:
+    url = "http://behroozi.users.hpc.arizona.edu/UniverseMachine/DR1/SFR/"
+    webpage = """[   ] sfr_catalog_0.055623.bin          01-Dec-2019 10:16  11K
+    [   ] sfr_catalog_0.060123.bin          01-Dec-2019 10:16  126K
+    [   ] sfr_catalog_0.062373.bin          01-Dec-2019 10:16  296K
+    [   ] sfr_catalog_0.064623.bin          01-Dec-2019 10:16  632K
+    [   ] sfr_catalog_0.066873.bin          01-Dec-2019 10:16  1.2M
+    [   ] sfr_catalog_0.069123.bin          01-Dec-2019 10:16  2.2M
+    [   ] sfr_catalog_0.071373.bin          01-Dec-2019 10:16  3.7M
+    [   ] sfr_catalog_0.073623.bin          01-Dec-2019 10:16  6.1M
+    [   ] sfr_catalog_0.075873.bin          01-Dec-2019 10:16  9.4M
+    [   ] sfr_catalog_0.078123.bin          01-Dec-2019 10:16  14M
+    [   ] sfr_catalog_0.080373.bin          01-Dec-2019 10:16  20M
+    [   ] sfr_catalog_0.082623.bin          01-Dec-2019 10:16  27M
+    [   ] sfr_catalog_0.085998.bin          01-Dec-2019 10:16  42M
+    [   ] sfr_catalog_0.089373.bin          01-Dec-2019 10:16  62M
+    [   ] sfr_catalog_0.092748.bin          01-Dec-2019 10:16  88M
+    [   ] sfr_catalog_0.096123.bin          01-Dec-2019 10:16  120M
+    [   ] sfr_catalog_0.099498.bin          01-Dec-2019 10:16  159M
+    [   ] sfr_catalog_0.102873.bin          01-Dec-2019 10:16  203M
+    [   ] sfr_catalog_0.106248.bin          01-Dec-2019 10:16  253M
+    [   ] sfr_catalog_0.109623.bin          01-Dec-2019 10:16  308M
+    [   ] sfr_catalog_0.112998.bin          01-Dec-2019 10:16  368M
+    [   ] sfr_catalog_0.116373.bin          01-Dec-2019 10:16  432M
+    [   ] sfr_catalog_0.119748.bin          01-Dec-2019 10:16  498M
+    [   ] sfr_catalog_0.123123.bin          01-Dec-2019 10:17  565M
+    [   ] sfr_catalog_0.126498.bin          01-Dec-2019 10:17  634M
+    [   ] sfr_catalog_0.129873.bin          01-Dec-2019 10:17  705M
+    [   ] sfr_catalog_0.133248.bin          01-Dec-2019 10:17  777M
+    [   ] sfr_catalog_0.136623.bin          01-Dec-2019 10:17  850M
+    [   ] sfr_catalog_0.141685.bin          01-Dec-2019 10:17  957M
+    [   ] sfr_catalog_0.146748.bin          01-Dec-2019 10:18  1.0G
+    [   ] sfr_catalog_0.151810.bin          01-Dec-2019 10:18  1.1G
+    [   ] sfr_catalog_0.156873.bin          01-Dec-2019 10:18  1.3G
+    [   ] sfr_catalog_0.161935.bin          01-Dec-2019 10:18  1.4G
+    [   ] sfr_catalog_0.166998.bin          01-Dec-2019 10:19  1.5G
+    [   ] sfr_catalog_0.172060.bin          01-Dec-2019 10:19  1.5G
+    [   ] sfr_catalog_0.177123.bin          01-Dec-2019 10:20  1.6G
+    [   ] sfr_catalog_0.182185.bin          01-Dec-2019 10:20  1.7G
+    [   ] sfr_catalog_0.187248.bin          01-Dec-2019 10:20  1.8G
+    [   ] sfr_catalog_0.192310.bin          01-Dec-2019 10:21  1.8G
+    [   ] sfr_catalog_0.197373.bin          01-Dec-2019 10:21  1.9G
+    [   ] sfr_catalog_0.202435.bin          01-Dec-2019 10:22  1.9G
+    [   ] sfr_catalog_0.207498.bin          01-Dec-2019 10:22  2.0G
+    [   ] sfr_catalog_0.212560.bin          01-Dec-2019 10:23  2.0G
+    [   ] sfr_catalog_0.217623.bin          01-Dec-2019 10:23  2.1G
+    [   ] sfr_catalog_0.222685.bin          01-Dec-2019 10:24  2.1G
+    [   ] sfr_catalog_0.227748.bin          01-Dec-2019 10:24  2.1G
+    [   ] sfr_catalog_0.232810.bin          01-Dec-2019 10:24  2.1G
+    [   ] sfr_catalog_0.237873.bin          01-Dec-2019 10:25  2.2G
+    [   ] sfr_catalog_0.242935.bin          01-Dec-2019 10:25  2.2G
+    [   ] sfr_catalog_0.247998.bin          01-Dec-2019 10:26  2.2G
+    [   ] sfr_catalog_0.253060.bin          01-Dec-2019 10:27  2.2G
+    [   ] sfr_catalog_0.258123.bin          01-Dec-2019 10:27  2.2G
+    [   ] sfr_catalog_0.263185.bin          01-Dec-2019 10:28  2.2G
+    [   ] sfr_catalog_0.268248.bin          01-Dec-2019 10:28  2.3G
+    [   ] sfr_catalog_0.273310.bin          01-Dec-2019 10:29  2.3G
+    [   ] sfr_catalog_0.278373.bin          01-Dec-2019 10:29  2.3G
+    [   ] sfr_catalog_0.283435.bin          01-Dec-2019 10:30  2.3G
+    [   ] sfr_catalog_0.288498.bin          01-Dec-2019 10:30  2.3G
+    [   ] sfr_catalog_0.293560.bin          01-Dec-2019 10:31  2.3G
+    [   ] sfr_catalog_0.298623.bin          01-Dec-2019 10:32  2.3G
+    [   ] sfr_catalog_0.303685.bin          01-Dec-2019 10:32  2.3G
+    [   ] sfr_catalog_0.308748.bin          01-Dec-2019 10:33  2.3G
+    [   ] sfr_catalog_0.313810.bin          01-Dec-2019 10:33  2.3G
+    [   ] sfr_catalog_0.318873.bin          01-Dec-2019 10:33  2.3G
+    [   ] sfr_catalog_0.323935.bin          01-Dec-2019 10:34  2.3G
+    [   ] sfr_catalog_0.328997.bin          01-Dec-2019 10:34  2.3G
+    [   ] sfr_catalog_0.334060.bin          01-Dec-2019 10:35  2.3G
+    [   ] sfr_catalog_0.339122.bin          01-Dec-2019 10:35  2.3G
+    [   ] sfr_catalog_0.344185.bin          01-Dec-2019 10:35  2.3G
+    [   ] sfr_catalog_0.349247.bin          01-Dec-2019 10:36  2.3G
+    [   ] sfr_catalog_0.354310.bin          01-Dec-2019 10:36  2.3G
+    [   ] sfr_catalog_0.359372.bin          01-Dec-2019 10:37  2.3G
+    [   ] sfr_catalog_0.364435.bin          01-Dec-2019 10:37  2.3G
+    [   ] sfr_catalog_0.369497.bin          01-Dec-2019 10:38  2.3G
+    [   ] sfr_catalog_0.374560.bin          01-Dec-2019 10:39  2.3G
+    [   ] sfr_catalog_0.379622.bin          01-Dec-2019 10:39  2.2G
+    [   ] sfr_catalog_0.384685.bin          01-Dec-2019 10:40  2.2G
+    [   ] sfr_catalog_0.389747.bin          01-Dec-2019 10:40  2.2G
+    [   ] sfr_catalog_0.394810.bin          01-Dec-2019 10:41  2.2G
+    [   ] sfr_catalog_0.399872.bin          01-Dec-2019 10:41  2.2G
+    [   ] sfr_catalog_0.404935.bin          01-Dec-2019 10:42  2.2G
+    [   ] sfr_catalog_0.409997.bin          01-Dec-2019 10:42  2.2G
+    [   ] sfr_catalog_0.415060.bin          01-Dec-2019 10:43  2.2G
+    [   ] sfr_catalog_0.420122.bin          01-Dec-2019 10:43  2.2G
+    [   ] sfr_catalog_0.425185.bin          01-Dec-2019 10:44  2.2G
+    [   ] sfr_catalog_0.430247.bin          01-Dec-2019 10:44  2.2G
+    [   ] sfr_catalog_0.435310.bin          01-Dec-2019 10:45  2.2G
+    [   ] sfr_catalog_0.440372.bin          01-Dec-2019 10:45  2.2G
+    [   ] sfr_catalog_0.445435.bin          01-Dec-2019 10:46  2.1G
+    [   ] sfr_catalog_0.450497.bin          01-Dec-2019 10:47  2.1G
+    [   ] sfr_catalog_0.455560.bin          01-Dec-2019 10:47  2.1G
+    [   ] sfr_catalog_0.460622.bin          01-Dec-2019 10:48  2.1G
+    [   ] sfr_catalog_0.465685.bin          01-Dec-2019 10:48  2.1G
+    [   ] sfr_catalog_0.470747.bin          01-Dec-2019 10:48  2.1G
+    [   ] sfr_catalog_0.475810.bin          01-Dec-2019 10:49  2.1G
+    [   ] sfr_catalog_0.480872.bin          01-Dec-2019 10:49  2.1G
+    [   ] sfr_catalog_0.485935.bin          01-Dec-2019 10:50  2.1G
+    [   ] sfr_catalog_0.490997.bin          01-Dec-2019 10:50  2.1G
+    [   ] sfr_catalog_0.496060.bin          01-Dec-2019 10:51  2.1G
+    [   ] sfr_catalog_0.501122.bin          01-Dec-2019 10:51  2.0G
+    [   ] sfr_catalog_0.506185.bin          01-Dec-2019 10:52  2.0G
+    [   ] sfr_catalog_0.511247.bin          01-Dec-2019 10:52  2.0G
+    [   ] sfr_catalog_0.516310.bin          01-Dec-2019 10:53  2.0G
+    [   ] sfr_catalog_0.521372.bin          01-Dec-2019 10:53  2.0G
+    [   ] sfr_catalog_0.526435.bin          01-Dec-2019 10:53  2.0G
+    [   ] sfr_catalog_0.531497.bin          01-Dec-2019 10:54  2.0G
+    [   ] sfr_catalog_0.536560.bin          01-Dec-2019 10:54  2.0G
+    [   ] sfr_catalog_0.541622.bin          01-Dec-2019 10:55  2.0G
+    [   ] sfr_catalog_0.546685.bin          01-Dec-2019 10:55  2.0G
+    [   ] sfr_catalog_0.551747.bin          01-Dec-2019 10:56  2.0G
+    [   ] sfr_catalog_0.556810.bin          01-Dec-2019 10:57  2.0G
+    [   ] sfr_catalog_0.561872.bin          01-Dec-2019 10:57  1.9G
+    [   ] sfr_catalog_0.566935.bin          01-Dec-2019 10:58  1.9G
+    [   ] sfr_catalog_0.571997.bin          01-Dec-2019 10:58  1.9G
+    [   ] sfr_catalog_0.577060.bin          01-Dec-2019 10:58  1.9G
+    [   ] sfr_catalog_0.582123.bin          01-Dec-2019 10:59  1.9G
+    [   ] sfr_catalog_0.587185.bin          01-Dec-2019 10:59  1.9G
+    [   ] sfr_catalog_0.592248.bin          01-Dec-2019 11:00  1.9G
+    [   ] sfr_catalog_0.597310.bin          01-Dec-2019 11:00  1.9G
+    [   ] sfr_catalog_0.602373.bin          01-Dec-2019 11:01  1.9G
+    [   ] sfr_catalog_0.607435.bin          01-Dec-2019 11:01  1.9G
+    [   ] sfr_catalog_0.612498.bin          01-Dec-2019 11:02  1.9G
+    [   ] sfr_catalog_0.617560.bin          01-Dec-2019 11:02  1.9G
+    [   ] sfr_catalog_0.622623.bin          01-Dec-2019 11:03  1.9G
+    [   ] sfr_catalog_0.627685.bin          01-Dec-2019 11:03  1.9G
+    [   ] sfr_catalog_0.632748.bin          01-Dec-2019 11:04  1.8G
+    [   ] sfr_catalog_0.637810.bin          01-Dec-2019 11:04  1.8G
+    [   ] sfr_catalog_0.642873.bin          01-Dec-2019 11:05  1.8G
+    [   ] sfr_catalog_0.647935.bin          01-Dec-2019 11:05  1.8G
+    [   ] sfr_catalog_0.652998.bin          01-Dec-2019 11:05  1.8G
+    [   ] sfr_catalog_0.658060.bin          01-Dec-2019 11:06  1.8G
+    [   ] sfr_catalog_0.663123.bin          01-Dec-2019 11:06  1.8G
+    [   ] sfr_catalog_0.668185.bin          01-Dec-2019 11:07  1.8G
+    [   ] sfr_catalog_0.673248.bin          01-Dec-2019 11:07  1.8G
+    [   ] sfr_catalog_0.678310.bin          01-Dec-2019 11:07  1.8G
+    [   ] sfr_catalog_0.683373.bin          01-Dec-2019 11:08  1.8G
+    [   ] sfr_catalog_0.690967.bin          01-Dec-2019 11:08  1.8G
+    [   ] sfr_catalog_0.698560.bin          01-Dec-2019 11:09  1.8G
+    [   ] sfr_catalog_0.706154.bin          01-Dec-2019 11:09  1.8G
+    [   ] sfr_catalog_0.713748.bin          01-Dec-2019 11:09  1.8G
+    [   ] sfr_catalog_0.721342.bin          01-Dec-2019 11:10  1.7G
+    [   ] sfr_catalog_0.728935.bin          01-Dec-2019 11:10  1.7G
+    [   ] sfr_catalog_0.736529.bin          01-Dec-2019 11:10  1.7G
+    [   ] sfr_catalog_0.744123.bin          01-Dec-2019 11:11  1.7G
+    [   ] sfr_catalog_0.751717.bin          01-Dec-2019 11:11  1.7G
+    [   ] sfr_catalog_0.759310.bin          01-Dec-2019 11:12  1.7G
+    [   ] sfr_catalog_0.766904.bin          01-Dec-2019 11:12  1.7G
+    [   ] sfr_catalog_0.774498.bin          01-Dec-2019 11:13  1.7G
+    [   ] sfr_catalog_0.782092.bin          01-Dec-2019 11:13  1.7G
+    [   ] sfr_catalog_0.789685.bin          01-Dec-2019 11:13  1.7G
+    [   ] sfr_catalog_0.797279.bin          01-Dec-2019 11:14  1.7G
+    [   ] sfr_catalog_0.804873.bin          01-Dec-2019 11:14  1.7G
+    [   ] sfr_catalog_0.812467.bin          01-Dec-2019 11:14  1.7G
+    [   ] sfr_catalog_0.820060.bin          01-Dec-2019 11:15  1.7G
+    [   ] sfr_catalog_0.827654.bin          01-Dec-2019 11:15  1.7G
+    [   ] sfr_catalog_0.835248.bin          01-Dec-2019 11:16  1.7G
+    [   ] sfr_catalog_0.842842.bin          01-Dec-2019 11:16  1.7G
+    [   ] sfr_catalog_0.850435.bin          01-Dec-2019 11:16  1.6G
+    [   ] sfr_catalog_0.858029.bin          01-Dec-2019 11:17  1.6G
+    [   ] sfr_catalog_0.865623.bin          01-Dec-2019 11:17  1.6G
+    [   ] sfr_catalog_0.873217.bin          01-Dec-2019 11:18  1.6G
+    [   ] sfr_catalog_0.880810.bin          01-Dec-2019 11:18  1.6G
+    [   ] sfr_catalog_0.888404.bin          01-Dec-2019 11:19  1.6G
+    [   ] sfr_catalog_0.895998.bin          01-Dec-2019 11:19  1.6G
+    [   ] sfr_catalog_0.903592.bin          01-Dec-2019 11:20  1.6G
+    [   ] sfr_catalog_0.911185.bin          01-Dec-2019 11:20  1.6G
+    [   ] sfr_catalog_0.918779.bin          01-Dec-2019 11:21  1.6G
+    [   ] sfr_catalog_0.926373.bin          01-Dec-2019 11:21  1.6G
+    [   ] sfr_catalog_0.933967.bin          01-Dec-2019 11:21  1.6G
+    [   ] sfr_catalog_0.941560.bin          01-Dec-2019 11:22  1.6G
+    [   ] sfr_catalog_0.949154.bin          01-Dec-2019 11:22  1.6G
+    [   ] sfr_catalog_0.956748.bin          01-Dec-2019 11:23  1.6G
+    [   ] sfr_catalog_0.964342.bin          01-Dec-2019 11:24  1.6G
+    [   ] sfr_catalog_0.971935.bin          01-Dec-2019 11:25  1.6G
+    [   ] sfr_catalog_0.979529.bin          01-Dec-2019 11:26  1.6G
+    [   ] sfr_catalog_0.987123.bin          01-Dec-2019 11:26  1.6G
+    [   ] sfr_catalog_0.994717.bin          01-Dec-2019 11:26  1.6G
+    [   ] sfr_catalog_1.002310.bin          01-Dec-2019 11:27  1.6G"""
+
     def __init__(self):
         """
         Class designed to handle downloading UniverseMachine SFR catalogs
         from peterbehroozi.com/data
         """
-        self.url = "http://behroozi.users.hpc.arizona.edu/UniverseMachine/DR1/SFR/"
-        self.webpage = """[   ] sfr_catalog_0.055623.bin          01-Dec-2019 10:16  11K
-[   ] sfr_catalog_0.060123.bin          01-Dec-2019 10:16  126K
-[   ] sfr_catalog_0.062373.bin          01-Dec-2019 10:16  296K\n[   ] sfr_catalog_0.064623.bin          01-Dec-2019 10:16  632K\n[   ] sfr_catalog_0.066873.bin          01-Dec-2019 10:16  1.2M\n[   ] sfr_catalog_0.069123.bin          01-Dec-2019 10:16  2.2M\n[   ] sfr_catalog_0.071373.bin          01-Dec-2019 10:16  3.7M\n[   ] sfr_catalog_0.073623.bin          01-Dec-2019 10:16  6.1M\n[   ] sfr_catalog_0.075873.bin          01-Dec-2019 10:16  9.4M\n[   ] sfr_catalog_0.078123.bin          01-Dec-2019 10:16  14M\n[   ] sfr_catalog_0.080373.bin          01-Dec-2019 10:16  20M\n[   ] sfr_catalog_0.082623.bin          01-Dec-2019 10:16  27M\n[   ] sfr_catalog_0.085998.bin          01-Dec-2019 10:16  42M\n[   ] sfr_catalog_0.089373.bin          01-Dec-2019 10:16  62M\n[   ] sfr_catalog_0.092748.bin          01-Dec-2019 10:16  88M\n[   ] sfr_catalog_0.096123.bin          01-Dec-2019 10:16  120M\n[   ] sfr_catalog_0.099498.bin          01-Dec-2019 10:16  159M\n[   ] sfr_catalog_0.102873.bin          01-Dec-2019 10:16  203M\n[   ] sfr_catalog_0.106248.bin          01-Dec-2019 10:16  253M\n[   ] sfr_catalog_0.109623.bin          01-Dec-2019 10:16  308M\n[   ] sfr_catalog_0.112998.bin          01-Dec-2019 10:16  368M\n[   ] sfr_catalog_0.116373.bin          01-Dec-2019 10:16  432M\n[   ] sfr_catalog_0.119748.bin          01-Dec-2019 10:16  498M\n[   ] sfr_catalog_0.123123.bin          01-Dec-2019 10:17  565M\n[   ] sfr_catalog_0.126498.bin          01-Dec-2019 10:17  634M\n[   ] sfr_catalog_0.129873.bin          01-Dec-2019 10:17  705M\n[   ] sfr_catalog_0.133248.bin          01-Dec-2019 10:17  777M\n[   ] sfr_catalog_0.136623.bin          01-Dec-2019 10:17  850M\n[   ] sfr_catalog_0.141685.bin          01-Dec-2019 10:17  957M\n[   ] sfr_catalog_0.146748.bin          01-Dec-2019 10:18  1.0G\n[   ] sfr_catalog_0.151810.bin          01-Dec-2019 10:18  1.1G\n[   ] sfr_catalog_0.156873.bin          01-Dec-2019 10:18  1.3G\n[   ] sfr_catalog_0.161935.bin          01-Dec-2019 10:18  1.4G\n[   ] sfr_catalog_0.166998.bin          01-Dec-2019 10:19  1.5G\n[   ] sfr_catalog_0.172060.bin          01-Dec-2019 10:19  1.5G\n[   ] sfr_catalog_0.177123.bin          01-Dec-2019 10:20  1.6G\n[   ] sfr_catalog_0.182185.bin          01-Dec-2019 10:20  1.7G\n[   ] sfr_catalog_0.187248.bin          01-Dec-2019 10:20  1.8G\n[   ] sfr_catalog_0.192310.bin          01-Dec-2019 10:21  1.8G\n[   ] sfr_catalog_0.197373.bin          01-Dec-2019 10:21  1.9G\n[   ] sfr_catalog_0.202435.bin          01-Dec-2019 10:22  1.9G\n[   ] sfr_catalog_0.207498.bin          01-Dec-2019 10:22  2.0G\n[   ] sfr_catalog_0.212560.bin          01-Dec-2019 10:23  2.0G\n[   ] sfr_catalog_0.217623.bin          01-Dec-2019 10:23  2.1G\n[   ] sfr_catalog_0.222685.bin          01-Dec-2019 10:24  2.1G\n[   ] sfr_catalog_0.227748.bin          01-Dec-2019 10:24  2.1G\n[   ] sfr_catalog_0.232810.bin          01-Dec-2019 10:24  2.1G\n[   ] sfr_catalog_0.237873.bin          01-Dec-2019 10:25  2.2G\n[   ] sfr_catalog_0.242935.bin          01-Dec-2019 10:25  2.2G\n[   ] sfr_catalog_0.247998.bin          01-Dec-2019 10:26  2.2G\n[   ] sfr_catalog_0.253060.bin          01-Dec-2019 10:27  2.2G\n[   ] sfr_catalog_0.258123.bin          01-Dec-2019 10:27  2.2G\n[   ] sfr_catalog_0.263185.bin          01-Dec-2019 10:28  2.2G\n[   ] sfr_catalog_0.268248.bin          01-Dec-2019 10:28  2.3G\n[   ] sfr_catalog_0.273310.bin          01-Dec-2019 10:29  2.3G\n[   ] sfr_catalog_0.278373.bin          01-Dec-2019 10:29  2.3G\n[   ] sfr_catalog_0.283435.bin          01-Dec-2019 10:30  2.3G\n[   ] sfr_catalog_0.288498.bin          01-Dec-2019 10:30  2.3G\n[   ] sfr_catalog_0.293560.bin          01-Dec-2019 10:31  2.3G\n[   ] sfr_catalog_0.298623.bin          01-Dec-2019 10:32  2.3G\n[   ] sfr_catalog_0.303685.bin          01-Dec-2019 10:32  2.3G\n[   ] sfr_catalog_0.308748.bin          01-Dec-2019 10:33  2.3G\n[   ] sfr_catalog_0.313810.bin          01-Dec-2019 10:33  2.3G\n[   ] sfr_catalog_0.318873.bin          01-Dec-2019 10:33  2.3G\n[   ] sfr_catalog_0.323935.bin          01-Dec-2019 10:34  2.3G\n[   ] sfr_catalog_0.328997.bin          01-Dec-2019 10:34  2.3G\n[   ] sfr_catalog_0.334060.bin          01-Dec-2019 10:35  2.3G\n[   ] sfr_catalog_0.339122.bin          01-Dec-2019 10:35  2.3G\n[   ] sfr_catalog_0.344185.bin          01-Dec-2019 10:35  2.3G\n[   ] sfr_catalog_0.349247.bin          01-Dec-2019 10:36  2.3G\n[   ] sfr_catalog_0.354310.bin          01-Dec-2019 10:36  2.3G\n[   ] sfr_catalog_0.359372.bin          01-Dec-2019 10:37  2.3G\n[   ] sfr_catalog_0.364435.bin          01-Dec-2019 10:37  2.3G\n[   ] sfr_catalog_0.369497.bin          01-Dec-2019 10:38  2.3G\n[   ] sfr_catalog_0.374560.bin          01-Dec-2019 10:39  2.3G\n[   ] sfr_catalog_0.379622.bin          01-Dec-2019 10:39  2.2G\n[   ] sfr_catalog_0.384685.bin          01-Dec-2019 10:40  2.2G\n[   ] sfr_catalog_0.389747.bin          01-Dec-2019 10:40  2.2G\n[   ] sfr_catalog_0.394810.bin          01-Dec-2019 10:41  2.2G\n[   ] sfr_catalog_0.399872.bin          01-Dec-2019 10:41  2.2G\n[   ] sfr_catalog_0.404935.bin          01-Dec-2019 10:42  2.2G\n[   ] sfr_catalog_0.409997.bin          01-Dec-2019 10:42  2.2G\n[   ] sfr_catalog_0.415060.bin          01-Dec-2019 10:43  2.2G\n[   ] sfr_catalog_0.420122.bin          01-Dec-2019 10:43  2.2G\n[   ] sfr_catalog_0.425185.bin          01-Dec-2019 10:44  2.2G\n[   ] sfr_catalog_0.430247.bin          01-Dec-2019 10:44  2.2G\n[   ] sfr_catalog_0.435310.bin          01-Dec-2019 10:45  2.2G\n[   ] sfr_catalog_0.440372.bin          01-Dec-2019 10:45  2.2G\n[   ] sfr_catalog_0.445435.bin          01-Dec-2019 10:46  2.1G\n[   ] sfr_catalog_0.450497.bin          01-Dec-2019 10:47  2.1G\n[   ] sfr_catalog_0.455560.bin          01-Dec-2019 10:47  2.1G\n[   ] sfr_catalog_0.460622.bin          01-Dec-2019 10:48  2.1G\n[   ] sfr_catalog_0.465685.bin          01-Dec-2019 10:48  2.1G\n[   ] sfr_catalog_0.470747.bin          01-Dec-2019 10:48  2.1G\n[   ] sfr_catalog_0.475810.bin          01-Dec-2019 10:49  2.1G\n[   ] sfr_catalog_0.480872.bin          01-Dec-2019 10:49  2.1G\n[   ] sfr_catalog_0.485935.bin          01-Dec-2019 10:50  2.1G\n[   ] sfr_catalog_0.490997.bin          01-Dec-2019 10:50  2.1G\n[   ] sfr_catalog_0.496060.bin          01-Dec-2019 10:51  2.1G\n[   ] sfr_catalog_0.501122.bin          01-Dec-2019 10:51  2.0G\n[   ] sfr_catalog_0.506185.bin          01-Dec-2019 10:52  2.0G\n[   ] sfr_catalog_0.511247.bin          01-Dec-2019 10:52  2.0G\n[   ] sfr_catalog_0.516310.bin          01-Dec-2019 10:53  2.0G\n[   ] sfr_catalog_0.521372.bin          01-Dec-2019 10:53  2.0G\n[   ] sfr_catalog_0.526435.bin          01-Dec-2019 10:53  2.0G\n[   ] sfr_catalog_0.531497.bin          01-Dec-2019 10:54  2.0G\n[   ] sfr_catalog_0.536560.bin          01-Dec-2019 10:54  2.0G\n[   ] sfr_catalog_0.541622.bin          01-Dec-2019 10:55  2.0G\n[   ] sfr_catalog_0.546685.bin          01-Dec-2019 10:55  2.0G\n[   ] sfr_catalog_0.551747.bin          01-Dec-2019 10:56  2.0G\n[   ] sfr_catalog_0.556810.bin          01-Dec-2019 10:57  2.0G\n[   ] sfr_catalog_0.561872.bin          01-Dec-2019 10:57  1.9G\n[   ] sfr_catalog_0.566935.bin          01-Dec-2019 10:58  1.9G\n[   ] sfr_catalog_0.571997.bin          01-Dec-2019 10:58  1.9G\n[   ] sfr_catalog_0.577060.bin          01-Dec-2019 10:58  1.9G\n[   ] sfr_catalog_0.582123.bin          01-Dec-2019 10:59  1.9G\n[   ] sfr_catalog_0.587185.bin          01-Dec-2019 10:59  1.9G\n[   ] sfr_catalog_0.592248.bin          01-Dec-2019 11:00  1.9G\n[   ] sfr_catalog_0.597310.bin          01-Dec-2019 11:00  1.9G\n[   ] sfr_catalog_0.602373.bin          01-Dec-2019 11:01  1.9G\n[   ] sfr_catalog_0.607435.bin          01-Dec-2019 11:01  1.9G\n[   ] sfr_catalog_0.612498.bin          01-Dec-2019 11:02  1.9G\n[   ] sfr_catalog_0.617560.bin          01-Dec-2019 11:02  1.9G\n[   ] sfr_catalog_0.622623.bin          01-Dec-2019 11:03  1.9G\n[   ] sfr_catalog_0.627685.bin          01-Dec-2019 11:03  1.9G\n[   ] sfr_catalog_0.632748.bin          01-Dec-2019 11:04  1.8G\n[   ] sfr_catalog_0.637810.bin          01-Dec-2019 11:04  1.8G\n[   ] sfr_catalog_0.642873.bin          01-Dec-2019 11:05  1.8G\n[   ] sfr_catalog_0.647935.bin          01-Dec-2019 11:05  1.8G\n[   ] sfr_catalog_0.652998.bin          01-Dec-2019 11:05  1.8G\n[   ] sfr_catalog_0.658060.bin          01-Dec-2019 11:06  1.8G\n[   ] sfr_catalog_0.663123.bin          01-Dec-2019 11:06  1.8G\n[   ] sfr_catalog_0.668185.bin          01-Dec-2019 11:07  1.8G\n[   ] sfr_catalog_0.673248.bin          01-Dec-2019 11:07  1.8G\n[   ] sfr_catalog_0.678310.bin          01-Dec-2019 11:07  1.8G\n[   ] sfr_catalog_0.683373.bin          01-Dec-2019 11:08  1.8G\n[   ] sfr_catalog_0.690967.bin          01-Dec-2019 11:08  1.8G\n[   ] sfr_catalog_0.698560.bin          01-Dec-2019 11:09  1.8G\n[   ] sfr_catalog_0.706154.bin          01-Dec-2019 11:09  1.8G\n[   ] sfr_catalog_0.713748.bin          01-Dec-2019 11:09  1.8G\n[   ] sfr_catalog_0.721342.bin          01-Dec-2019 11:10  1.7G\n[   ] sfr_catalog_0.728935.bin          01-Dec-2019 11:10  1.7G\n[   ] sfr_catalog_0.736529.bin          01-Dec-2019 11:10  1.7G\n[   ] sfr_catalog_0.744123.bin          01-Dec-2019 11:11  1.7G\n[   ] sfr_catalog_0.751717.bin          01-Dec-2019 11:11  1.7G\n[   ] sfr_catalog_0.759310.bin          01-Dec-2019 11:12  1.7G\n[   ] sfr_catalog_0.766904.bin          01-Dec-2019 11:12  1.7G\n[   ] sfr_catalog_0.774498.bin          01-Dec-2019 11:13  1.7G\n[   ] sfr_catalog_0.782092.bin          01-Dec-2019 11:13  1.7G\n[   ] sfr_catalog_0.789685.bin          01-Dec-2019 11:13  1.7G\n[   ] sfr_catalog_0.797279.bin          01-Dec-2019 11:14  1.7G\n[   ] sfr_catalog_0.804873.bin          01-Dec-2019 11:14  1.7G\n[   ] sfr_catalog_0.812467.bin          01-Dec-2019 11:14  1.7G\n[   ] sfr_catalog_0.820060.bin          01-Dec-2019 11:15  1.7G\n[   ] sfr_catalog_0.827654.bin          01-Dec-2019 11:15  1.7G\n[   ] sfr_catalog_0.835248.bin          01-Dec-2019 11:16  1.7G\n[   ] sfr_catalog_0.842842.bin          01-Dec-2019 11:16  1.7G\n[   ] sfr_catalog_0.850435.bin          01-Dec-2019 11:16  1.6G\n[   ] sfr_catalog_0.858029.bin          01-Dec-2019 11:17  1.6G\n[   ] sfr_catalog_0.865623.bin          01-Dec-2019 11:17  1.6G\n[   ] sfr_catalog_0.873217.bin          01-Dec-2019 11:18  1.6G\n[   ] sfr_catalog_0.880810.bin          01-Dec-2019 11:18  1.6G\n[   ] sfr_catalog_0.888404.bin          01-Dec-2019 11:19  1.6G\n[   ] sfr_catalog_0.895998.bin          01-Dec-2019 11:19  1.6G\n[   ] sfr_catalog_0.903592.bin          01-Dec-2019 11:20  1.6G\n[   ] sfr_catalog_0.911185.bin          01-Dec-2019 11:20  1.6G\n[   ] sfr_catalog_0.918779.bin          01-Dec-2019 11:21  1.6G\n[   ] sfr_catalog_0.926373.bin          01-Dec-2019 11:21  1.6G\n[   ] sfr_catalog_0.933967.bin          01-Dec-2019 11:21  1.6G\n[   ] sfr_catalog_0.941560.bin          01-Dec-2019 11:22  1.6G\n[   ] sfr_catalog_0.949154.bin          01-Dec-2019 11:22  1.6G\n[   ] sfr_catalog_0.956748.bin          01-Dec-2019 11:23  1.6G\n[   ] sfr_catalog_0.964342.bin          01-Dec-2019 11:24  1.6G\n[   ] sfr_catalog_0.971935.bin          01-Dec-2019 11:25  1.6G\n[   ] sfr_catalog_0.979529.bin          01-Dec-2019 11:26  1.6G\n[   ] sfr_catalog_0.987123.bin          01-Dec-2019 11:26  1.6G\n[   ] sfr_catalog_0.994717.bin          01-Dec-2019 11:26  1.6G\n[   ] sfr_catalog_1.002310.bin          01-Dec-2019 11:27  1.6G"""
+
         self.sfr_cats = [i.split()[2] for i in self.webpage.split("\n")]
         self.scales = np.array([float(i.split("_")[-1][:-4]) for i in self.sfr_cats])
         self.redshifts = 1/self.scales - 1
@@ -902,19 +1107,20 @@ class UMWgetter:
         sizes = [i.split()[-1] for i in self.webpage.split("\n")]
         self.sizes = [float(i[:-1]) * unitsize[i[-1]] for i in sizes]
 
-    def download_sfrcat_index(self, i, verbose=1):
+    def download_sfrcat_index(self, i, verbose=1, overwrite=False):
         file_url = self.url + self.sfr_cats[i]
-        if verbose:
-            print("wget " + file_url)
-        wget.download(file_url, out=UMConfig().config["data_dir"])
+        outfile = os.path.join(UMConfig().config["data_dir"], self.sfr_cats[i])
+        hf.wget_download(file_url, outfile,
+                         verbose=verbose, overwrite=overwrite)
 
-    def download_sfrcat_redshift(self, redshift):
+    def download_sfrcat_redshift(self, redshift, verbose=1, overwrite=False):
         zmin, zmax = np.min(redshift), np.max(redshift)
         imin = hf.choose_close_index(zmax, self.redshifts, "any")
         imax = hf.choose_close_index(zmin, self.redshifts, "any")
-        for i in range(imin,imax+1):
-            self.download_sfrcat_index(i)
+        for i in range(imin, imax+1):
+            self.download_sfrcat_index(i, verbose=verbose, overwrite=overwrite)
         UMConfig().auto_add()
+
 
 class UVISTAWgetter:
     def __init__(self):
@@ -931,8 +1137,9 @@ class UVISTAWgetter:
         self.uvista_tarf = os.path.join(self.uvista_path, "UVISTA_data.tar.gz")
         self.sean_tarf = os.path.join(self.sean_path, "SeanSpectra_data.tar.gz")
 
-    def download_uvista(self):
-        wget.download(self.uvista_url, out=self.uvista_path)
+    def download_uvista(self, verbose=1, overwrite=False):
+        hf.wget_download(self.uvista_url, outfile=self.uvista_tarf,
+                         verbose=verbose, overwrite=overwrite)
         uvista_tar = tarfile.open(self.uvista_tarf)
 
         for member in uvista_tar.getmembers():
@@ -942,8 +1149,9 @@ class UVISTAWgetter:
         os.remove(self.uvista_tarf)
         UVISTAConfig().auto_add()
 
-    def download_seanspectra(self):
-        wget.download(self.sean_url, out=self.sean_path)
+    def download_seanspectra(self, verbose=1, overwrite=False):
+        hf.wget_download(self.sean_url, outfile=self.sean_tarf,
+                         verbose=verbose, overwrite=overwrite)
         sean_tar = tarfile.open(self.sean_tarf)
 
         for member in sean_tar.getmembers():

@@ -3,6 +3,7 @@ import os
 import collections
 import warnings
 from contextlib import contextmanager
+import wget
 import numpy as np
 import scipy.special as spec
 from scipy.interpolate import interp1d
@@ -792,3 +793,12 @@ def choose_close_index(value, values, tolerance=0.05):
             raise ValueError("Multiple matching redshifts:"
                              f"{values[wh]}")
         return wh[0]
+
+
+def wget_download(file_url, outfile, verbose=1, overwrite=False):
+    if not overwrite and os.path.isfile(outfile):
+        return
+    if verbose:
+        print("wget " + file_url)
+    wget.download(file_url, out=outfile)
+    print()

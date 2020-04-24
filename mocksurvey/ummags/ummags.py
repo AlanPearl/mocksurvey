@@ -117,10 +117,9 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     Several new columns are added, calculated using functions in this
     module. Velocity-distorted positions replace the x, y, and z
     columns, and the old ones are renamed x_real, y_real, and z_real.
-    Additionally, absolute magnitudes (- 5logh) and distance modulus
-    (+ 5logh) are calculated. Note that the h-scaling cancels out if
-    you are interested in relative magnitudes. M_V + distmod = m_v
-    as expected.
+    Additionally, apparent magnitudes and distance modulus are calculated.
+    Note that h-scaling is applied to all distances (including distance
+    modulus), and therefore M = m - distmod + 5log(h).
     """
     photbands = _get_photbands(photbands)
 
@@ -158,10 +157,10 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
                                                 ).value * ms.bplcosmo.h
     distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
 
-    # Calculate apparent magnitudes (column = "m_j", "m_y", etc.)
+    # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
     uvdat = UVData(photbands=photbands)
     umdat = UMData(lc_data, uvdat=uvdat)
-    sfr_uv = 10 ** (umdat.logssfr_uv + lc_data["obs_sm"])
+    sfr_uv = 10 ** umdat.logssfr_uv * lc_data["obs_sm"]
     magdf = pd.DataFrame({k: umdat.abs_mag[k] + distmod_cosmo
                           for k in umdat.abs_mag.columns})
 
