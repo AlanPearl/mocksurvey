@@ -1107,18 +1107,17 @@ class UMWgetter:
         sizes = [i.split()[-1] for i in self.webpage.split("\n")]
         self.sizes = [float(i[:-1]) * unitsize[i[-1]] for i in sizes]
 
-    def download_sfrcat_index(self, i, verbose=1, overwrite=False):
+    def download_sfrcat_index(self, i, overwrite=False):
         file_url = self.url + self.sfr_cats[i]
         outfile = os.path.join(UMConfig().config["data_dir"], self.sfr_cats[i])
-        hf.wget_download(file_url, outfile,
-                         verbose=verbose, overwrite=overwrite)
+        hf.wget_download(file_url, outfile, overwrite=overwrite)
 
-    def download_sfrcat_redshift(self, redshift, verbose=1, overwrite=False):
+    def download_sfrcat_redshift(self, redshift, overwrite=False):
         zmin, zmax = np.min(redshift), np.max(redshift)
         imin = hf.choose_close_index(zmax, self.redshifts, "any")
         imax = hf.choose_close_index(zmin, self.redshifts, "any")
         for i in range(imin, imax+1):
-            self.download_sfrcat_index(i, verbose=verbose, overwrite=overwrite)
+            self.download_sfrcat_index(i, overwrite=overwrite)
         UMConfig().auto_add()
 
 
@@ -1137,9 +1136,21 @@ class UVISTAWgetter:
         self.uvista_tarf = os.path.join(self.uvista_path, "UVISTA_data.tar.gz")
         self.sean_tarf = os.path.join(self.sean_path, "SeanSpectra_data.tar.gz")
 
-    def download_uvista(self, verbose=1, overwrite=False):
+    def download_uvista(self, overwrite=False):
+        if not overwrite:
+            wget_files = ["UVISTA_final_BC03_v4.1.fout",
+                          "UVISTA_final_colors_sfrs_v4.1.dat",
+                          "UVISTA_final_v4.1.153-155.rf",
+                          "UVISTA_final_v4.1.155-161.rf",
+                          "UVISTA_final_v4.1.cat",
+                          "UVISTA_final_v4.1.zout"]
+            stored_files = UVISTAConfig().config["files"]
+            if set(wget_files).issubset(stored_files):
+                UVISTAConfig().auto_add()
+                return
+
         hf.wget_download(self.uvista_url, outfile=self.uvista_tarf,
-                         verbose=verbose, overwrite=overwrite)
+                         overwrite=overwrite)
         uvista_tar = tarfile.open(self.uvista_tarf)
 
         for member in uvista_tar.getmembers():
@@ -1149,9 +1160,16 @@ class UVISTAWgetter:
         os.remove(self.uvista_tarf)
         UVISTAConfig().auto_add()
 
-    def download_seanspectra(self, verbose=1, overwrite=False):
+    def download_seanspectra(self, overwrite=False):
+        if not overwrite:
+            wget_files = ["specid.npy", "wavelength.npy", "isnan.npy"]
+            stored_files = SeanSpectraConfig().config["files"]
+            if set(wget_files).issubset(stored_files):
+                SeanSpectraConfig().auto_add()
+                return
+
         hf.wget_download(self.sean_url, outfile=self.sean_tarf,
-                         verbose=verbose, overwrite=overwrite)
+                         overwrite=overwrite)
         sean_tar = tarfile.open(self.sean_tarf)
 
         for member in sean_tar.getmembers():

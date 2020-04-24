@@ -140,7 +140,7 @@ class DownloadUM:
                             help="Upper redshift bound to download catalogs")
 
         # Options
-        parser.add_argument("--verbose", "-v", action="store_true")
+        # parser.add_argument("--verbose", "-v", action="store_true")
         parser.add_argument("--overwrite", "-o", action="store_true")
 
         self.parser = parser
@@ -152,7 +152,7 @@ class DownloadUM:
 
         redshift = a.Z_LOW if a.Z_HIGH is None else [a.Z_LOW, a.Z_HIGH]
         ms.UMWgetter().download_sfrcat_redshift(
-            redshift, verbose=a.verbose, overwrite=a.overwrite)
+            redshift, overwrite=a.overwrite)
 
 
 class DownloadUVISTA:
@@ -164,7 +164,7 @@ class DownloadUVISTA:
         parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
 
         # Options
-        parser.add_argument("--verbose", "-v", action="store_true")
+        # parser.add_argument("--verbose", "-v", action="store_true")
         parser.add_argument("--overwrite", "-o", action="store_true")
 
         self.parser = parser
@@ -175,8 +175,8 @@ class DownloadUVISTA:
         a = self.parser.parse_args()
 
         wgetter = ms.UVISTAWgetter()
-        wgetter.download_uvista(verbose=a.verbose, overwrite=a.overwrite)
-        wgetter.download_seanspectra(verbose=a.verbose, overwrite=a.overwrite)
+        wgetter.download_uvista(overwrite=a.overwrite)
+        wgetter.download_seanspectra(overwrite=a.overwrite)
 
 
 class Config:

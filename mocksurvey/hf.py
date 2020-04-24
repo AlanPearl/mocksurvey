@@ -795,10 +795,9 @@ def choose_close_index(value, values, tolerance=0.05):
         return wh[0]
 
 
-def wget_download(file_url, outfile, verbose=1, overwrite=False):
+def wget_download(file_url, outfile, overwrite=False):
     if not overwrite and os.path.isfile(outfile):
         return
-    if verbose:
-        print("wget " + file_url)
+    print("wget " + file_url)
     wget.download(file_url, out=outfile)
     print()
