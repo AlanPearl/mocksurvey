@@ -18,8 +18,33 @@ ___
 # Installation Instructions
 ___
 ```
+cd /path/to/download/source/code
 git clone https://github.com/AlanPearl/mocksurvey
-cd mocksurvey
-python setup.py install
-bash get_smdpl
+pip install ./mocksurvey
+```
+
+#### Set path to a directory where you would like to store downloaded data
+```
+python -m mocksurvey set-data-path /path/to/download/mocksurvey/data
+```
+#### Download UltraVISTA photometry
+```
+python -m mocksurvey download-uvista
+```
+#### Download UniverseMachine snapshots. This redshift range (0 - inf) downloads all ~300 GB. You may choose a narrower range or enter a single value to download a single snapshot.
+```
+python -m mocksurvey download-um 0 inf
+```
+#### Download and install UniverseMachine source code
+```
+cd /path/to/download/source/code
+git clone https://bitbucket.org/pbehroozi/universemachine
+cd universemachine
+make
+python -m mocksurvey config UM set-lightcone-executable ./lightcone
+```
+#### If you would like to run halotools models, using the SMDPL simulation (deprecated but might still work)
+```
+cd /path/to/download/source/code
+bash mocksurvey/get_smdpl
 ```
