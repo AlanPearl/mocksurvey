@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import collections
 import warnings
 from contextlib import contextmanager
@@ -799,5 +800,7 @@ def wget_download(file_url, outfile, overwrite=False):
     if not overwrite and os.path.isfile(outfile):
         return
     print("wget " + file_url)
-    wget.download(file_url, out=outfile)
+    actual = wget.download(file_url, out=outfile)
     print()
+    if overwrite:
+        shutil.move(actual, outfile)

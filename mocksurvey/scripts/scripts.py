@@ -221,12 +221,16 @@ class Config:
         cfg = self.datasets[a.DATASET]
         if a.COMMAND == "set-path":
             cfg(*a.ARGS).update()
+        if a.DATASET == "LightCone":
+            args1, args2 = a.ARGS[:1], a.ARGS[1:]
+        else:
+            args1, args2 = [], a.ARGS
 
         {
-            "auto-add": cfg().auto_add,
-            "reset": cfg().reset,
-            "add": cfg().add,
-            "remove": cfg().remove,
-            "set-lightcone-executable": (cfg().set_lightcone_executable
+            "auto-add": cfg(*args1).auto_add,
+            "reset": cfg(*args1).reset,
+            "add": cfg(*args1).add,
+            "remove": cfg(*args1).remove,
+            "set-lightcone-executable": (cfg(*args1).set_lightcone_executable
                                          if a.DATASET == "UM" else None)
-        }[a.COMMAND](*a.ARGS)
+        }[a.COMMAND](*args2)
