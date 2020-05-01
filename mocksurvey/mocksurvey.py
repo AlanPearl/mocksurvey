@@ -26,10 +26,9 @@ from .httools.httools import bplcosmo
 
 
 def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
-                               masslim=None):
+                               masslim=None, randfrac=0.7, sqdeg=15.):
     z_low, z_high = zlim
-    sqdeg, scheme = 15., "square"
-    randfrac = 0.7
+    scheme = "square"
     max_dict = dict(m_y=22.5, m_j=22.8)
 
     if masslim is None:

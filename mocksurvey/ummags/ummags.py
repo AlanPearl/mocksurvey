@@ -558,8 +558,11 @@ class NeighborSeanSpecFinder:
         return self.stacker.avg_spectrum(specids, lumcorr, redshift,
                                          cosmo=cosmo)
 
-    def write_specmap(self, outfile, num_nearest, metric_weights=None,
-                      cosmo=None, verbose=1, progress=True):
+    def write_specmap(self, outfile, num_nearest, ummask=None,
+                      metric_weights=None, bestcolor=True, cosmo=None,
+                      corr="mass", verbose=1, progress=True):
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
         if isinstance(progress, str) and progress.lower() == "notebook":
             import tqdm.notebook as tqdm
             iterator = tqdm.trange
@@ -569,15 +572,27 @@ class NeighborSeanSpecFinder:
         else:
             iterator = range
 
-        redshift = self.umdat.z
+        redshift = self.umdat.z[ummask]
         f = np.memmap(outfile, self.stacker.get_specmap().dtype, "w+",
-                      shape=(len(redshift), self.stacker.get_specmap().shape[1]))
+                      shape=(len(redshift), len(self.stacker.wave)))
 
-        nearest, lumcorr = self.find_nearest_specid(
-            num_nearest, metric_weights=metric_weights, verbose=verbose)
+        nearest = self.find_nearest_specid(
+            num_nearest, metric_weights=metric_weights,
+            ummask=ummask, verbose=verbose)
+        if bestcolor:
+            nearest = self.best_color(nearest, ummask=ummask).reshape(-1,1)
+
+        if corr is None:
+            masscorr = np.ones_like(nearest)
+        elif corr == "mass":
+            masscorr = self.masscorr(nearest, ummask=ummask)
+        elif corr == "lum":
+            masscorr = self.lumcorr(nearest, ummask=ummask)
+        else:
+            raise ValueError(f"corr={corr}. Must be one of {None, 'mass', 'lum'}")
 
         for i in iterator(len(nearest)):
-            f[i] = self.avg_spectrum(nearest[i], lumcorr[i],
+            f[i] = self.avg_spectrum(nearest[i], masscorr[i],
                                      redshift[i], cosmo=cosmo)
 
     def find_nearest_specid(self, num_nearest, metric_weights=None, ummask=None, verbose=1):
@@ -586,7 +601,7 @@ class NeighborSeanSpecFinder:
         from sklearn import neighbors
         num_nearest = int(num_nearest)
         if metric_weights is None:
-            metric_weights = [1/1.0, 1/0.75, 1/2.0]
+            metric_weights = [1/1.0, 1/0.5, 1/2.0]
         if ummask is None:
             ummask = np.ones(self.umdat.z.shape, dtype=bool)
 
