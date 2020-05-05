@@ -459,18 +459,18 @@ class UMConfig(BaseConfig):
         snaps_file = os.path.join(self.config["data_dir"], "snaps.txt")
         open(snaps_file, mode="w").write(snaps_txt)
 
-    def setup_lightcone_cfg(self):
+    def setup_lightcone_cfg(self, cosmo=bplcosmo):
         lightcone_txt = f"""#Input/output locations and details
 INBASE = {self.config["data_dir"]} # directory with snaps.txt
 OUTBASE = {self.config["data_dir"]} # directory with sfr_catalogs
 NUM_BLOCKS = 144 #The number of cat.box* files
 
 #Box size / cosmology
-BOX_SIZE = 250 #In Mpc/h
-Om = 0.307     #Omega_matter
-Ol = 0.693     #Omega_lambda
-h0 = 0.68      #h0 = H0 / (100 km/s/Mpc)
-fb = 0.158     #cosmic baryon fraction
+BOX_SIZE = {250: <16} #In Mpc/h
+Om = {cosmo.Om0: <22} #Omega_matter
+Ol = {cosmo.Ode0: <22} #Omega_lambda
+h0 = {cosmo.h: <22} #h0 = H0 / (100 km/s/Mpc)
+fb = {cosmo.Ob0/cosmo.Om0: <22} #cosmic baryon fraction
 
 #Parallel node setup
 NUM_NODES = 48           #Total number of nodes used
@@ -481,7 +481,8 @@ BLOCKS_PER_NODE = 24    #Parallel tasks per node
 #BLOCKS_PER_NODE = 24, since 144 = 24 x 6.
 
 #Option to calculate ICL
-CALC_ICL = 1"""
+CALC_ICL = 1
+"""
         lightcone_file = os.path.join(self.config["data_dir"], "lightcone.cfg")
         open(lightcone_file, mode="w").write(lightcone_txt)
         self.set_lightcone_config(lightcone_file)

@@ -729,6 +729,8 @@ def fuzzy_digitize_improved(x, centroids, **args):
                                 [2 * abs(vals.max()) + 1]])
 
     # Use fuzzy_digitize normally and reindex bins
+
+    # TODO: Make exception for AssertionError where there aren't any bins with > nwin points
     centroid_indices = ht_utils.fuzzy_digitize(x, centroids, **args)
     centroid_indices[centroid_indices != 0] -= 1
     centroid_indices[centroid_indices == len(centroids) - 2] -= 1

@@ -203,7 +203,7 @@ class Config:
             "set-lightcone-executable (UM only)": None,
         }
 
-    # Mandatory positional arguments
+        # Mandatory positional arguments
         parser.add_argument("DATASET", type=str,
                             help=f"Options: {set(self.datasets.keys())}")
         parser.add_argument("COMMAND", type=str,

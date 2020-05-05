@@ -75,7 +75,7 @@ def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
     metadict = metadict_from_ascii(asciifile, **kwargs)
 
     np.save(outfilebase + ".npy", data)
-    json.dump(metadict, open(outfilebase + ".json", "w"))
+    json.dump(metadict, open(outfilebase + ".json", "w"), indent=4)
 
     if remove_ascii_file:
         # Save disk space by deleting the huge ascii file
@@ -98,12 +98,70 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     (executable, config, z_low, z_high,
      x_arcmin, y_arcmin, samples) = cmd.split()[:7]
 
-    return dict(Rmatrix=rot_matrix, seed=seed, origin=origin, cmd=cmd,
-                photbands=photbands, obs_mass_limit=obs_mass_limit,
-                true_mass_limit=true_mass_limit, executable=executable,
-                config=config, z_low=float(z_low), z_high=float(z_high),
+    header = """# Structured array of halo/galaxy properties
+# Load via 
+# >>> data = np.load("filename.npy")
+# Cosmology: FlatLambdaCDM(H0=67.8, Om0=0.307, Ob0=0.048)
+#
+# Useful columns:
+# ===============
+# x_real, y_real, z_real - True comoving position in Mpc/h
+# x,y,z - Velocity-distorted comoving position in Mpc/h
+# vx, vy, vz - Velocity in km/s
+# (Note: Observer at origin, x-axis is ~line-of-sight)
+# ra,dec - Celestial coords in degrees: range [-180,180) and [-90,90]
+# redshift[_cosmo] - velocity-distorted [and cosmological] redshift
+# m_{g/r/y/j} - apparent magnitudes in observed bands fit to UltraVISTA
+# obs_sm - "observed" stellar mass from UniverseMachine in Msun
+# obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
+# halo_mvir - Halo mass in Msun
+# upid - ID of central or -1 if central
+"""
+
+    return dict(header=header, z_low=float(z_low), z_high=float(z_high),
                 x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
-                samples=int(samples))
+                samples=int(samples), photbands=photbands,
+                obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit,
+                Rmatrix=rot_matrix, seed=seed, origin=origin,
+                config=config, executable=executable, cmd=cmd)
+
+    # return dict(header=header, Rmatrix=rot_matrix, seed=seed, origin=origin,
+    #             cmd=cmd, photbands=photbands, obs_mass_limit=obs_mass_limit,
+    #             true_mass_limit=true_mass_limit, executable=executable,
+    #             config=config, z_low=float(z_low), z_high=float(z_high),
+    #             x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
+    #             samples=int(samples))
+
+
+def metadict_with_spec(meta, ngal):
+    if "header_spec" in meta:
+        del meta["header_spec"]
+    if "Ngal" in meta:
+        del meta["Ngal"]
+    if "Nwave" in meta:
+        del meta["Nwave"]
+
+    nwave = ms.SeanSpectraConfig().wavelength().size
+    header_spec = """# Binary array of the spectrum of each galaxy in the catalog
+# Flux units: nJy
+# Wavelength grid [units: nm] = np.geomspace(
+#     380.0, 1259.9885444552458, 74370)
+#
+# Loading instructions
+# ====================
+# First, load the meta data to get the array's shape
+# >>> meta = json.load(open("filename.json"))
+# >>> shape = meta["Ngal"], meta["Nwave"]
+#
+# (Method A) Load the whole array
+# >>> spec = np.fromfile("filename.spec", dtype="<f4").reshape(shape)
+#
+# (Method B) Load a single spectrum or masked selection
+# >>> i = 123
+# >>> spec = np.memmap("filename.spec", dtype="<f4", shape=shape)[i]
+"""
+
+    return dict(Ngal=ngal, Nwave=nwave, header_spec=header_spec, **meta)
 
 
 def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
@@ -216,6 +274,10 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
                  min_counts_in_z2_bins=None, seed=None):
     assert (vparse(ht.__version__) >= vparse("0.7dev"))
     assert (dz > 0)
+    assert (np.shape(m) == np.shape(z)) and (np.shape(z) == np.shape(prop))
+
+    if np.size(prop) == 0:
+        return np.zeros_like(prop)
     if min_counts_in_z2_bins is None:
         min_counts_in_z2_bins = nwin+1
 
@@ -580,7 +642,7 @@ class NeighborSeanSpecFinder:
             num_nearest, metric_weights=metric_weights,
             ummask=ummask, verbose=verbose)
         if bestcolor:
-            nearest = self.best_color(nearest, ummask=ummask).reshape(-1,1)
+            nearest = self.best_color(nearest, ummask=ummask).reshape(-1, 1)
 
         if corr is None:
             masscorr = np.ones_like(nearest)
@@ -637,29 +699,28 @@ class NeighborSeanSpecFinder:
         neighbor_id = np.full((len(self.umdat.logm), num_nearest), -99)
         neighbor_id[umsel] = self.uvdat.id[uvsel][neighbor_index]
 
-        # # Calculate specific luminosity, averaged over all available
-        # # bands in each UniverseMachine and UVISTA galaxy
-        # uv_lum = np.mean(10**(-0.4*self.uvdat.abs_mag.values), axis=1)
-        # um_lum = np.mean(10**(-0.4*self.umdat.abs_mag.values), axis=1)
-        # # Return the correction factor, which is just a constant
-        # # we have to multiply into the stacked spectrum
-        # lumcorr = np.full((len(umsel), num_nearest), np.nan)
-        # lumcorr[umsel, :] = um_lum[umsel, None
-        #                            ] / uv_lum[uvsel][neighbor_index]
-
         return neighbor_id[ummask]
 
-    def lumcorr(self, spec_id, ummask=None):
+    def lumcorr(self, spec_id, band=None, ummask=None):
         if ummask is None:
             ummask = np.ones(self.umdat.z.shape, dtype=bool)
 
-        # Calculate specific luminosity, averaged over all available
-        # bands in each UniverseMachine and UVISTA galaxy
-        uv_lum = np.mean(10 ** (-0.4 * self.uvdat.abs_mag.values), axis=1)
-        um_lum = np.mean(10 ** (-0.4 * self.umdat.abs_mag.values), axis=1)
+        if band is None:
+            available = self.uvdat.photbands
+            band = available[-1]
+            if "y" in available:
+                band = "y"
+            elif "j" in available:
+                band = "j"
+            elif "i" in available:
+                band = "i"
+
+        # Normalize specified photometric band
+        uv_lum = 10 ** (-0.4 * self.uvdat.abs_mag[band].values)
+        um_lum = 10 ** (-0.4 * self.umdat.abs_mag[band].values)
+
         # Return the correction factor, which is just a constant
         # we have to multiply into the stacked spectrum
-        # lumcorr = np.full(spec_id.shape, np.nan)
         uv_lum = uv_lum[self.id2idx_uvista(spec_id)]
         um_lum = um_lum[(ummask, *[None, ]*(spec_id.ndim-1))]
         return um_lum / uv_lum

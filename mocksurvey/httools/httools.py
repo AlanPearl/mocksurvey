@@ -29,12 +29,11 @@ from astropy import cosmology, table as astropy_table
 from .. import hf
 # from .. import mocksurvey as ms
 from ..stats import cf
-# from ..ummags import ummags
 
 bplcosmo = cosmology.FlatLambdaCDM(name="Bolshoi-Planck",
-                                   H0=68.,
+                                   H0=67.8,
                                    Om0=0.307,
-                                   Ob0=0.307*0.158)
+                                   Ob0=0.048)
 
 
 class RedshiftSelector:
@@ -1695,7 +1694,8 @@ class GalBox(SimBox):
 
     See SimBox documentation below
     """
-    accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty", "volume", "Nbox", "rotation"]
+    accepted_kwargs = ["populate_on_instantiation", "hodname", "threshold", "empty",
+                       "volume", "Nbox", "rotation"]
 
     # noinspection PyMissingConstructor
     def __init__(self, halobox=None, **kwargs):
