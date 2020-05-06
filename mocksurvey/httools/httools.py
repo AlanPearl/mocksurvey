@@ -67,11 +67,11 @@ class FieldSelector:
         scheme = self.scheme
         if scheme.lower().startswith("cir"):
             return self.circle_selector, self.circle_fieldshape
-        if scheme.lower().startswith("sq"):
+        elif scheme.lower().startswith("sq"):
             return self.square_selector, self.square_fieldshape
-        if scheme.lower().startswith("hex"):
+        elif scheme.lower().startswith("hex"):
             return self.hexagon_selector, self.hexagon_fieldshape
-        if scheme[0].isdigit():
+        elif scheme[0].isdigit():
             self.n_vertices = int(scheme.split("-")[0])
             return self.npoly_selector, self.npoly_fieldshape
         else:

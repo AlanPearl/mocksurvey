@@ -32,8 +32,10 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
     max_dict = dict(m_y=22.5, m_j=22.8)
 
     if masslim is None:
-        incompsel = LightConeSelector(z_low, z_high, sqdeg, scheme,
-                                      randfrac, max_dict=max_dict)
+        incompsel = LightConeSelector(z_low, z_high, 41252.96124941927,
+                                      "circ", max_dict=max_dict)
+        # incompsel = LightConeSelector(z_low, z_high, sqdeg, scheme,
+        #                               randfrac, max_dict=max_dict)
 
         comptest = CompletenessTester(lightcone, incompsel)
         masslim = comptest.limit(compfrac)
@@ -154,7 +156,9 @@ class CompletenessTester:
         column = column[no_selection]
 
         order = np.argsort(column)
-        gals, column = gals[order], column[order]
+        # gals, column = gals[order], column[order]
+        # This is 3x faster for some reason...
+        gals, column = np.take(gals, order), np.take(column, order)
         gals = gals if max_val else gals[::-1]
         column = column if max_val else column[::-1]
 
