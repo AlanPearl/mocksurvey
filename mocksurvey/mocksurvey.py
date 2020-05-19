@@ -25,17 +25,9 @@ from .ummags import ummags
 from .httools.httools import bplcosmo
 
 
-def make_uvista_selector(zlim, mlim, pfs_sel=False):
-    sqdeg = 1.62  # (taken from Muzzin et al.)
-    min_dict = dict(obs_sm=10 ** mlim[0])
-    max_dict = dict(obs_sm=10 ** mlim[1])
-    if pfs_sel:
-        max_dict["m_y"] = 22.5
-        max_dict["m_j"] = 22.8
-    sel = LightConeSelector(zlim[0], zlim[1], sqdeg, "sq",
-                            min_dict=min_dict, max_dict=max_dict)
-
-    return sel
+uvista_sqdeg = 1.62
+pfs_sqdeg = 15.0
+pfs_max_dict = dict(m_y=22.5, m_j=22.8)
 
 
 def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, scheme="sq",
@@ -75,8 +67,12 @@ class RealizationLoader:
                 self.meta[0]["x_arcmin"] * self.meta[0]["y_arcmin"] / 3600,
                 scheme="square", realspace=True)
         self.selector = selector
+        self.secondary_selector = None
         self.cosmo = selector.cosmo
 
+        def _null_selector(*args, **kwargs):
+            return slice(None)
+        self._null_selector = _null_selector
         self._all_catalogs = None
 
     @property
@@ -84,7 +80,12 @@ class RealizationLoader:
         if self._all_catalogs is None:
             return (self.load(i) for i in range(self.nreal))
         else:
-            return (cat for cat in self._all_catalogs)
+            selector = self.get_secondary_selector()
+            return (cat[selector(cat)] for cat in self._all_catalogs)
+
+    def get_secondary_selector(self):
+        return self._null_selector if self.secondary_selector is None \
+            else self.secondary_selector
 
     def load_all(self):
         if self._all_catalogs is None:
@@ -94,21 +95,23 @@ class RealizationLoader:
                 cat = cat[self.selector(cat)]
                 self._all_catalogs.append(cat)
 
-        return self._all_catalogs
+        selector = self.get_secondary_selector()
+        return [cat[selector(cat)] for cat in self._all_catalogs]
 
     def load(self, index):
+        selector = self.get_secondary_selector()
         if self._all_catalogs is None:
-            return self.config.load(index)[0]
+            return (v := self.config.load(index)[0])[selector(v)]
         else:
-            return self._all_catalogs[index]
+            return (v := self._all_catalogs[index])[selector(v)]
 
     def cosmic_var(self, statfuncs, take_var=False):
         """
         Parameters
         ----------
         statfuncs : callable | list of callables
-            Functions that take a light cone catalog as the only
-            argument and return the desired statistic
+            Functions that return the desired statistic. They must take two
+            positional arguments: a lightcone and this RealizationLoader
 
         take_var : bool (default=False)
             If true, this function will return the variance of
@@ -132,7 +135,7 @@ class RealizationLoader:
 
         for j, real in enumerate(self.generator):
             for i, statfunc in enumerate(statfuncs):
-                stats[i][j] = statfunc(real)
+                stats[i][j] = statfunc(real, self)
 
         results = np.array(stats)
         if take_var:
@@ -145,9 +148,10 @@ class RealizationLoader:
 
 
 class LightConeSelector:
-    def __init__(self, z_low, z_high, sqdeg, scheme="sq", sample_fraction=1.,
-                 min_dict=None, max_dict=None, cosmo=bplcosmo,
-                 center_radec=None, realspace=False, deg=True):
+    def __init__(self, z_low, z_high, sqdeg=None, scheme="sq",
+                 sample_fraction=1., min_dict=None, max_dict=None,
+                 cosmo=bplcosmo, center_radec=None, realspace=False, deg=True):
+        scheme = "full_sky" if sqdeg is None else scheme
         assert isinstance(scheme, str), \
             "Scheme must start with one of: 'sq', 'cir', 'hex' or 'full'"
 
@@ -195,10 +199,9 @@ class LightConeSelector:
     def rand_selection(self, lightcone, seed=None):
         with hf.temp_seed(seed):
             if self.sample_fraction < 1:
-                cond = np.random.random(len(lightcone)) < self.sample_fraction
+                return np.random.random(len(lightcone)) < self.sample_fraction
             else:
-                cond = np.ones(len(lightcone), dtype=bool)
-            return cond
+                return np.ones(len(lightcone), dtype=bool)
 
     def dict_selection(self, lightcone):
         ones = np.ones(len(lightcone), dtype=bool)
