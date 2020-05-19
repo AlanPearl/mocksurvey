@@ -25,21 +25,31 @@ from .ummags import ummags
 from .httools.httools import bplcosmo
 
 
-def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
-                               masslim=None, randfrac=0.7, sqdeg=15.):
+def make_uvista_selector(zlim, mlim, pfs_sel=False):
+    sqdeg = 1.62  # (taken from Muzzin et al.)
+    min_dict = dict(obs_sm=10 ** mlim[0])
+    max_dict = dict(obs_sm=10 ** mlim[1])
+    if pfs_sel:
+        max_dict["m_y"] = 22.5
+        max_dict["m_j"] = 22.8
+    sel = LightConeSelector(zlim[0], zlim[1], sqdeg, "sq",
+                            min_dict=min_dict, max_dict=max_dict)
+
+    return sel
+
+
+def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, scheme="sq",
+                               masslim=None, randfrac=0.7, sqdeg=15.,
+                               masscol="obs_sm"):
     z_low, z_high = zlim
-    scheme = "square"
     max_dict = dict(m_y=22.5, m_j=22.8)
 
     if masslim is None:
-        incompsel = LightConeSelector(z_low, z_high, 41252.96124941927,
-                                      "circ", max_dict=max_dict)
-        # incompsel = LightConeSelector(z_low, z_high, sqdeg, scheme,
-        #                               randfrac, max_dict=max_dict)
-
+        incompsel = LightConeSelector(z_low, z_high, 15., "fullsky",
+                                      max_dict=max_dict)
         comptest = CompletenessTester(lightcone, incompsel)
-        masslim = comptest.limit(compfrac)
-    min_dict = {"obs_sm": masslim}
+        masslim = comptest.limit(compfrac, column=masscol)
+    min_dict = {masscol: masslim}
 
     compsel = LightConeSelector(
         z_low, z_high, sqdeg, scheme, randfrac,
@@ -47,10 +57,103 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95,
     return compsel
 
 
+class RealizationLoader:
+    def __init__(self, selector=None, name="PFS", nreal=None):
+        self.name = name
+        self.config = LightConeConfig(name)
+        self.nreal = self.nreal_avail = len(self.config.config["files"])
+        self.meta = [json.load(open(self.config.get_filepath(f)))
+                     for f in self.config.config["meta_files"]]
+        if nreal is not None:
+            assert nreal <= self.nreal, f"There are only {self.nreal}" \
+                                        f"realizations of {name} available"
+            self.nreal = nreal
+
+        if selector is None:
+            selector = LightConeSelector(
+                self.meta[0]["z_low"], self.meta[0]["z_high"],
+                self.meta[0]["x_arcmin"] * self.meta[0]["y_arcmin"] / 3600,
+                scheme="square", realspace=True)
+        self.selector = selector
+        self.cosmo = selector.cosmo
+
+        self._all_catalogs = None
+
+    @property
+    def generator(self):
+        if self._all_catalogs is None:
+            return (self.load(i) for i in range(self.nreal))
+        else:
+            return (cat for cat in self._all_catalogs)
+
+    def load_all(self):
+        if self._all_catalogs is None:
+            self._all_catalogs = []
+            for i in range(self.nreal):
+                cat = self.config.load(i)[0]
+                cat = cat[self.selector(cat)]
+                self._all_catalogs.append(cat)
+
+        return self._all_catalogs
+
+    def load(self, index):
+        if self._all_catalogs is None:
+            return self.config.load(index)[0]
+        else:
+            return self._all_catalogs[index]
+
+    def cosmic_var(self, statfuncs, take_var=False):
+        """
+        Parameters
+        ----------
+        statfuncs : callable | list of callables
+            Functions that take a light cone catalog as the only
+            argument and return the desired statistic
+
+        take_var : bool (default=False)
+            If true, this function will return the variance of
+            the desired statistic instead of an array of values
+            across realizations (which you could then take the variance of)
+
+        Returns
+        -------
+        results : array
+            A list of results with same the length as statfuncs. Or just
+            one result if statfuncs is a callable rather than a list.
+            If take_var=True, each result = tuple(stat, stat_variance).
+            Else, each result is an array of stat realizations
+        """
+        is_arraylike = hf.is_arraylike(statfuncs)
+        if not is_arraylike:
+            statfuncs = [statfuncs]
+
+        stats: list = np.full((len(statfuncs), self.nreal),
+                              np.nan).tolist()
+
+        for j, real in enumerate(self.generator):
+            for i, statfunc in enumerate(statfuncs):
+                stats[i][j] = statfunc(real)
+
+        results = np.array(stats)
+        if take_var:
+            results = [(stat.mean(axis=0), stat.std(axis=0, ddof=1) ** 2)
+                       for stat in results]
+        if not is_arraylike:
+            results = results[0]
+
+        return results
+
+
 class LightConeSelector:
-    def __init__(self, z_low, z_high, sqdeg, scheme, sample_fraction=1.,
+    def __init__(self, z_low, z_high, sqdeg, scheme="sq", sample_fraction=1.,
                  min_dict=None, max_dict=None, cosmo=bplcosmo,
-                 center_radec=None, deg=True):
+                 center_radec=None, realspace=False, deg=True):
+        assert isinstance(scheme, str), \
+            "Scheme must start with one of: 'sq', 'cir', 'hex' or 'full'"
+
+        self.sqdeg = 41_252.9612494 if scheme.startswith("full") else sqdeg
+        self.scheme = scheme
+        self.realspace = realspace
         self.z_low, self.z_high = z_low, z_high
         self.sample_fraction = sample_fraction
         self.min_dict, self.max_dict = min_dict, max_dict
@@ -59,24 +162,35 @@ class LightConeSelector:
         z, dz = (z_high+z_low)/2., z_high - z_low
 
         simbox = httools.SimBox(redshift=z, empty=True)
+        if self.scheme.startswith("full"):
+            scheme = "circle"
         self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=scheme,
                                   center_rdz=center_radec, delta_z=dz)
         self.field_selector = self.field.field_selector
 
     def __call__(self, lightcone, seed=None):
-        cond1 = self.pos_selection(lightcone)
-        cond2 = self.rand_selection(lightcone, seed=seed)
-        cond3 = self.dict_selection(lightcone)
+        conditions = [self.field_selection(lightcone),
+                      self.redshift_selection(lightcone),
+                      self.rand_selection(lightcone, seed=seed),
+                      self.dict_selection(lightcone)]
+        return np.all(conditions, axis=0)
 
-        return np.all([cond1, cond2, cond3], axis=0)
+    @property
+    def volume(self):
+        return hf.volume(self.sqdeg, [self.z_low, self.z_high],
+                         cosmo=self.cosmo)
 
-    def pos_selection(self, lightcone):
-        rdz = hf.xyz_array(lightcone, ["ra", "dec", "redshift"])
+    def field_selection(self, lightcone):
+        if self.scheme.startswith("full"):
+            return np.ones(len(lightcone), dtype=bool)
+        else:
+            rd = hf.xyz_array(lightcone, ["ra", "dec"])
+            return self.field_selector(rd, deg=self.deg)
 
-        cond1 = rdz[:, 2] >= self.z_low
-        cond2 = rdz[:, 2] <= self.z_high
-        cond3 = self.field_selector(rdz, deg=self.deg)
-        return np.all([cond1, cond2, cond3], axis=0)
+    def redshift_selection(self, lightcone):
+        z = lightcone["redshift_cosmo"] if self.realspace \
+            else lightcone["redshift"]
+        return (self.z_low <= z) & (z <= self.z_high)
 
     def rand_selection(self, lightcone, seed=None):
         with hf.temp_seed(seed):
@@ -103,7 +217,8 @@ class LightConeSelector:
     def make_rands(self, n, rdz=False, seed=None):
         # Calculate limits in ra, dec, and distance
         fieldshape = self.field.get_shape(rdz=True)[:2, None]
-        rdlims = self.field.center_rdz[:2, None] + np.array([[.5, -.5]]) * fieldshape
+        rdlims = self.field.center_rdz[:2, None] + np.array([[.5, -.5]]) \
+            * fieldshape
         distlim = hf.comoving_disth([self.z_low, self.z_high], self.cosmo)
 
         rands = hf.rand_rdz(n, *rdlims, distlim, seed=seed)

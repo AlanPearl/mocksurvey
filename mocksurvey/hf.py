@@ -51,6 +51,42 @@ def suppress_stdout():
             sys.stdout = old_stdout
 
 
+def make_struc_array(dtypes, name_val_dict):
+    names, vals = list(name_val_dict.keys()), list(name_val_dict.values())
+
+    if vals:
+        lengths = [len(val) for val in vals]
+        length = lengths[0]
+        assert np.all([l == length for l in lengths]), \
+            f"Arrays must be same length: names={names}, lengths={lengths}"
+    else:
+        length = 0
+
+    dtype = [(n, d) for n, d in zip(names, dtypes)]
+    ans = np.zeros(length, dtype=dtype)
+    for n, v in zip(names, vals):
+        ans[n] = v
+
+    return ans
+
+
+def lightcone_array(id=None, upid=None, x=None, y=None, z=None, obs_sm=None,
+                    obs_sfr=None, redshift=None, ra=None, dec=None, **kwargs):
+    dtypes = []
+    array = dict(id=id, upid=upid, x=x, y=y, z=z, obs_sm=obs_sm,
+                 obs_sfr=obs_sfr, redshift=redshift, ra=ra, dec=dec, **kwargs)
+
+    for name in list(array.keys()):
+        if array[name] is None:
+            del array[name]
+        elif name in ("id", "upid"):
+            dtypes.append("<i8")
+        else:
+            dtypes.append("<f4")
+
+    return make_struc_array(dtypes, array)
+
+
 def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     """
     `func` must be a numpy-friendly function which accepts
@@ -514,10 +550,21 @@ such that the selected points are chosen randomly over a uniform distribution
         return ans
 
 
+def volume(sqdeg, zlim, cosmo=None):
+    """
+    Returns the comoving volume of a chunk of a sphere of given limits in
+    ra, dec, and z. z is interpreted as distance unless cosmo is given
+    """
+    if cosmo is not None:
+        zlim = comoving_disth(zlim, cosmo)
+    omega = sqdeg * (np.pi/180.) ** 2
+    return omega/3. * (zlim[1] ** 3 - zlim[0] ** 3)
+
+
 def volume_rdz(ralim, declim, zlim, cosmo=None):
     """
-    Returns the volume of a chunk of a sphere of given limits in ra, dec, and z
-    z is interpreted as distance unless cosmo is given
+    Returns the comoving volume of a chunk of a sphere of given limits in
+    ra, dec, and z. z is interpreted as distance unless cosmo is given
     """
     if cosmo is not None:
         zlim = comoving_disth(zlim, cosmo)
