@@ -66,7 +66,7 @@ class RealizationLoader:
                 self.meta[0]["z_low"], self.meta[0]["z_high"],
                 self.meta[0]["x_arcmin"] * self.meta[0]["y_arcmin"] / 3600,
                 scheme="square", realspace=True)
-        self.selector = selector
+        self.initial_selector = selector
         self.secondary_selector = None
         self.cosmo = selector.cosmo
 
@@ -83,6 +83,13 @@ class RealizationLoader:
             selector = self.get_secondary_selector()
             return (cat[selector(cat)] for cat in self._all_catalogs)
 
+    @property
+    def volume(self):
+        if self.secondary_selector is None:
+            return self.initial_selector.volume
+        else:
+            return self.secondary_selector.volume
+
     def get_secondary_selector(self):
         return self._null_selector if self.secondary_selector is None \
             else self.secondary_selector
@@ -92,18 +99,18 @@ class RealizationLoader:
             self._all_catalogs = []
             for i in range(self.nreal):
                 cat = self.config.load(i)[0]
-                cat = cat[self.selector(cat)]
+                cat = cat[self.initial_selector(cat)]
                 self._all_catalogs.append(cat)
 
         selector = self.get_secondary_selector()
         return [cat[selector(cat)] for cat in self._all_catalogs]
 
     def load(self, index):
-        selector = self.get_secondary_selector()
+        s1, s2 = self.initial_selector, self.get_secondary_selector()
         if self._all_catalogs is None:
-            return (v := self.config.load(index)[0])[selector(v)]
+            return (v := self.config.load(index)[0])[s1(v)][s2(v)]
         else:
-            return (v := self._all_catalogs[index])[selector(v)]
+            return (v := self._all_catalogs[index])[s2(v)]
 
     def cosmic_var(self, statfuncs, take_var=False):
         """
