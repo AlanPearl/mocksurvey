@@ -276,7 +276,8 @@ class CompletenessTester:
                              f"be a string or an array")
 
         # Get all galaxies selected by position only
-        no_selection = self.selector.pos_selection(self.lightcone)
+        no_selection = self.selector.field_selection(self.lightcone) & \
+            self.selector.redshift_selection(self.lightcone)
         gals = self.lightcone[no_selection]
         column = column[no_selection]
 
