@@ -301,7 +301,8 @@ class BaseConfig:
     """
     Abstract template class. Do not instantiate.
     """
-    def __init__(self, config_dir, config_file, data_dir=None):
+    def __init__(self, config_dir, config_file, data_dir=None, is_temp=False):
+        self.is_temp = is_temp
         self._read_config(config_dir, config_file)
         if data_dir:
             self.config["data_dir"] = os.path.abspath(data_dir)
@@ -347,14 +348,16 @@ class BaseConfig:
 
         Takes no arguments and returns None.
         """
-        lines = []
-        for key in self.config:
-            val = self.config[key]
-            line = f"{key} = {repr(val)}"
-            lines.append(line)
+        if not self.is_temp:
+            # Only write config file if absolute path was set
+            lines = []
+            for key in self.config:
+                val = self.config[key]
+                line = f"{key} = {repr(val)}"
+                lines.append(line)
 
-        with open(self._filepath, "w") as f:
-            f.write("\n".join(lines))
+            with open(self._filepath, "w") as f:
+                f.write("\n".join(lines))
 
     def add(self, filename):
         """
@@ -413,21 +416,25 @@ class BaseConfig:
                 os.path.realpath(__file__)), dirname)
         filepath = os.path.join(dirpath, filename)
 
-        if not os.path.isdir(dirpath):
-            os.mkdir(dirpath)
-        if not os.path.isfile(filepath):
-            open(filepath, "a").close()
-
-        with open(filepath) as f:
-            code = f.read()
-
-        config, empty = {}, {}
-        exec(code, config)
-        exec("", empty)
-        [config.pop(i) for i in empty]
-
-        self.config = config.copy()
+        self.config = {}
         self._filepath = filepath
+
+        if not self.is_temp:
+            # Only read file if absolute path was set
+            if not os.path.isdir(dirpath):
+                os.mkdir(dirpath)
+            if not os.path.isfile(filepath):
+                open(filepath, "a").close()
+
+            with open(filepath) as f:
+                code = f.read()
+
+            config, empty = {}, {}
+            exec(code, config)
+            exec("", empty)
+            [config.pop(i) for i in empty]
+
+            self.config = config.copy()
 
 
 class UMConfig(BaseConfig):
@@ -441,6 +448,8 @@ class UMConfig(BaseConfig):
         The path to the directory where you plan on saving all of the binary files.
         If the directory is moved, then you must provide this argument again.
     """
+    is_temp = False
+
     def __init__(self, data_dir=None):
         config_dir, config_file = "config", "um-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
@@ -682,11 +691,13 @@ class LightConeConfig(BaseConfig):
         The path to the directory where you plan on saving all of the binary files.
         If the directory is moved, then you must provide this argument again.
     """
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, is_temp=False):
+        self.is_temp = is_temp
         path, name = os.path.split(data_dir)
         if name == "":
             if path == "":
                 raise NotADirectoryError(f"Invalid directory {data_dir}")
+            # In case data_dir ends with a "/"
             path, name = os.path.split(path)
 
         # If path is explicit and exists, interpret argument as actual path
@@ -700,7 +711,7 @@ class LightConeConfig(BaseConfig):
             assert(os.path.isdir(data_dir)), f"{data_dir} does not exist"
 
         config_dir, config_file = "config", f"lightcone-{name}-config.py"
-        BaseConfig.__init__(self, config_dir, config_file, data_dir)
+        BaseConfig.__init__(self, config_dir, config_file, data_dir, is_temp)
 
         if "meta_files" not in self.config:
             self.config["meta_files"] = []
@@ -793,6 +804,7 @@ class UVISTAConfig(BaseConfig):
         The path to the directory where you plan on saving all of the files.
         If the directory is moved, then you must provide this argument again.
     """
+    is_temp = False
     UVISTAFILES = {
         "p": "UVISTA_final_v4.1.cat",  # photometric catalog
         "z": "UVISTA_final_v4.1.zout",  # EAZY output
@@ -980,6 +992,7 @@ class SeanSpectraConfig(BaseConfig):
         The path to the directory where you plan on saving all of the files.
         If the directory is moved, then you must provide this argument again.
     """
+    is_temp = False
     SEANFILES = ["cosmos_V17.fits", "specid.npy", "wavelength.npy",
                  "specmap.npy", "isnan.npy", "cosmos_V17_old.fits"]
 
@@ -1021,10 +1034,11 @@ class SeanSpectraConfig(BaseConfig):
     def are_all_files_stored(self):
         return set(self.config["files"]) == set(self.SEANFILES)
 
-    def load(self, old_version=False):
+    def load(self, old_version=False, keep_all_columns=True):
         i = 5 if old_version else 0
         dat = astropy_table.Table.read(self.get_filepath(i))
-        dat.keep_columns(self.names_to_keep())
+        if not keep_all_columns:
+            dat.keep_columns(self.names_to_keep())
         return dat.to_pandas()
 
     def specid(self):

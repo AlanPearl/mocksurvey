@@ -821,15 +821,30 @@ def correction_for_empty_bins(original_centroids, original_indices):
                  np.arange(len(original_centroids)))
     correction = np.sum(find_inds * np.cumsum(bin_is_empty), axis=-1)
 
+    new_centroids: np.ndarray
+    new_indices: np.ndarray
     new_centroids = np.asarray(original_centroids)[~bin_is_empty]
     new_indices = original_indices - correction
     return new_centroids, new_indices
 
 
 def choose_close_index(value, values, tolerance=0.05):
+    """
+    Return the index of `values` containing the specified `value`
+    within some `tolerance`. If there is not exactly one index within
+    the tolerance, a ValueError is raised.
+
+    Set ``tolerance="none"`` to return the closest index to your specified
+    `value`, regardless of how far off it is.
+    """
     if isinstance(tolerance, str):
         # Return the closest index, regardless of how far away the value is
-        return np.argmin(np.abs(value - np.asarray(values)))
+        if value == np.inf:
+            return np.argmax(values)
+        elif value == -np.inf:
+            return np.argmin(values)
+        else:
+            return np.argmin(np.abs(value - np.asarray(values)))
     else:
         # Demand exactly one value within the tolerance
         # else raise ValueError

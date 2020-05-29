@@ -287,7 +287,7 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
         centroids = np.linspace(*zrange, nz+1)
     else:
         # nz = 1
-        centroids = np.mean(zrange) + dz*np.array([-0.5, 0.5])
+        centroids = np.array([-0.5, 0.5])*dz + np.mean(zrange)
 
     # noinspection PyArgumentList
     zmin, zmax = centroids.min(), centroids.max()
@@ -300,6 +300,7 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
 
     inds2 = ht_utils.fuzzy_digitize(z2, centroids, seed=seed,
                                     min_counts=min_counts_in_z2_bins)
+    centroids: np.ndarray
     centroids, inds2 = ms.hf.correction_for_empty_bins(centroids, inds2)
     inds = ms.hf.fuzzy_digitize_improved(z, centroids, seed=seed,
                                          min_counts=min_counts_in_z2_bins)
@@ -620,12 +621,13 @@ class NeighborSeanSpecFinder:
         return self.stacker.avg_spectrum(specids, lumcorr, redshift,
                                          cosmo=cosmo)
 
-    def write_specmap(self, outfile, num_nearest, ummask=None,
-                      metric_weights=None, bestcolor=True, cosmo=None,
-                      corr="mass", verbose=1, progress=True):
+    def write_specmap(self, outfile, neighbor_id, ummask=None,
+                      cosmo=None, corr="mass", verbose=1, progress=True):
         if ummask is None:
             ummask = np.ones(self.umdat.z.shape, dtype=bool)
-        if isinstance(progress, str) and progress.lower() == "notebook":
+        if isinstance(progress, str):
+            assert progress.lower() == "notebook", f"progress={progress}" \
+                ". Must be one of {{True, False, 'notebook'}}"
             import tqdm.notebook as tqdm
             iterator = tqdm.trange
         elif progress:
@@ -633,31 +635,35 @@ class NeighborSeanSpecFinder:
             iterator = tqdm.trange
         else:
             iterator = range
+        assert (corr is None or corr == "mass" or corr == "lum"), \
+            f"corr={corr}. Must be one of {{None, 'mass', 'lum'}}"
 
         redshift = self.umdat.z[ummask]
         f = np.memmap(outfile, self.stacker.get_specmap().dtype, "w+",
                       shape=(len(redshift), len(self.stacker.wave)))
 
-        nearest = self.find_nearest_specid(
-            num_nearest, metric_weights=metric_weights,
-            ummask=ummask, verbose=verbose)
-        if bestcolor:
-            nearest = self.best_color(nearest, ummask=ummask).reshape(-1, 1)
+        if np.ndim(neighbor_id) == 1:
+            neighbor_id = np.asarray(neighbor_id)[:, None]
 
         if corr is None:
-            masscorr = np.ones_like(nearest)
+            masscorr = np.ones_like(neighbor_id)
         elif corr == "mass":
-            masscorr = self.masscorr(nearest, ummask=ummask)
+            masscorr = self.masscorr(neighbor_id, ummask=ummask)
         elif corr == "lum":
-            masscorr = self.lumcorr(nearest, ummask=ummask)
+            masscorr = self.lumcorr(neighbor_id, ummask=ummask)
         else:
-            raise ValueError(f"corr={corr}. Must be one of {None, 'mass', 'lum'}")
+            raise AssertionError()
 
-        for i in iterator(len(nearest)):
-            f[i] = self.avg_spectrum(nearest[i], masscorr[i],
+        for i in iterator(len(neighbor_id)):
+            f[i] = self.avg_spectrum(neighbor_id[i], masscorr[i],
                                      redshift[i], cosmo=cosmo)
 
-    def find_nearest_specid(self, num_nearest, metric_weights=None, ummask=None, verbose=1):
+    def find_nearest_specid(self, num_nearest=6, bestcolor=True,
+                            metric_weights=None, ummask=None, verbose=1):
+        """
+        Default metric_weights = [1/1.0, 1/0.5, 1/2.0]
+        Specifies weights for logM, logsSFR_UV, redshift
+        """
         if not num_nearest:
             return None
         from sklearn import neighbors
@@ -699,7 +705,36 @@ class NeighborSeanSpecFinder:
         neighbor_id = np.full((len(self.umdat.logm), num_nearest), -99)
         neighbor_id[umsel] = self.uvdat.id[uvsel][neighbor_index]
 
-        return neighbor_id[ummask]
+        ans = neighbor_id[ummask]
+        if bestcolor:
+            ans = self.best_color(ans, ummask=ummask)  # .reshape(-1, 1)
+        return ans
+
+    def specprops(self, specid):
+        """
+        Return structured array of spectral properties derived from
+        Sean's synthetic spectra
+        Parameters
+        ----------
+        specid : array-like
+            One-dimensional array containing the UltraVISTA ID of
+            the galaxies to include in the returned array
+
+        Returns
+        -------
+        propcat : structured array
+            All spectral properties for each specified galaxy
+        """
+        props = self.stacker.config.load()
+        props.index = props["id"].values
+        props = props.loc[specid]
+
+        dtypes = list(zip(props.columns.values, props.dtypes.values))
+        propcat = np.empty(len(props), dtype=dtypes)
+        for key in props.columns.values:
+            propcat[key] = props[key]
+
+        return propcat
 
     def lumcorr(self, spec_id, band=None, ummask=None):
         if ummask is None:
