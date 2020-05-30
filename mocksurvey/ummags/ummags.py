@@ -423,7 +423,7 @@ class UVData:
     def load_uvista(self):
         uvista_cat = ms.UVISTAConfig(photbands=self.photbands).load()
 
-        z = uvista_cat["z"].values
+        z = uvista_cat["redshift"].values
         logm = uvista_cat["logm"].values
         logssfr_uv = (np.log10(uvista_cat["sfr_uv"])
                       - uvista_cat["logm"]).values

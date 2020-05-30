@@ -917,11 +917,43 @@ class UVISTAConfig(BaseConfig):
     def are_all_files_stored(self):
         return len(self.config["files"]) == len(self.UVISTAFILES)
 
-    def load(self, include_rel_mags=False):
+    def load(self, include_rel_mags=False, cosmo=None):
+        """
+        Load catalog of UltraVISTA data. Masses and SFRs
+        are not h-scaled (units of Msun and yr), but
+        distances and absolute magnitudes are h-scaled
+        (units of Mpc/h and +5logh)
+
+        Parameters
+        ----------
+        include_rel_mags : bool
+            If true, include columns with apparent magnitudes in each
+            photband. Columns use the same name as absolute magnitudes
+            but in lower case (e.g., 'm_g')
+        cosmo : astropy.cosmology.Cosmology
+            Cosmology object used to calculate distances and specify
+            a little h value (default = Bolshoi-Planck cosmology)
+
+        Returns
+        -------
+        catalog : DataFrame
+            Contains all observational data for each UltraVISTA galaxy
+            in Adam Muzzin's K-selected catalog (with )
+        """
+
+        # Define a little h correction factor. Muzzin used h = 0.7
+        # Dependence on Luminosity/Stellar mass = h^-2
+        # Dependence on Time = h^-1
+        # Dependence on SFR = Mass/Time = h^-1
+        # Dependence on sSFR = 1/Time = h^1
+        if cosmo is None:
+            cosmo = bplcosmo
+        h_corr = cosmo.h / 0.7
+        log_h_corr = np.log10(h_corr)
+
         if not self.are_all_files_stored():
             raise ValueError("Can't load until all files are stored")
 
-        cosmo = bplcosmo
         ftypes = ["p", "f", "z", "s", "uv", "vj"]
         dat = [pd.read_csv(
                 self.get_filepath(s), delim_whitespace=True,
@@ -931,11 +963,11 @@ class UVISTAConfig(BaseConfig):
         uvrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
         vjrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
         z = dat[2]["z_peak"]
-        sfr_tot = dat[3]["SFR_tot"]
-        sfr_uv = dat[3]["SFR_UV"]
-        sfr_ir = dat[3]["SFR_IR"]
-        logm = dat[1]["lmass"]
-        logssfr = dat[1]["lssfr"]
+        sfr_tot = dat[3]["SFR_tot"] / h_corr
+        sfr_uv = dat[3]["SFR_UV"] / h_corr
+        sfr_ir = dat[3]["SFR_IR"] / h_corr
+        logm = dat[1]["lmass"] - 2 * log_h_corr
+        logssfr = dat[1]["lssfr"] + log_h_corr
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             d_com = cosmo.comoving_distance(z.values).value * cosmo.h
@@ -959,19 +991,19 @@ class UVISTAConfig(BaseConfig):
             axis=0)
 
         rel_keys, rel_vals = zip(*relative_mags.items())
-        rel_keys = [key + "_AB" for key in rel_keys]
+        rel_keys = ["m_" + key.lower() for key in rel_keys]
         rel_vals = rel_vals if include_rel_mags else []
         rel_keys = rel_keys if include_rel_mags else []
 
         abs_keys, abs_vals = zip(*absolute_mags.items())
         abs_keys = ["M_" + key.upper() for key in abs_keys]
 
-        names = ["id", "ra", "dec", "z", "logm", "sfr_tot", "logssfr",
+        names = ["id", "ra", "dec", "redshift", "logm", "logssfr",
                  "d_com", "d_lum", "UVrest", "VJrest", *rel_keys,
-                 *abs_keys, "sfr_uv", "sfr_ir"]
+                 *abs_keys, "sfr_tot", "sfr_uv", "sfr_ir"]
         cols = [dat[0]["id"], dat[0]["ra"], dat[0]["dec"], z, logm,
-                sfr_tot, logssfr, d_com, d_lum, uvrest, vjrest, *rel_vals,
-                *abs_vals, sfr_uv, sfr_ir]
+                logssfr, d_com, d_lum, uvrest, vjrest, *rel_vals,
+                *abs_vals, sfr_tot, sfr_uv, sfr_ir]
 
         data = dict(zip(names, cols))
         data = pd.DataFrame(data)
