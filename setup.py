@@ -13,6 +13,7 @@ setup(name="mocksurvey",
       python_requires=">=3.8",
       install_requires=[
             "wget",
+            "natsort",
             "h5py",
             "numpy",
             "scipy",

@@ -66,6 +66,61 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
         pass
 
 
+def mock_spectra(selector=None, input_dir=".", output_dir=".",
+                 outfile=None, input_realization_index=0,
+                 nblocks_per_dim=1, make_specprop=True, make_specmap=False):
+    """
+    Take a lightcone and turn it into
+    Parameters
+    ----------
+    selector
+    input_dir
+    output_dir
+    outfile
+    input_realization_index
+    nblocks_per_dim
+    make_specprop
+    make_specmap
+
+    Returns
+    -------
+
+    """
+    nblocks = nblocks_per_dim ** 2
+    input_realization_index = np.atleast_1d(input_realization_index)
+
+    assert isinstance(nblocks_per_dim, int)
+    assert input_realization_index.dtype.kind == "i"
+
+    if isinstance(input_dir, ms.LightConeConfig):
+        config = input_dir
+    else:
+        config = ms.LightConeConfig(input_dir, is_temp=True)
+        config.auto_add()
+    phot_fn, meta_fn, prop_fn, spec_fn = [lambda i: f"{outfile}-{i}.{ext}"
+                                          for ext in ("npy", "json",
+                                                      "specprop", "spec")]
+
+    pfs, meta = ms.LightConeConfig("PFS").load(input_realization_index)
+    pfs_sel = ms.mass_complete_pfs_selector(pfs, [0.7, 1.7], masslim=0)
+    pfs_mask = pfs_sel(pfs)
+    pfs = pfs[pfs_mask]
+    nbr_data = ms.ummags.NeighborSeanSpecFinder(pfs)
+    Nwave = len(nbr_data.stacker.wave)
+    block_digits = pfs_sel.block_digitize(pfs, (nblocks_per_dim, nblocks_per_dim))
+    for i in range(nblocks):
+        mask = block_digits == i
+        pfs_block = pfs[mask]
+        Ngal = len(pfs_block)
+        Nwave = len(nbr_data.stacker.wave)
+        np.save(file1(i), pfs_block)
+        json.dump(ms.ummags.metadict_with_spec(meta, Ngal), open(file2(i), "w"), indent=4)
+        block_data = ms.ummags.NeighborSeanSpecFinder(pfs_block)
+        nearest = self.find_nearest_specid(num_nearest=6, bestcolor=True)
+        block_data.write_specmap(file3(i), nearest, corr="mass", progress=True)
+    raise NotImplementedError()
+
+
 def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
                                   remove_ascii_file=False, **kwargs):
     if outfilebase is None:

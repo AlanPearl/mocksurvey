@@ -14,6 +14,7 @@ import tarfile
 import numpy as np
 import pandas as pd
 import astropy.table as astropy_table
+from natsort import natsorted
 
 # Local modules
 from . import hf
@@ -315,6 +316,9 @@ class BaseConfig:
         if "files" not in self.config:
             self.config["files"] = []
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(\"{self.config['data_dir']}\")"
+
     def get_filepath(self, filename):
         return os.path.join(self.config["data_dir"], filename)
 
@@ -325,7 +329,7 @@ class BaseConfig:
         Takes no arguments and returns None.
         """
         d = self.config["data_dir"]
-        files = [f for f in os.listdir(d)
+        files = [f for f in natsorted(os.listdir(d))
                  if os.path.isfile(os.path.join(d, f))]
 
         n = len(files)
