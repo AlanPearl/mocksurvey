@@ -52,8 +52,12 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, fieldshape="sq",
 
 class RealizationLoader:
     def __init__(self, selector=None, name="PFS", nreal=None):
-        self.name = name
-        self.config = LightConeConfig(name)
+        if isinstance(name, LightConeConfig):
+            self.config = name
+            self.name = self.config.config["data_dir"]
+        else:
+            self.config = LightConeConfig(name)
+            self.name = name
         self.nreal = self.nreal_avail = len(self.config.config["files"])
         self.meta = [json.load(open(self.config.get_filepath(f)))
                      for f in self.config.config["meta_files"]]

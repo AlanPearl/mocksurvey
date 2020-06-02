@@ -326,11 +326,11 @@ def angular_separation(ra1, dec1, ra2=0, dec2=0):
     return np.arccos(cos_theta)
 
 
-def angle_lim_to_dist(angle, mean_redshift, cosmo, deg=False):
+def angle_to_dist(angle, redshift, cosmo, deg=False):
     if deg:
         angle *= np.pi / 180.
     angle = min([angle, np.pi / 2.])
-    z = comoving_disth(mean_redshift, cosmo)
+    z = comoving_disth(redshift, cosmo)
     dist = z * 2 * np.tan(angle / 2.)
     return dist
 

@@ -90,7 +90,7 @@ class FieldSelector:
         if return_angle:
             return angle
         else:
-            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def circle_sqdeg2radius(self, return_angle=False):
         """
@@ -103,7 +103,7 @@ class FieldSelector:
         if return_angle:
             return angle
         else:
-            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def square_sqdeg2apothem(self, return_angle=False):
         """
@@ -123,7 +123,7 @@ class FieldSelector:
         if return_angle:
             return angle
         else:
-            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def hexagon_sqdeg2apothem(self, return_angle=False):
         """
@@ -143,7 +143,7 @@ class FieldSelector:
         if return_angle:
             return angle
         else:
-            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def _z_length(self):
         return util.redshift_lim_to_dist(self.delta_z,
@@ -270,7 +270,7 @@ class CelestialSelector(FieldSelector):
         if rdz:
             return np.array([2. * field_radius] * 2 + [self.delta_z], dtype=np.float32)
         else:
-            field_radius = util.angle_lim_to_dist(field_radius, self.mean_redshift + self.delta_z / 2., self.cosmo)
+            field_radius = util.angle_to_dist(field_radius, self.mean_redshift + self.delta_z / 2., self.cosmo)
             return np.array([2. * field_radius] * 2 + [self._z_length()], dtype=np.float32)
 
     def square_fieldshape(self, rdz=False):
@@ -278,7 +278,7 @@ class CelestialSelector(FieldSelector):
         if rdz:
             return np.array([2. * field_apothem] * 2 + [self.delta_z], dtype=np.float32)
         else:
-            field_apothem = util.angle_lim_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
+            field_apothem = util.angle_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
             return np.array([2. * field_apothem] * 2 + [self._z_length()], dtype=np.float32)
 
     def hexagon_fieldshape(self, rdz=False):
@@ -286,7 +286,7 @@ class CelestialSelector(FieldSelector):
         if rdz:
             return np.array([4. / math.sqrt(3.) * field_apothem, 2. * field_apothem, self.delta_z], dtype=np.float32)
         else:
-            field_apothem = util.angle_lim_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
+            field_apothem = util.angle_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
             return np.array([4. / math.sqrt(3.) * field_apothem, 2. * field_apothem, self._z_length()],
                             dtype=np.float32)
 
