@@ -1430,7 +1430,8 @@ class UVISTAWgetter:
 
     def download_seanspectra(self, overwrite=False):
         if not overwrite:
-            wget_files = ["specid.npy", "wavelength.npy", "isnan.npy"]
+            wget_files = ["specid.npy", "wavelength.npy",
+                          "isnan.npy", "cosmos_V17.fits"]
             stored_files = SeanSpectraConfig().config["files"]
             if set(wget_files).issubset(stored_files):
                 SeanSpectraConfig().auto_add()
