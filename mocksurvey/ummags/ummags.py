@@ -107,10 +107,9 @@ def selected_lightcone(output_dir: str,
         pathlib.Path(output_dir).mkdir(parents=True)
     if isinstance(input_dir, ms.LightConeConfig):
         config = input_dir
-        input_dir = config.config["data_dir"]
     else:
-        input_dir = os.path.abspath(input_dir)
         config = ms.LightConeConfig(input_dir, is_temp=True)
+    input_dir = config.config["data_dir"]
     with ms.util.suppress_stdout():
         config.auto_add()
     if selector is None:
@@ -176,9 +175,9 @@ def neighbor_spectrum(input_dir: str = ".",
     """
     if isinstance(input_dir, ms.LightConeConfig):
         config = input_dir
-        input_dir = config.config["data_dir"]
     else:
         config = ms.LightConeConfig(input_dir, is_temp=True)
+    input_dir = config.config["data_dir"]
     with ms.util.suppress_stdout():
         config.auto_add()
 
