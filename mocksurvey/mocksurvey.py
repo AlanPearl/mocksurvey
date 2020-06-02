@@ -1396,7 +1396,7 @@ class UVISTAWgetter:
         """
 
         self.uvista_url = "https://pitt.box.com/shared/static/75iv3bi05jv69marxr9393gaue4qgn52.gz"
-        self.sean_url = "https://pitt.box.com/shared/static/cg2ma677ebl9fujdyv8pcay3jq533pkf.gz"
+        self.sean_url = "https://pitt.box.com/shared/static/drw3r0lk0u7kglbnpmnt8ktb8ld1mggw.gz"
 
         self.uvista_path = UVISTAConfig().config["data_dir"]
         self.sean_path = SeanSpectraConfig().config["data_dir"]
