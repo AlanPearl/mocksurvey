@@ -7,7 +7,7 @@ from . import cf
 def wprp_tot_sf_q(data, rands, rpbins=None, ssfr_cut=1e-11, los=0,
                   shuffle_sfr=False):
     # Argument parsing
-    xyz = ms.hf.xyz_array(data)
+    xyz = ms.util.xyz_array(data)
     los = (los + 1) % 3
     if rpbins is None:
         rpbins = np.logspace(-1, 1.5, 11)
@@ -35,8 +35,8 @@ def qpgf(catalog, rands, search_rad=4.0, search_min=0.3, pimax=None,
          cosmo=None):
     if pimax is None:
         cosmo = ms.bplcosmo if cosmo is None else cosmo
-        pimax = ms.hf.vpmax2pimax(1000., catalog["redshift"], cosmo)
-    pos = ms.hf.xyz_array(catalog)
+        pimax = ms.util.vpmax2pimax(1000., catalog["redshift"], cosmo)
+    pos = ms.util.xyz_array(catalog)
     mass = catalog["obs_sm"]
     sfr = catalog["obs_sfr"]
     return qpgf_vs_cia(pos, mass, sfr, search_rad, search_min, pimax,
@@ -94,9 +94,9 @@ def qpgf_vs_cia(pos, mass, sfr, search_rad, search_min, pimax,
 
     # Find primaries using given isolation criteria
     if precomputed_primary_selection is None:
-        psr = primary_search_rad[is_primary] if ms.hf.is_arraylike(
+        psr = primary_search_rad[is_primary] if ms.util.is_arraylike(
             primary_search_rad) else primary_search_rad
-        pp = primary_pimax[is_primary] if ms.hf.is_arraylike(
+        pp = primary_pimax[is_primary] if ms.util.is_arraylike(
             primary_pimax) else primary_pimax
 
         is_primary[is_primary] &= find_primaries(
@@ -116,17 +116,17 @@ def qpgf_vs_cia(pos, mass, sfr, search_rad, search_min, pimax,
     xyz_r, sm_r = pos[is_r_prim], mass[is_r_prim]
 
     # Perform primary selection on cylinder size arrays, if needed
-    search_rad_b = search_rad[is_b_prim] if ms.hf.is_arraylike(
+    search_rad_b = search_rad[is_b_prim] if ms.util.is_arraylike(
         search_rad) else search_rad
-    search_rad_r = search_rad[is_r_prim] if ms.hf.is_arraylike(
+    search_rad_r = search_rad[is_r_prim] if ms.util.is_arraylike(
         search_rad) else search_rad
-    search_min_b = search_min[is_b_prim] if ms.hf.is_arraylike(
+    search_min_b = search_min[is_b_prim] if ms.util.is_arraylike(
         search_min) else search_min
-    search_min_r = search_min[is_r_prim] if ms.hf.is_arraylike(
+    search_min_r = search_min[is_r_prim] if ms.util.is_arraylike(
         search_min) else search_min
-    pimax_b = pimax[is_b_prim] if ms.hf.is_arraylike(
+    pimax_b = pimax[is_b_prim] if ms.util.is_arraylike(
         pimax) else pimax
-    pimax_r = pimax[is_r_prim] if ms.hf.is_arraylike(
+    pimax_r = pimax[is_r_prim] if ms.util.is_arraylike(
         pimax) else pimax
 
     # Counts in the full cylinder

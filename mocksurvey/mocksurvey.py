@@ -17,7 +17,7 @@ import astropy.table as astropy_table
 from natsort import natsorted
 
 # Local modules
-from . import hf
+from . import util
 # Local packages
 from .stats import cf
 from .httools import httools
@@ -31,7 +31,7 @@ pfs_sqdeg = 15.0
 pfs_max_dict = dict(m_y=22.5, m_j=22.8)
 
 
-def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, scheme="sq",
+def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, fieldshape="sq",
                                masslim=None, randfrac=0.7, sqdeg=15.,
                                masscol="obs_sm"):
     z_low, z_high = zlim
@@ -45,7 +45,7 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, scheme="sq",
     min_dict = {masscol: masslim}
 
     compsel = LightConeSelector(
-        z_low, z_high, sqdeg, scheme, randfrac,
+        z_low, z_high, sqdeg, fieldshape, randfrac,
         max_dict=max_dict, min_dict=min_dict)
     return compsel
 
@@ -63,10 +63,8 @@ class RealizationLoader:
             self.nreal = nreal
 
         if selector is None:
-            selector = LightConeSelector(
-                self.meta[0]["z_low"], self.meta[0]["z_high"],
-                self.meta[0]["x_arcmin"] * self.meta[0]["y_arcmin"] / 3600,
-                scheme="square", realspace=True)
+            selector = util.selector_from_meta(self.meta[0])
+
         self.initial_selector = selector
         self.secondary_selector = None
         self.cosmo = selector.cosmo
@@ -134,7 +132,7 @@ class RealizationLoader:
             If take_var=True, each result = tuple(stat, stat_variance).
             Else, each result is an array of stat realizations
         """
-        is_arraylike = hf.is_arraylike(statfuncs)
+        is_arraylike = util.is_arraylike(statfuncs)
         if not is_arraylike:
             statfuncs = [statfuncs]
 
@@ -156,27 +154,41 @@ class RealizationLoader:
 
 
 class LightConeSelector:
-    def __init__(self, z_low, z_high, sqdeg=None, scheme="sq",
+    def __init__(self, z_low, z_high, sqdeg=None, fieldshape="sq",
                  sample_fraction=1., min_dict=None, max_dict=None,
-                 cosmo=bplcosmo, center_radec=None, realspace=False, deg=True):
-        scheme = "full_sky" if sqdeg is None else scheme
-        assert isinstance(scheme, str), \
-            "Scheme must start with one of: 'sq', 'cir', 'hex' or 'full'"
+                 cosmo=None, center_radec=None, realspace=False, deg=True):
+        if cosmo is None:
+            cosmo = bplcosmo
+        assert isinstance(fieldshape, str)
+        fieldshape = "full_sky" if sqdeg is None else fieldshape.lower()
+        if fieldshape.startswith("full"):
+            fieldshape = "full_sky"
+        elif fieldshape.startswith("sq"):
+            fieldshape = "square"
+        elif fieldshape.startswith("cir"):
+            fieldshape = "circle"
+        elif fieldshape.startswith("hex"):
+            fieldshape = "hexagon"
+        else:
+            raise ValueError(
+                "fieldshape must be a string and it must"
+                "start with one of: 'sq', 'cir', 'hex', or 'full'")
 
-        self.sqdeg = 41_252.9612494 if scheme.startswith("full") else sqdeg
-        self.scheme = scheme
-        self.realspace = realspace
         self.z_low, self.z_high = z_low, z_high
+        self.sqdeg = 41_252.9612494 if fieldshape.startswith("full") else sqdeg
+        self.fieldshape = fieldshape
         self.sample_fraction = sample_fraction
-        self.min_dict, self.max_dict = min_dict, max_dict
+        self.min_dict = {} if min_dict is None else min_dict
+        self.max_dict = {} if max_dict is None else max_dict
+        self.realspace = realspace
         self.cosmo, self.deg = cosmo, deg
 
         z, dz = (z_high+z_low)/2., z_high - z_low
 
         simbox = httools.SimBox(redshift=z, empty=True)
-        if self.scheme.startswith("full"):
-            scheme = "circle"
-        self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=scheme,
+        if self.fieldshape.startswith("full"):
+            fieldshape = "circle"
+        self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=fieldshape,
                                   center_rdz=center_radec, delta_z=dz)
         self.field_selector = self.field.field_selector
 
@@ -187,16 +199,74 @@ class LightConeSelector:
                       self.dict_selection(lightcone)]
         return np.all(conditions, axis=0)
 
+    def __repr__(self):
+        d = self.__dict__.copy()
+        d["center_radec"] = self.field.center_rdz.tolist()[:2]
+        for key in ("field", "field_selector", "z_low", "z_high",
+                    "sqdeg", "fieldshape"):
+            del d[key]
+
+        return f"{type(self).__name__}(z_low={self.z_low}, " \
+               f"z_high={self.z_high}, sqdeg={self.sqdeg}, " \
+               f"fieldshape={repr(self.fieldshape)}, **{d})"
+
+    def __str__(self):
+        return f"{type(self).__name__}(z_low={self.z_low}, " \
+               f"z_high={self.z_high}, sqdeg={self.sqdeg}, **kw)"
+
+    def __and__(self, other):
+        assert isinstance(other, LightConeSelector)
+        center_radec = self.field.center_rdz.tolist()[:2]
+        assert center_radec == other.field.center_rdz.tolist()[:2]
+        assert self.cosmo.h == other.cosmo.h
+        assert self.cosmo.Om0 == other.cosmo.Om0
+        assert self.deg == other.deg
+
+        # Field selection
+        if self.sqdeg < other.sqdeg:
+            sqdeg, fieldshape = self.sqdeg, self.fieldshape
+        else:
+            sqdeg, fieldshape = other.sqdeg, other.fieldshape
+            if self.sqdeg == other.sqdeg:
+                assert self.fieldshape == other.fieldshape
+
+        # Redshift selection
+        if self.z_low > other.z_low and self.z_high < other.z_high:
+            realspace = self.realspace
+        elif self.z_low < other.z_low and self.z_high > other.z_high:
+            realspace = other.realspace
+        else:
+            assert self.realspace == other.realspace
+            realspace = self.realspace
+        z_low = max(self.z_low, other.z_low)
+        z_high = min(self.z_high, other.z_high)
+
+        # Miscellaneous
+        sample_fraction = self.sample_fraction * other.sample_fraction
+        min_dict = {**self.min_dict, **other.min_dict}
+        max_dict = {**self.max_dict, **other.max_dict}
+        for key in min_dict.keys():
+            if key in self.min_dict and self.min_dict[key] > min_dict[key]:
+                min_dict[key] = self.min_dict[key]
+        for key in max_dict.keys():
+            if key in self.max_dict and self.max_dict[key] < max_dict[key]:
+                max_dict[key] = self.max_dict[key]
+
+        return LightConeSelector(z_low, z_high, sqdeg, fieldshape,
+                                 sample_fraction, min_dict, max_dict,
+                                 cosmo=self.cosmo, center_radec=center_radec,
+                                 realspace=realspace, deg=self.deg)
+
     @property
     def volume(self):
-        return hf.volume(self.sqdeg, [self.z_low, self.z_high],
-                         cosmo=self.cosmo)
+        return util.volume(self.sqdeg, [self.z_low, self.z_high],
+                           cosmo=self.cosmo)
 
     def field_selection(self, lightcone):
-        if self.scheme.startswith("full"):
+        if self.fieldshape.startswith("full"):
             return np.ones(len(lightcone), dtype=bool)
         else:
-            rd = hf.xyz_array(lightcone, ["ra", "dec"])
+            rd = util.xyz_array(lightcone, ["ra", "dec"])
             return self.field_selector(rd, deg=self.deg)
 
     def redshift_selection(self, lightcone):
@@ -205,7 +275,7 @@ class LightConeSelector:
         return (self.z_low <= z) & (z <= self.z_high)
 
     def rand_selection(self, lightcone, seed=None):
-        with hf.temp_seed(seed):
+        with util.temp_seed(seed):
             if self.sample_fraction < 1:
                 return np.random.random(len(lightcone)) < self.sample_fraction
             else:
@@ -230,26 +300,26 @@ class LightConeSelector:
         fieldshape = self.field.get_shape(rdz=True)[:2, None]
         rdlims = self.field.center_rdz[:2, None] + np.array([[.5, -.5]]) \
             * fieldshape
-        distlim = hf.comoving_disth([self.z_low, self.z_high], self.cosmo)
+        distlim = util.comoving_disth([self.z_low, self.z_high], self.cosmo)
 
-        rands = hf.rand_rdz(n, *rdlims, distlim, seed=seed)
-        # This only works perfectly if the field scheme is a square
+        rands = util.rand_rdz(n, *rdlims, distlim, seed=seed)
+        # This only works perfectly if the fieldshape is a square
         # Cut randoms that fall outside the shape of the field
-        # if not self.scheme == "sq":
+        # if not self.fieldshape == "square":
         rands = rands[self.field_selector(rands)]
         # Convert to Cartesian coordinates
         if not rdz:
-            rands = hf.rdz2xyz(rands, cosmo=None, use_um_convention=True)
+            rands = util.rdz2xyz(rands, cosmo=None, use_um_convention=True)
         else:
-            rands[:, 2] = hf.distance2redshift(rands[:, 2],
-                                               vr=None, cosmo=self.cosmo)
+            rands[:, 2] = util.distance2redshift(rands[:, 2],
+                                                 vr=None, cosmo=self.cosmo)
             # Convert radians to degrees
             if self.deg:
                 rands[:, :2] *= 180 / np.pi
         return rands
 
     def block_digitize(self, lightcone, nbins=(2, 2, 1)):
-        data = hf.xyz_array(lightcone, ["ra", "dec", "redshift"])
+        data = util.xyz_array(lightcone, ["ra", "dec", "redshift"])
         fieldshape = self.field.get_shape(rdz=True, deg=self.deg)
         center = self.field.center_rdz
 
@@ -270,7 +340,7 @@ class CompletenessTester:
     def completeness(self, column="obs_sm", max_val=False):
         if isinstance(column, str):
             column = self.lightcone[column].copy()
-        elif hf.is_arraylike(column):
+        elif util.is_arraylike(column):
             column = np.array(column)
         else:
             raise ValueError(f"column={column} but must "
@@ -317,7 +387,7 @@ class BaseConfig:
             self.config["files"] = []
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(\"{self.config['data_dir']}\")"
+        return f"{type(self).__name__}(\"{self.config['data_dir']}\")"
 
     def get_filepath(self, filename):
         return os.path.join(self.config["data_dir"], filename)
@@ -667,7 +737,7 @@ CALC_ICL = 1
         raise NotImplementedError()
 
     def _get_file_at_redshift(self, redshift, ztol):
-        i = hf.choose_close_index(redshift, self.config["z"], ztol)
+        i = util.choose_close_index(redshift, self.config["z"], ztol)
         return self.config["files"][i], self.config["z"][i]
 
     @staticmethod
@@ -705,25 +775,25 @@ class LightConeConfig(BaseConfig):
             path, name = os.path.split(path)
 
         # If path is explicit and exists, interpret argument as actual path
-        if (data_dir.startswith((os.extsep, os.path.sep))) and \
-                os.path.isdir(data_dir):
+        if util.explicit_path(data_dir, assert_dir=True):
             data_dir = os.path.abspath(data_dir)
-        # Otherwise, interpret argument as name to go in standard location
+        # Otherwise, name is a folder in standard data path
         else:
-            path = UMConfig().get_filepath("lightcones")
-            data_dir = os.path.join(path, data_dir)
+            data_dir = os.path.join(UMConfig().config["data_dir"],
+                                    "lightcones", data_dir)
             assert(os.path.isdir(data_dir)), f"{data_dir} does not exist"
 
-        config_dir, config_file = "config", f"lightcone-{name}-config.py"
+        pathname = "-".join(pathlib.Path(data_dir).absolute().parts[1:])
+        config_dir, config_file = "config", f"lightcone-{pathname}-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir, is_temp)
 
         if "meta_files" not in self.config:
             self.config["meta_files"] = []
         self.update()
 
-    def load(self, index):
+    def load(self, index: int) -> (np.ndarray, dict):
         """
-        Load a halo table into memory, at a given snapshot in redshift.
+        Load a lightcone catalog, along with its corresponding meta data.
 
         Parameters
         ----------
@@ -739,7 +809,6 @@ class LightConeConfig(BaseConfig):
             Dictionay storing additional information about this lightcone
         """
         n = len(self.config["files"])
-        assert isinstance(index, int), "index must be an integer"
         assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
 
         datafile = self.get_filepath(self.config["files"][index])
@@ -748,6 +817,27 @@ class LightConeConfig(BaseConfig):
         data = np.load(datafile)
         meta = json.load(open(metafile))
         return data, meta
+
+    def load_meta(self, index):
+        """
+        Load the meta data corresponding to a lightcone catalog.
+
+        Parameters
+        ----------
+        index : int
+            Number specifies which lightcone realization to load
+
+        Returns
+        -------
+        meta : dict
+            Dictionay storing additional information about this lightcone
+        """
+        n = len(self.config["files"])
+        assert isinstance(index, int), "index must be an integer"
+        assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
+
+        metafile = self.get_filepath(self.config["meta_files"][index])
+        return json.load(open(metafile))
 
     def add(self, filename, meta_filename=None):
         """
@@ -830,8 +920,7 @@ class UVISTAConfig(BaseConfig):
         config_dir, config_file = "config", "uvista-config.py"
         BaseConfig.__init__(self, config_dir, config_file, data_dir)
 
-        # noinspection PyProtectedMember
-        photbands = ummags._get_photbands(photbands)
+        photbands = ummags.util.get_photbands(photbands)
         self.PHOTBANDS = {k: self.PHOTBANDS[k]
                           for k in set(photbands) | {"k"}}
         self.update()
@@ -946,14 +1035,13 @@ class UVISTAConfig(BaseConfig):
         """
 
         # Define a little h correction factor. Muzzin used h = 0.7
-        # Dependence on Luminosity/Stellar mass = h^-2
-        # Dependence on Time = h^-1
+        # Dependence on Luminosity or Stellar Mass = h^-2
+        # Dependence on Time or Distasnce = h^-1
         # Dependence on SFR = Mass/Time = h^-1
         # Dependence on sSFR = 1/Time = h^1
         if cosmo is None:
             cosmo = bplcosmo
         h_corr = cosmo.h / 0.7
-        log_h_corr = np.log10(h_corr)
 
         if not self.are_all_files_stored():
             raise ValueError("Can't load until all files are stored")
@@ -970,8 +1058,8 @@ class UVISTAConfig(BaseConfig):
         sfr_tot = dat[3]["SFR_tot"] / h_corr
         sfr_uv = dat[3]["SFR_UV"] / h_corr
         sfr_ir = dat[3]["SFR_IR"] / h_corr
-        logm = dat[1]["lmass"] - 2 * log_h_corr
-        logssfr = dat[1]["lssfr"] + log_h_corr
+        logm = dat[1]["lmass"] - 2 * np.log10(h_corr)
+        logssfr = dat[1]["lssfr"] + np.log10(h_corr)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore")
             d_com = cosmo.comoving_distance(z.values).value * cosmo.h
@@ -1290,12 +1378,12 @@ class UMWgetter:
     def download_sfrcat_index(self, i, overwrite=False):
         file_url = self.url + self.sfr_cats[i]
         outfile = os.path.join(UMConfig().config["data_dir"], self.sfr_cats[i])
-        hf.wget_download(file_url, outfile, overwrite=overwrite)
+        util.wget_download(file_url, outfile, overwrite=overwrite)
 
     def download_sfrcat_redshift(self, redshift, overwrite=False):
         zmin, zmax = np.min(redshift), np.max(redshift)
-        imin = hf.choose_close_index(zmax, self.redshifts, "any")
-        imax = hf.choose_close_index(zmin, self.redshifts, "any")
+        imin = util.choose_close_index(zmax, self.redshifts, "any")
+        imax = util.choose_close_index(zmin, self.redshifts, "any")
         for i in range(imin, imax+1):
             self.download_sfrcat_index(i, overwrite=overwrite)
         UMConfig().auto_add()
@@ -1329,8 +1417,8 @@ class UVISTAWgetter:
                 UVISTAConfig().auto_add()
                 return
 
-        hf.wget_download(self.uvista_url, outfile=self.uvista_tarf,
-                         overwrite=overwrite)
+        util.wget_download(self.uvista_url, outfile=self.uvista_tarf,
+                           overwrite=overwrite)
         uvista_tar = tarfile.open(self.uvista_tarf)
 
         for member in uvista_tar.getmembers():
@@ -1348,8 +1436,8 @@ class UVISTAWgetter:
                 SeanSpectraConfig().auto_add()
                 return
 
-        hf.wget_download(self.sean_url, outfile=self.sean_tarf,
-                         overwrite=overwrite)
+        util.wget_download(self.sean_url, outfile=self.sean_tarf,
+                           overwrite=overwrite)
         sean_tar = tarfile.open(self.sean_tarf)
 
         for member in sean_tar.getmembers():
