@@ -1,13 +1,13 @@
 import os
 import pathlib
+from typing import Union, Sequence, Optional
 import json
 from packaging.version import parse as vparse
 import numpy as np
 import pandas as pd
 import halotools as ht
-import halotools.utils as ht_utils
-import halotools.empirical_models as ht_empirical_models
-import halotools.sim_manager as ht_sim_manager
+
+from . import util
 from .. import mocksurvey as ms
 
 
@@ -22,8 +22,8 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     # Predict/generate filenames
     fake_id = "_tmp_file_made_by_mocksurvey_lightcone_"
     args = [z_low, z_high, x_arcmin, y_arcmin, samples, id_tag, fake_id]
-    files, moved_files = _generate_lightcone_filenames(args, outfilepath,
-                                                       outfilebase)
+    files, moved_files = util.generate_lightcone_filenames(
+        args, outfilepath, outfilebase)
     # Check prerequisites
     assert(vparse(ht.__version__) >= vparse("0.7dev"))
     if not ms.UVISTAConfig().are_all_files_stored():
@@ -41,10 +41,10 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
         umcfg = ms.UMConfig().get_lightcone_config()
 
     # Execute the lightcone code in the UniverseMachine package
-    if _execute_lightcone_code(*args[:4], executable, umcfg, samples,
-                               id_tag=fake_id,
-                               do_collision_test=do_collision_test,
-                               ra=ra, dec=dec, theta=theta, rseed=rseed):
+    if util.execute_lightcone_code(
+            *args[:4], executable, umcfg, samples, id_tag=fake_id,
+            do_collision_test=do_collision_test,
+            ra=ra, dec=dec, theta=theta, rseed=rseed):
         raise RuntimeError("lightcone code failed")
 
     # Move lightcone files to their desired locations
@@ -54,7 +54,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
 
     # Convert the enormous ascii file into a binary table + meta data
     for filename in moved_files:
-        convert_ascii_to_npy_and_json(
+        util.convert_ascii_to_npy_and_json(
             filename,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
@@ -66,405 +66,156 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
         pass
 
 
-def mock_spectra(selector=None, input_dir=".", output_dir=".",
-                 outfile=None, input_realization_index=0,
-                 nblocks_per_dim=1, make_specprop=True, make_specmap=False):
+def selected_lightcone(output_dir: str,
+                       selector: Optional[object] = None,
+                       input_dir: Union[str, object] = ".",
+                       outfile: Optional[str] = None,
+                       input_realization_index: Union[
+                           str, int, Sequence[int]] = "all",
+                       nblocks_per_dim: int = 1) -> None:
     """
-    Take a lightcone and turn it into
+    Take an input lightcone and perform a selection and optionally
+    break it up into sky regions. The resulting lightcone is saved
+    in a new directory.
     Parameters
     ----------
-    selector
-    input_dir
-    output_dir
-    outfile
-    input_realization_index
-    nblocks_per_dim
-    make_specprop
-    make_specmap
+    output_dir : str
+        Directory name to save the new lightcone. This directory goes
+        into the default lightcone storage location, unless the path
+        is explicit (starts with '.', '..', or '/') and already exists
+    selector : LightConeSelector (default taken from meta data)
+        Specifies the lightcone selection function
+    input_dir : str | LightConeConfig
+        Directory of the input lightcone
+    outfile : str (default=None)
+        Base of output file names. By default, use the same naming
+        convention as the input lightcone
+    input_realization_index : int | str | array-like (default="all")
+        Specify realization index(es) from the input to create
+        the selected lightcone(s). All realizations used by default
+    nblocks_per_dim : int (default=1)
+        Integer greater than 1 will break up the lightcone into
+        data into nblocks_per_dim^2 different equal-sized sky regions
 
     Returns
     -------
-
+    None (files are written)
     """
+    if not ms.util.explicit_path(output_dir, assert_dir=True):
+        output_dir = os.path.join(ms.UMConfig().config["data_dir"],
+                                  "lightcones", output_dir)
+        pathlib.Path(output_dir).mkdir(parents=True)
+    if isinstance(input_dir, ms.LightConeConfig):
+        config = input_dir
+        input_dir = config.config["data_dir"]
+    else:
+        input_dir = os.path.abspath(input_dir)
+        config = ms.LightConeConfig(input_dir, is_temp=True)
+    with ms.util.suppress_stdout():
+        config.auto_add()
+    if selector is None:
+        selector = ms.util.selector_from_meta(config.load_meta(0))
+
     nblocks = nblocks_per_dim ** 2
+    if input_realization_index == "all":
+        input_realization_index = len(config.config["files"])
     input_realization_index = np.atleast_1d(input_realization_index)
 
     assert isinstance(nblocks_per_dim, int)
     assert input_realization_index.dtype.kind == "i"
 
+    for index in input_realization_index:
+        num = f"_{index}" if len(input_realization_index) > 1 else ""
+        base_fn = f"{config.config['files'][index]}"[:-4] \
+            if outfile is None else f"{outfile}{num}"
+        base_fn = os.path.join(output_dir, base_fn)
+
+        cat, meta = config.load(index)
+        cat = cat[selector(cat)]
+        block_digits = selector.block_digitize(cat, (nblocks_per_dim,
+                                                     nblocks_per_dim))
+        for i in range(nblocks):
+            num = f"-{i}" if nblocks > 1 else ""
+            phot_fn = f"{base_fn}{num}.npy"
+            meta_fn = f"{base_fn}{num}.json"
+
+            mask = block_digits == i
+            cat_block = cat[mask]
+
+            selector_num = max([1, *(int(key.split("_")[-1]) + 1
+                                     for key in meta.keys()
+                                     if key.startswith("selector_"))])
+            np.save(phot_fn, cat_block)
+            json.dump({**meta, f"selector_{selector_num}":
+                       repr(selector)}, open(meta_fn, "w"), indent=4)
+
+
+def neighbor_spectrum(input_dir: str = ".",
+                      input_realization_index: Union[
+                          str, int, Sequence[int]] = "all",
+                      make_specmap: bool = False):
+    """
+    Take an input lightcone and perform a selection and optionally break it
+    up into sky regions. The resulting data is saved in the same directory,
+    but with the same names, but with extensions '.spec' and '.specprop'
+    Parameters
+    ----------
+    input_dir : str | LightConeConfig
+        Directory of the lightcone
+    input_realization_index : int | str | array-like (default="all")
+        Specify realization index(es) from the input to create
+        the selected lightcone(s). All realizations used by default
+    make_specmap : bool (default=False)
+        If True, binary files of the raw synthetic spectra will be
+        written ('.spec' extension) in addition to the spectral
+        property files ('.specprop' extension)
+
+    Returns
+    -------
+    None (files are written)
+    """
     if isinstance(input_dir, ms.LightConeConfig):
         config = input_dir
+        input_dir = config.config["data_dir"]
     else:
         config = ms.LightConeConfig(input_dir, is_temp=True)
+    with ms.util.suppress_stdout():
         config.auto_add()
-    phot_fn, meta_fn, prop_fn, spec_fn = [lambda i: f"{outfile}-{i}.{ext}"
-                                          for ext in ("npy", "json",
-                                                      "specprop", "spec")]
 
-    pfs, meta = ms.LightConeConfig("PFS").load(input_realization_index)
-    pfs_sel = ms.mass_complete_pfs_selector(pfs, [0.7, 1.7], masslim=0)
-    pfs_mask = pfs_sel(pfs)
-    pfs = pfs[pfs_mask]
-    nbr_data = ms.ummags.NeighborSeanSpecFinder(pfs)
-    Nwave = len(nbr_data.stacker.wave)
-    block_digits = pfs_sel.block_digitize(pfs, (nblocks_per_dim, nblocks_per_dim))
-    for i in range(nblocks):
-        mask = block_digits == i
-        pfs_block = pfs[mask]
-        Ngal = len(pfs_block)
-        Nwave = len(nbr_data.stacker.wave)
-        np.save(file1(i), pfs_block)
-        json.dump(ms.ummags.metadict_with_spec(meta, Ngal), open(file2(i), "w"), indent=4)
-        block_data = ms.ummags.NeighborSeanSpecFinder(pfs_block)
-        nearest = self.find_nearest_specid(num_nearest=6, bestcolor=True)
-        block_data.write_specmap(file3(i), nearest, corr="mass", progress=True)
-    raise NotImplementedError()
+    if input_realization_index == "all":
+        input_realization_index = len(config.config["files"])
+    input_realization_index = np.atleast_1d(input_realization_index)
 
+    assert input_realization_index.dtype.kind == "i"
 
-def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
-                                  remove_ascii_file=False, **kwargs):
-    if outfilebase is None:
-        outfilebase = ".".join(asciifile.split(".")[:-1])
+    for index in input_realization_index:
+        base_fn = f"{config.config['files'][index]}"[:-4]
+        base_fn = os.path.join(input_dir, base_fn)
 
-    data = lightcone_from_ascii(asciifile, **kwargs)
-    metadict = metadict_from_ascii(asciifile, **kwargs)
+        phot_fn = f"{base_fn}.npy"
+        meta_fn = f"{base_fn}.json"
+        prop_fn = f"{base_fn}.specprop"
+        spec_fn = f"{base_fn}.spec"
 
-    np.save(outfilebase + ".npy", data)
-    json.dump(metadict, open(outfilebase + ".json", "w"), indent=4)
+        cat, meta = config.load(index)
+        ngal = len(cat)
+        meta = util.metadict_with_spec(meta, ngal)
 
-    if remove_ascii_file:
-        # Save disk space by deleting the huge ascii file
-        os.remove(asciifile)
+        nfinder = NeighborSeanSpecFinder(cat)
+        nearest = nfinder.find_nearest_specid(
+            num_nearest=6, bestcolor=True)
 
-
-def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
-                        true_mass_limit=0):
-    photbands = _get_photbands(photbands)
-
-    with open(filename) as f:
-        [f.readline() for _ in range(1)]
-        cmd = " ".join(f.readline().split()[2:])
-        seed = eval(f.readline().split()[-1])
-        origin = [float(s) for s in f.readline().split()[-3:]]
-        [f.readline() for _ in range(30)]
-        rot_matrix = eval(("".join([f.readline()[1:].strip().replace(" ", ",")
-                                    for _ in range(3)]))[:-1])
-
-    (executable, config, z_low, z_high,
-     x_arcmin, y_arcmin, samples) = cmd.split()[:7]
-
-    header = """# Structured array of halo/galaxy properties
-# Load via 
-# >>> data = np.load("filename.npy")
-# Cosmology: FlatLambdaCDM(H0=67.8, Om0=0.307, Ob0=0.048)
-#
-# Useful columns:
-# ===============
-# x_real, y_real, z_real - True comoving position in Mpc/h
-# x,y,z - Velocity-distorted comoving position in Mpc/h
-# vx, vy, vz - Velocity in km/s
-# (Note: Observer at origin, x-axis is ~line-of-sight)
-# ra,dec - Celestial coords in degrees: range [-180,180) and [-90,90]
-# redshift[_cosmo] - velocity-distorted [and cosmological] redshift
-# m_{g/r/y/j} - apparent magnitudes in observed bands fit to UltraVISTA
-# obs_sm - "observed" stellar mass from UniverseMachine in Msun
-# obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
-# halo_mvir - Halo mass in Msun
-# upid - ID of central or -1 if central
-"""
-
-    return dict(header=header, z_low=float(z_low), z_high=float(z_high),
-                x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
-                samples=int(samples), photbands=photbands,
-                obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit,
-                Rmatrix=rot_matrix, seed=seed, origin=origin,
-                config=config, executable=executable, cmd=cmd)
-
-    # return dict(header=header, Rmatrix=rot_matrix, seed=seed, origin=origin,
-    #             cmd=cmd, photbands=photbands, obs_mass_limit=obs_mass_limit,
-    #             true_mass_limit=true_mass_limit, executable=executable,
-    #             config=config, z_low=float(z_low), z_high=float(z_high),
-    #             x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
-    #             samples=int(samples))
-
-
-def metadict_with_spec(meta, ngal):
-    if "header_spec" in meta:
-        del meta["header_spec"]
-    if "Ngal" in meta:
-        del meta["Ngal"]
-    if "Nwave" in meta:
-        del meta["Nwave"]
-
-    nwave = ms.SeanSpectraConfig().wavelength().size
-    header_spec = """# Binary array of the spectrum of each galaxy in the catalog
-# Flux units: nJy
-# Wavelength grid [units: nm] = np.geomspace(
-#     380.0, 1259.9885444552458, 74370)
-#
-# Loading instructions
-# ====================
-# First, load the meta data to get the array's shape
-# >>> meta = json.load(open("filename.json"))
-# >>> shape = meta["Ngal"], meta["Nwave"]
-#
-# (Method A) Load the whole array
-# >>> spec = np.fromfile("filename.spec", dtype="<f4").reshape(shape)
-#
-# (Method B) Load a single spectrum or masked selection
-# >>> i = 123
-# >>> spec = np.memmap("filename.spec", dtype="<f4", shape=shape)[i]
-"""
-
-    return dict(Ngal=ngal, Nwave=nwave, header_spec=header_spec, **meta)
-
-
-def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
-                         true_mass_limit=0):
-    """
-    Takes the ascii output given by UniverseMachine's `lightcone` code,
-    and returns it as a numpy structured array, removing entries with
-    mass lower than the specified limit. Reading the ascii table may take
-    up to 20 minutes for large lightcones.
-
-    Several new columns are added, calculated using functions in this
-    module. Velocity-distorted positions replace the x, y, and z
-    columns, and the old ones are renamed x_real, y_real, and z_real.
-    Additionally, apparent magnitudes and distance modulus are calculated.
-    Note that h-scaling is applied to all distances (including distance
-    modulus), and therefore M = m - distmod + 5log(h).
-    """
-    photbands = _get_photbands(photbands)
-
-    cols = {"id": (5, "<i8"), "upid": (7, "<i8"),
-            "x_real": (10, "<f4"), "y_real": (11, "<f4"),
-            "z_real": (12, "<f4"), "vx": (13, "<f4"), "vy": (14, "<f4"),
-            "vz": (15, "<f4"), "ra": (0, "<f4"), "dec": (1, "<f4"),
-            "redshift": (2, "<f4"), "redshift_cosmo": (3, "<f4"),
-            "scale_snapshot": (4, "<f4"), "obs_sm": (28, "<f4"),
-            "obs_sfr": (29, "<f4"), "true_sm": (25, "<f4"),
-            "true_sfr": (27, "<f4"), "halo_mvir": (16, "<f4"),
-            "halo_mvir_peak": (18, "<f4"), "halo_vmax": (17, "<f4"),
-            "halo_vmax_peak": (19, "<f4"), "halo_rvir": (20, "<f4"),
-            "halo_delta_vmax_rank": (21, "<f4")}
-
-    # Read in the ASCII table, make mass cut (this takes a while)
-    masslimit = {"obs_sm": obs_mass_limit, "true_sm": true_mass_limit}
-    reader = ht_sim_manager.tabular_ascii_reader.TabularAsciiReader(
-                             filename, cols, row_cut_min_dict=masslimit)
-    lc_data = reader.read_ascii()
-
-    # Limit RA to the range [-180,180) (column = "ra")
-    lc_data["ra"] = (lc_data["ra"] + 180) % 360 - 180
-    # Calculate redshift-space-distorted positions (columns = "x","y","z")
-    xyz_real = ms.hf.xyz_array(lc_data, keys=["x_real", "y_real", "z_real"])
-    vel = ms.hf.xyz_array(lc_data, keys=["vx", "vy", "vz"])
-    rdz = ms.hf.ra_dec_z(xyz_real, vel, cosmo=ms.bplcosmo)
-    xyz = ms.hf.rdz2xyz(rdz, cosmo=ms.bplcosmo)
-
-    # Calculate distance modulus (column = "distmod")
-    dlum = ms.bplcosmo.luminosity_distance(lc_data["redshift"]
-                                           ).value * ms.bplcosmo.h
-    distmod = 5 * np.log10(dlum * 1e5)
-    dlum_true = ms.bplcosmo.luminosity_distance(lc_data["redshift_cosmo"]
-                                                ).value * ms.bplcosmo.h
-    distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
-
-    # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
-    uvdat = UVData(photbands=photbands)
-    umdat = UMData(lc_data, uvdat=uvdat)
-    sfr_uv = 10 ** umdat.logssfr_uv * lc_data["obs_sm"]
-    magdf = pd.DataFrame({k: umdat.abs_mag[k] + distmod_cosmo
-                          for k in umdat.abs_mag.columns})
-
-    # Name the new columns and specify their dtypes
-    xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
-    mag_dtype = [(f"m_{s}", "f4") for s in magdf.columns]
-    other_dtype = [("sfr_uv", "<f4"),
-                   ("distmod", "<f4"), ("distmod_cosmo", "<f4")]
-
-    full_dtype = (xyz_dtype + lc_data.dtype.descr + mag_dtype +
-                  other_dtype)
-
-    # Copy all columns into a new structured numpy array
-    final_lightcone_array = np.zeros(lc_data.shape, full_dtype)
-    for i, (name, dtype) in enumerate(xyz_dtype):
-        final_lightcone_array[name] = xyz[:, i]
-    for (name, dtype) in mag_dtype:
-        final_lightcone_array[name] = magdf[name[-1].lower()]
-    for (name, dtype) in lc_data.dtype.descr:
-        final_lightcone_array[name] = lc_data[name]
-    final_lightcone_array["sfr_uv"] = sfr_uv
-    final_lightcone_array["distmod"] = distmod
-    final_lightcone_array["distmod_cosmo"] = distmod_cosmo
-
-    return final_lightcone_array
-
-
-def _get_photbands(photbands):
-    if photbands is None:
-        photbands = ["g", "r", "y", "j"]
-    else:
-        photbands = [s.lower() for s in photbands]
-
-    return photbands
-
-
-def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz, nwin=501):
-    assert (vparse(ht.__version__) >= vparse("0.7dev"))
-    z_sel = (z_avg - dz/2 <= z2) & (z2 <= z_avg + dz/2)
-
-    nwin1 = min([nwin, z_sel.sum() // 2 * 2 - 1])
-    if nwin1 < 2:
-        print(f"Warning: Only {z_sel.sum()} galaxies in the z"
-              f"={z_avg} +/- {dz}/2 bin. You should use a larger"
-              f" value of dz than {dz}")
-
-    new_prop = ht_empirical_models.conditional_abunmatch(
-        m, prop, m2[z_sel], prop2[z_sel], nwin=nwin1)
-    return new_prop
-
-
-def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
-                 min_counts_in_z2_bins=None, seed=None):
-    assert (vparse(ht.__version__) >= vparse("0.7dev"))
-    assert (dz > 0)
-    assert (np.shape(m) == np.shape(z)) and (np.shape(z) == np.shape(prop))
-
-    if np.size(prop) == 0:
-        return np.zeros_like(prop)
-    if min_counts_in_z2_bins is None:
-        min_counts_in_z2_bins = nwin+1
-
-    zrange = z.min() - dz/20, z.max() + dz/20
-    nz = int((zrange[1] - zrange[0]) / dz)
-    if nz:
-        centroids = np.linspace(*zrange, nz+1)
-    else:
-        # nz = 1
-        centroids = np.array([-0.5, 0.5])*dz + np.mean(zrange)
-
-    # noinspection PyArgumentList
-    zmin, zmax = centroids.min(), centroids.max()
-    s, s2 = (zmin < z) & (z < zmax), (zmin < z2) & (z2 < zmax)
-    assert np.all(s)
-
-    m2 = m2[s2]
-    z2 = z2[s2]
-    prop2 = prop2[s2]
-
-    inds2 = ht_utils.fuzzy_digitize(z2, centroids, seed=seed,
-                                    min_counts=min_counts_in_z2_bins)
-    centroids: np.ndarray
-    centroids, inds2 = ms.hf.correction_for_empty_bins(centroids, inds2)
-    inds = ms.hf.fuzzy_digitize_improved(z, centroids, seed=seed,
-                                         min_counts=min_counts_in_z2_bins)
-
-    new_prop = np.full_like(prop, np.nan)
-    for i in range(len(centroids)):
-        s, s2 = inds == i, inds2 == i
-        nwin1 = min([nwin, s2.sum()//2*2-1])
-        if nwin1 < 2:
-            print(f"Warning: Only {s2.sum()} galaxies in the z"
-                  f"={centroids[i]} bin. You should use a larger"
-                  f"value of dz than {dz}")
-        new_prop[s] = ht_empirical_models.conditional_abunmatch(
-            m[s], prop[s], m2[s2], prop2[s2], nwin1)
-
-    return new_prop
-
-
-def _execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
-                            executable=None, umcfg=None, samples=1,
-                            id_tag="", do_collision_test=False, ra=0.,
-                            dec=0., theta=0., rseed=None):
-    # homedir = str(pathlib.Path.home()) + "/"
-    if executable is None:
-        # executable = homedir + "local/src/universemachine/lightcone"
-        executable = ms.UMConfig().config["lightcone_executable"]
-    if umcfg is None:
-        # umcfg = homedir + "data/LightCone/um-lightcone.cfg"
-        umcfg = ms.UMConfig().config["lightcone_config"]
-    if rseed is not None:
-        assert(isinstance(rseed, int)), "Random seed must be an integer"
-    assert(isinstance(samples, int)), "Number of samples must be " \
-                                      "an integer"
-
-    args = ["'"+str(id_tag)+"'", str(int(do_collision_test)),
-            str(float(ra)), str(float(dec)), str(float(theta)), str(rseed)]
-
-    if rseed is None:
-        args.pop()
-        if not theta:
-            args.pop()
-            if not dec:
-                args.pop()
-                if not ra:
-                    args.pop()
-                    if not do_collision_test:
-                        args.pop()
-                        if not id_tag:
-                            args.pop()
-
-    cmd = f"{str(executable)} {str(umcfg)} {float(z_low)} {float(z_high)} "\
-          f"{float(x_arcmin)} {float(y_arcmin)} {samples} {' '.join(args)}"
-    print(cmd)
-    return os.system(cmd)
-
-
-def _default_lightcone_filenames(z_low, z_high, x_arcmin, y_arcmin,
-                                 samples=1, id_tag=""):
-    if id_tag:
-        id_tag += "_"
-    return [f"survey_{id_tag}z{z_low:.2f}-{z_high:.2f}_" 
-            f"x{x_arcmin:.2f}_y{y_arcmin:.2f}_{i}.dat"
-            for i in range(samples)]
-
-
-def _generate_lightcone_filenames(args, outfilepath=None,
-                                  outfilebase=None):
-    fake_id = args.pop()
-    z_low, z_high, x_arcmin, y_arcmin, samples, id_tag = args
-    args[-1] = "" if args[-1] is None else args[-1]
-
-    # If id_tag is provided AND outfilepath is not
-    # then store in the default location
-    if (id_tag is not None) and (outfilepath is None):
-        try:
-            outfilepath = ms.UMConfig().config["data_dir"]
-        except ValueError:
-            raise ValueError("To use an id-tag, you must first choose "
-                             "a UMConfig directory to store the files.")
-
-        outfilepath = os.path.join(outfilepath, "lightcones", id_tag)
-        if pathlib.Path(outfilepath).is_dir():
-            outfilepath = None
-            raise IsADirectoryError(f"Lightcone with id-tag={id_tag} "
-                                    f"already exists at {outfilepath}")
-
-    # If id_tag is NOT provided, then make sure outfilepath is valid
-    else:
-        outfilepath = "" if outfilepath is None else outfilepath
-        if not pathlib.Path(outfilepath).is_dir():
-            raise NotADirectoryError(f"outfilepath={outfilepath} "
-                                     f"must be a directory.")
-
-    # If outfilebase NOT provided, use default universemachine naming
-    if outfilebase is None:
-        outfilebase = _default_lightcone_filenames(*args)[0][:-6]
-
-    # Make all names of files generated by the lightcone code
-    outfilebase = os.path.join(outfilepath, outfilebase)
-    asciifiles = _default_lightcone_filenames(*args[:-1], fake_id)
-    moved_asciifiles = [outfilebase + "_" + f.split("_")[-1]
-                        for f in asciifiles]
-
-    return asciifiles, moved_asciifiles
+        json.dump(meta, open(meta_fn, "w"), indent=4)
+        np.save(prop_fn, nfinder.specprops(nearest))
+        os.rename(prop_fn + ".npy", prop_fn)
+        if make_specmap:
+            nfinder.write_specmap(spec_fn, nearest,
+                                  corr="mass", progress=True)
 
 
 class UVData:
     def __init__(self, photbands=None):
-        self.photbands = _get_photbands(photbands)
+        self.photbands = util.get_photbands(photbands)
         self.names = ["M_" + key.upper() for key in self.photbands]
 
         # Load UltraVISTA columns: mass, sSFR_UV, redshift, mass-to-light
@@ -550,7 +301,7 @@ class UMData:
         if self._logssfr_uv is not None:
             return self._logssfr_uv
         if self.snapshot_redshift is None:
-            self._logssfr_uv = cam_binned_z(
+            self._logssfr_uv = util.cam_binned_z(
                         m=self.logm,
                         z=self.z, prop=self.logssfr,
                         m2=self.uvdat.logm,
@@ -559,7 +310,7 @@ class UMData:
                         nwin=self.nwin, dz=self.dz,
                         seed=self.seed)
         else:
-            self._logssfr_uv = cam_const_z(
+            self._logssfr_uv = util.cam_const_z(
                         m=self.logm,
                         prop=self.logssfr,
                         m2=self.uvdat.logm,
@@ -572,7 +323,7 @@ class UMData:
     @property
     def abs_mag(self):
         if self._abs_mag is None:
-            with ms.hf.temp_seed(self.seed):
+            with ms.util.temp_seed(self.seed):
                 self._abs_mag = self.fit_mass_to_light()
         return self._abs_mag
 

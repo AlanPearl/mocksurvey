@@ -13,6 +13,8 @@ from astropy import cosmology
 from astropy import units
 import halotools.utils as ht_utils
 
+from . import mocksurvey as ms
+
 
 @contextmanager
 def temp_seed(seed):
@@ -49,6 +51,35 @@ def suppress_stdout():
             yield
         finally:
             sys.stdout = old_stdout
+
+
+def explicit_path(path: str,
+                  assert_dir=False, assert_file=False) -> bool:
+    ans = path.startswith((os.path.sep,
+                           os.path.curdir,
+                           os.path.pardir))
+    if ans and assert_dir and not os.path.isdir(path):
+        raise NotADirectoryError(f"Explicit path {path} must "
+                                 f"already exist as a directory.")
+    if ans and assert_file and not os.path.isfile(path):
+        raise FileNotFoundError(f"Explicit path {path} must "
+                                f"already exist as a file.")
+    return ans
+
+
+def selector_from_meta(meta: dict):
+    selector = ms.LightConeSelector(
+        meta["z_low"], meta["z_high"],
+        meta["x_arcmin"] * meta["y_arcmin"] / 3600,
+        fieldshape="square", realspace=True)
+    for key in meta.keys():
+        if key.startswith("selector_"):
+            selector &= eval(
+                meta[key].replace(" km / (Mpc s),", ",")
+                .replace(" K,", ",")
+                .replace("LightConeSelector", "ms.LightConeSelector")
+                .replace("FlatLambdaCDM", "cosmology.FlatLambdaCDM"))
+    return selector
 
 
 def make_struc_array(dtypes, name_val_dict):
@@ -126,7 +157,7 @@ def rolling_window(a, window, axis=-1, edge_case=None):
         The specified axis with which windows are drawn from
     
     edge_case : str (default = "replace")
-        We need to choose a scheme of how to deal with the ``window-1``
+        We need to choose a scheme of how to deal with the ``window - 1``
         windows which contain entries beyond the edge of our specified axis.
         The following options are supported:
         

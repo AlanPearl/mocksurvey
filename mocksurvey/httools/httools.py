@@ -26,7 +26,7 @@ from halotools import sim_manager, empirical_models
 from halotools.mock_observables import return_xyz_formatted_array
 from astropy import cosmology, table as astropy_table
 
-from .. import hf
+from .. import util
 # from .. import mocksurvey as ms
 from ..stats import cf
 
@@ -42,7 +42,7 @@ class RedshiftSelector:
         self.cosmo = mockfield.simbox.cosmo
         self.delta_z = mockfield.delta_z
         self.zlim = self.mean_redshift + np.array([-.5, .5]) * self.delta_z
-        self.dlim = hf.comoving_disth(self.zlim, self.cosmo)
+        self.dlim = util.comoving_disth(self.zlim, self.cosmo)
 
     def __call__(self, redshift, input_is_distance=False):
         lower, upper = self.dlim if input_is_distance else self.zlim
@@ -83,14 +83,14 @@ class FieldSelector:
         Output: The radius (of circumscribed circle, in Mpc/h OR radians)
         """
         omega = self.sqdeg * np.pi ** 2 / 180. ** 2
-        f = lambda angle: hf.make_npoly(angle, n).area() - omega
+        f = lambda angle: util.make_npoly(angle, n).area() - omega
 
         angle = optimize.brentq(f, 0, np.pi / 2.)
 
         if return_angle:
             return angle
         else:
-            return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def circle_sqdeg2radius(self, return_angle=False):
         """
@@ -103,7 +103,7 @@ class FieldSelector:
         if return_angle:
             return angle
         else:
-            return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def square_sqdeg2apothem(self, return_angle=False):
         """
@@ -123,7 +123,7 @@ class FieldSelector:
         if return_angle:
             return angle
         else:
-            return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def hexagon_sqdeg2apothem(self, return_angle=False):
         """
@@ -143,11 +143,11 @@ class FieldSelector:
         if return_angle:
             return angle
         else:
-            return hf.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
+            return util.angle_lim_to_dist(angle, self.mean_redshift, self.cosmo)
 
     def _z_length(self):
-        return hf.redshift_lim_to_dist(self.delta_z,
-                                       self.mean_redshift, self.cosmo)
+        return util.redshift_lim_to_dist(self.delta_z,
+                                         self.mean_redshift, self.cosmo)
 
 
 class CartesianSelector(FieldSelector):
@@ -157,7 +157,7 @@ class CartesianSelector(FieldSelector):
         zlim = (self.mean_redshift - self.delta_z / 2.,
                 self.mean_redshift + self.delta_z / 2.)
         omega = self.sqdeg * (np.pi / 180.) ** 2
-        d1, d2 = hf.comoving_disth(zlim, self.cosmo)
+        d1, d2 = util.comoving_disth(zlim, self.cosmo)
 
         volume = omega / 3. * (d2 ** 3 - d1 ** 3)
         depth = d2 - d1
@@ -270,7 +270,7 @@ class CelestialSelector(FieldSelector):
         if rdz:
             return np.array([2. * field_radius] * 2 + [self.delta_z], dtype=np.float32)
         else:
-            field_radius = hf.angle_lim_to_dist(field_radius, self.mean_redshift + self.delta_z / 2., self.cosmo)
+            field_radius = util.angle_lim_to_dist(field_radius, self.mean_redshift + self.delta_z / 2., self.cosmo)
             return np.array([2. * field_radius] * 2 + [self._z_length()], dtype=np.float32)
 
     def square_fieldshape(self, rdz=False):
@@ -278,7 +278,7 @@ class CelestialSelector(FieldSelector):
         if rdz:
             return np.array([2. * field_apothem] * 2 + [self.delta_z], dtype=np.float32)
         else:
-            field_apothem = hf.angle_lim_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
+            field_apothem = util.angle_lim_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
             return np.array([2. * field_apothem] * 2 + [self._z_length()], dtype=np.float32)
 
     def hexagon_fieldshape(self, rdz=False):
@@ -286,7 +286,7 @@ class CelestialSelector(FieldSelector):
         if rdz:
             return np.array([4. / math.sqrt(3.) * field_apothem, 2. * field_apothem, self.delta_z], dtype=np.float32)
         else:
-            field_apothem = hf.angle_lim_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
+            field_apothem = util.angle_lim_to_dist(field_apothem, self.mean_redshift + self.delta_z / 2., self.cosmo)
             return np.array([4. / math.sqrt(3.) * field_apothem, 2. * field_apothem, self._z_length()],
                             dtype=np.float32)
 
@@ -363,7 +363,7 @@ class BoxField:
         self.halo_vel_factor = None
         self.gal_vel_factor = None
 
-        hf.kwargs2attributes(self, kwargs)
+        util.kwargs2attributes(self, kwargs)
 
         self.center = np.asarray(self.center, dtype=np.float32)
         self.selection = slice(None)
@@ -460,8 +460,8 @@ class BoxField:
         if self._xyz_rands is None:
             self.make_rands()
         if rdz and self._rdz_rands is None:
-            self._rdz_rands = hf.ra_dec_z(self._xyz_rands - self.origin, np.zeros_like(self._xyz_rands),
-                                          self.simbox.cosmo, self.zprec)
+            self._rdz_rands = util.ra_dec_z(self._xyz_rands - self.origin, np.zeros_like(self._xyz_rands),
+                                            self.simbox.cosmo, self.zprec)
         return self._rdz_rands if rdz else self._xyz_rands
 
     def get_vel(self, halo_vel_factor=None, gal_vel_factor=None):
@@ -483,17 +483,17 @@ class BoxField:
             gal_vel_factor = self.gal_vel_factor
 
         if (not halo_vel_factor is None) or (not gal_vel_factor is None):
-            return hf.factor_velocity(
-                hf.xyz_array(self.simbox.gals,
-                             ["vx", "vy", "vz"])[self.selection],
-                hf.xyz_array(self.simbox.gals,
-                             ["halo_vx", "halo_vy", "halo_vz"])[self.selection],
+            return util.factor_velocity(
+                util.xyz_array(self.simbox.gals,
+                               ["vx", "vy", "vz"])[self.selection],
+                util.xyz_array(self.simbox.gals,
+                               ["halo_vx", "halo_vy", "halo_vz"])[self.selection],
                 halo_vel_factor=halo_vel_factor,
                 gal_vel_factor=gal_vel_factor,
                 inplace=True)
         else:
-            return hf.xyz_array(self.simbox.gals,
-                                ["vx", "vy", "vz"])[self.selection]
+            return util.xyz_array(self.simbox.gals,
+                                  ["vx", "vy", "vz"])[self.selection]
 
     def get_redshift(self, realspace=False):
         """
@@ -597,7 +597,7 @@ class BoxField:
                            (xyz <= upper[None, :]), axis=1)
 
         if self.collision_fraction > 0.:
-            collisions = hf.sample_fraction(len(selection), self.collision_fraction)
+            collisions = util.sample_fraction(len(selection), self.collision_fraction)
             selection[collisions] = False
 
         self._set_data(xyz[selection], realspace=self.realspace_selection)
@@ -618,16 +618,16 @@ class BoxField:
     def _get_gals(self, rdz=False, realspace=False):
         if rdz:
             xyz = self.get_data(realspace=realspace)
-            xyz = hf.ra_dec_z(xyz - self.origin, np.zeros_like(xyz),
-                              self.simbox.cosmo, self.zprec)
+            xyz = util.ra_dec_z(xyz - self.origin, np.zeros_like(xyz),
+                                self.simbox.cosmo, self.zprec)
         else:
-            xyz = hf.xyz_array(self.simbox.gals)[self.selection]
+            xyz = util.xyz_array(self.simbox.gals)[self.selection]
             if not realspace:
                 if (self.halo_vel_factor is None) and (
                         self.gal_vel_factor is None):
                     vz = self.simbox.gals["vz"][self.selection]
                 else:
-                    vz = hf.factor_velocity(
+                    vz = util.factor_velocity(
                         self.simbox.gals["vz"][self.selection],
                         self.simbox.gals["halo_vz"][self.selection],
                         halo_vel_factor=self.halo_vel_factor,
@@ -748,7 +748,7 @@ class MockField:
         #        self.rand_density_factor = 20.
 
         # Update default parameters with any keyword arguments
-        hf.kwargs2attributes(self, kwargs)
+        util.kwargs2attributes(self, kwargs)
 
         self._gals = {}
         self._rands = {}
@@ -848,10 +848,10 @@ class MockField:
             ralim, declim, _ = self.get_lims(rdz=True, overestimation_factor=1.02)
             zlim = self.get_lims(rdz=False, overestimation_factor=1.02)[2] - self.origin[2]
 
-            volume = hf.volume_rdz(ralim, declim, zlim)
+            volume = util.volume_rdz(ralim, declim, zlim)
             Nran = int(density_rands * volume + 0.5)
 
-            rands = hf.rand_rdz(Nran, ralim, declim, zlim, seed)
+            rands = util.rand_rdz(Nran, ralim, declim, zlim, seed)
             rands = self.rdz2xyz(rands, input_is_distance=True)
 
         self._rands = {
@@ -875,11 +875,11 @@ class MockField:
     make_rands.__doc__ = BoxField.make_rands.__doc__
 
     def xyz2rdz(self, xyz, vel=None):
-        return hf.ra_dec_z(xyz - self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
+        return util.ra_dec_z(xyz - self.origin, vel, cosmo=self.simbox.cosmo, zprec=self.zprec)
 
     def rdz2xyz(self, rdz, input_is_distance=False):
         cosmo = None if input_is_distance else self.simbox.cosmo
-        return hf.rdz2xyz(rdz, cosmo=cosmo) + self.origin
+        return util.rdz2xyz(rdz, cosmo=cosmo) + self.origin
 
     def volume(self):
         (_, _, (d1, d2)), v, _ = self._measure_volume_setup(oef=1)
@@ -939,8 +939,8 @@ class MockField:
         else:
             lims = self.get_lims(rdz=True, overestimation_factor=oef)
             lims[2] = self.simbox.redshift2distance(lims[2])
-            volume = hf.volume_rdz(*lims)
-            rand_generator = hf.rand_rdz
+            volume = util.volume_rdz(*lims)
+            rand_generator = util.rand_rdz
 
         return lims, volume, rand_generator
 
@@ -961,9 +961,9 @@ class MockField:
                 rdz2 = self._get_redshift(realspace=realspace, dataset=dataset)
             else:
                 rdz2 = rdz[:, 2]
-            hf.update_table(dataset, {'ra': rdz[:, 0], 'dec': rdz[:, 1], zkey: rdz2})
+            util.update_table(dataset, {'ra': rdz[:, 0], 'dec': rdz[:, 1], zkey: rdz2})
 
-        rdz = hf.xyz_array(dataset, keys=['ra', 'dec', zkey])
+        rdz = util.xyz_array(dataset, keys=['ra', 'dec', zkey])
         return rdz
 
     def _get_xyz(self, dataset=None, realspace=False):
@@ -973,9 +973,9 @@ class MockField:
 
         if realspace:
             if dataset is self._gals:
-                return hf.xyz_array(self.simbox.gals)[selection]
+                return util.xyz_array(self.simbox.gals)[selection]
             elif dataset is self.simbox.gals:
-                return hf.xyz_array(self.simbox.gals)
+                return util.xyz_array(self.simbox.gals)
             # update_table(dataset, {"x_real":x, "y_real":y, "z_real":z})
 
         if realspace:
@@ -993,16 +993,16 @@ class MockField:
             already_done = {xkey, ykey, zkey}.issubset(datanames)
             if not already_done:
                 xyz = self._cartesian_distortion_xyz(realspace=realspace, dataset=dataset)
-                hf.update_table(dataset, {xkey: xyz[:, 0], ykey: xyz[:, 1], zkey: xyz[:, 2]})
+                util.update_table(dataset, {xkey: xyz[:, 0], ykey: xyz[:, 1], zkey: xyz[:, 2]})
 
         else:
             already_done = {xkey, ykey, zkey}.issubset(datanames)
             if not already_done:
                 rdz = self._get_rdz(realspace=realspace, dataset=dataset)
                 xyz = self.rdz2xyz(rdz)
-                hf.update_table(dataset, {xkey: xyz[:, 0], ykey: xyz[:, 1], zkey: xyz[:, 2]})
+                util.update_table(dataset, {xkey: xyz[:, 0], ykey: xyz[:, 1], zkey: xyz[:, 2]})
 
-        xyz = hf.xyz_array(dataset, keys=[xkey, ykey, zkey])
+        xyz = util.xyz_array(dataset, keys=[xkey, ykey, zkey])
         return xyz
 
     def _get_vel(self, realspace=False, dataset=None,
@@ -1021,17 +1021,17 @@ class MockField:
             return np.zeros((length, 3))
         else:
             if not (halo_vel_factor is None) or not (gal_vel_factor is None):
-                return hf.factor_velocity(
-                    hf.xyz_array(self.simbox.gals,
-                                 keys=['vx', 'vy', 'vz'])[selection],
-                    hf.xyz_array(self.simbox.gals,
-                                 keys=['halo_vx', 'halo_vy', 'halo_vz'])[selection],
+                return util.factor_velocity(
+                    util.xyz_array(self.simbox.gals,
+                                   keys=['vx', 'vy', 'vz'])[selection],
+                    util.xyz_array(self.simbox.gals,
+                                   keys=['halo_vx', 'halo_vy', 'halo_vz'])[selection],
                     halo_vel_factor=halo_vel_factor,
                     gal_vel_factor=gal_vel_factor,
                     inplace=True)
             else:
-                return hf.xyz_array(self.simbox.gals,
-                                    keys=['vx', 'vy', 'vz'])[selection]
+                return util.xyz_array(self.simbox.gals,
+                                      keys=['vx', 'vy', 'vz'])[selection]
 
     def _get_redshift(self, realspace=False, dataset=None):
         dataset, datanames, selection = self._get_dataset(dataset)
@@ -1052,8 +1052,8 @@ class MockField:
                 dist = np.sqrt(np.sum((xyz - self.origin[None, :]) ** 2, axis=1))
 
             vr = np.zeros(dist.shape)
-            redshift = hf.distance2redshift(dist, vr, self.simbox.cosmo, self.zprec)
-            hf.update_table(dataset, {zkey: redshift})
+            redshift = util.distance2redshift(dist, vr, self.simbox.cosmo, self.zprec)
+            util.update_table(dataset, {zkey: redshift})
 
         redshift = dataset[zkey]
         return redshift
@@ -1065,7 +1065,7 @@ class MockField:
             data = self._get_rdz(realspace=self.realspace_selection, dataset=dataset)
 
         selection = self.apply_selection(data, input_is_distance=self.cartesian_selection)
-        collisions = hf.sample_fraction(len(selection), self.collision_fraction)
+        collisions = util.sample_fraction(len(selection), self.collision_fraction)
         selection[collisions] = False
         return selection
 
@@ -1147,7 +1147,7 @@ class MockField:
         origin = self.center - np.array([0., 0., center_dist], dtype=np.float32)
 
         points = np.array([[0., 0., 0.], [self.simbox.Lbox[0], 0., 0.]]) + origin
-        ra = hf.ra_dec_z(points, np.zeros_like(points), self.simbox.cosmo)[:, 0]
+        ra = util.ra_dec_z(points, np.zeros_like(points), self.simbox.cosmo)[:, 0]
         ra = abs(ra[1] - ra[0]) * math.sqrt(2.)
 
         Lbox_rdz = np.array([ra, ra, self.delta_z], dtype=np.float32)
@@ -1238,8 +1238,8 @@ class MockSurvey:
         lims = np.asarray(self.get_shape(rdz=True, return_lims=True)).T
         lims[2] = np.asarray(self.get_shape(rdz=False, return_lims=True)).T[2]
 
-        N = density * hf.volume_rdz(*lims)
-        self.rand_rdz = hf.rand_rdz(N, *lims, seed=seed).astype(np.float32)
+        N = density * util.volume_rdz(*lims)
+        self.rand_rdz = util.rand_rdz(N, *lims, seed=seed).astype(np.float32)
 
         selections = [field.apply_selection(self.rand_rdz, input_is_distance=True) for field in self.fields]
         selection = np.any(selections, axis=0)
@@ -1399,7 +1399,7 @@ class SimBox:
         self.__dict__.update(self.defaults)
 
         # Update default parameters with any keyword arguments
-        hf.kwargs2attributes(self, kwargs)
+        util.kwargs2attributes(self, kwargs)
         # Initialize model and get halos
         self.populated = False
         self.construct_model()
@@ -1425,7 +1425,7 @@ class SimBox:
         return np.product(self.Lbox) if self.volume is None else self.volume
 
     def redshift2distance(self, redshift):
-        return hf.comoving_disth(redshift, self.cosmo)
+        return util.comoving_disth(redshift, self.cosmo)
 
     # Conduct a mock observation (a single field or a multi-field survey)
     # =========================================
@@ -1583,8 +1583,8 @@ class SimBox:
         selection_function = field.field_selector
 
         def halo_selection_function(halos):
-            xyz = hf.xyz_array(halos, ["halo_x", "halo_y", "halo_z"])
-            rdz = hf.ra_dec_z(xyz - field.origin, np.zeros_like(xyz), cosmo=None)
+            xyz = util.xyz_array(halos, ["halo_x", "halo_y", "halo_z"])
+            rdz = util.ra_dec_z(xyz - field.origin, np.zeros_like(xyz), cosmo=None)
             return selection_function(rdz)
 
         return halo_selection_function
@@ -1664,7 +1664,7 @@ class HaloBox(SimBox):
         self.__dict__.update({s: self.defaults[s] for s in self.accepted_kwargs})
 
         # Update default parameters with any keyword arguments
-        hf.kwargs2attributes(self, kwargs)
+        util.kwargs2attributes(self, kwargs)
         # Initialize model and get halos
         self.Lbox = np.asarray(self.Lbox, dtype=np.float32)
         if not self.empty:
@@ -1706,7 +1706,7 @@ class GalBox(SimBox):
         self.empty = self.halobox.empty
         self.Nbox = self.halobox.Nbox
 
-        hf.kwargs2attributes(self, kwargs)
+        util.kwargs2attributes(self, kwargs)
 
         self.halos = None if self.empty else self.halobox.halos
         self.halocat = None if self.empty else self.halobox.halocat

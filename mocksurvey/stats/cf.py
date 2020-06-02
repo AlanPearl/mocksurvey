@@ -7,7 +7,8 @@ except ImportError:
     import halotools.mock_observables as mockobs
 import numpy as np
 import warnings
-from mocksurvey import hf
+from mocksurvey import util
+
 
 class PairCounts:
     def __init__(self, Ndata, Nrand, DD, DR, RR, n_rpbins, pimax=None):
@@ -36,6 +37,7 @@ class PairCounts:
         msg += "DR = " + str(self.DR) + "\n"
         msg += "RR = " + str(self.RR)
         return msg
+
 
 # Count pairs in 3D r bins
 # ========================
@@ -77,6 +79,7 @@ def paircount_r(data, rands, rbins, nthreads=1, pair_counter_func="DD",
     args += [DD_counts, DR_counts, RR_counts]
     args += [len(rbins)-1]
     return PairCounts(*args, **pc_kwargs)
+
 
 # Count pairs in rp and pi bins
 # =============================
@@ -120,7 +123,7 @@ def bias_rp(data, rands, rpbins, boxsize=None, wp_dms=None, pimax=50., suppress_
         rpbinses = []
         for i in range(len(rpbins)-1):
             rpbinses.append([rpbins[i],rpbins[i+1]])
-    if not hf.is_arraylike(wp_dms):
+    if not util.is_arraylike(wp_dms):
         wp_dms = [wp_dms] * len(rpbinses)
 
     biases = []
@@ -135,7 +138,7 @@ def bias_rp(data, rands, rpbins, boxsize=None, wp_dms=None, pimax=50., suppress_
         bias = np.sqrt(wp_gal/wp_dm)
         biases.append(bias)
     
-    return hf.reduce_dim(biases)
+    return util.reduce_dim(biases)
 
 
 def wp_darkmatter(rp):
@@ -169,7 +172,7 @@ def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='L
             data = data%boxsize
         
         with warnings.catch_warnings():
-          with hf.suppress_stdout():
+          with util.suppress_stdout():
             warnings.simplefilter("ignore")
             
             DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z)
@@ -180,7 +183,7 @@ def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='L
         xr,yr,zr = rands.T * array_factor
         
         with warnings.catch_warnings():
-          with hf.suppress_stdout():
+          with util.suppress_stdout():
             warnings.simplefilter("ignore")
             
             DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
@@ -209,7 +212,7 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
         # Periodic boundary conditions
         if boxsize is None:
             raise ValueError("`boxsize` cannot be None if `rands` is None")
-        if hf.is_arraylike(boxsize):
+        if util.is_arraylike(boxsize):
             raise ValueError(f"`boxsize` must be a scalar, not {boxsize.__class__}")
         if rbins[-1]*3 > boxsize:
             raise ValueError(f"cube side length must be at least 3x the largest r bin, but"
@@ -218,7 +221,7 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
             data = data%boxsize
         
         with warnings.catch_warnings():
-          with hf.suppress_stdout():
+          with util.suppress_stdout():
             warnings.simplefilter("ignore")
             return Corrfunc.theory.xi(boxsize, nthreads, rbins, *data.T)["xi"]
     x,y,z = data.T
@@ -230,7 +233,7 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
         return mockobs.tpcf(data, rbins, randoms=rands, estimator=estimator, num_threads=nthreads)
     
     with warnings.catch_warnings():
-      with hf.suppress_stdout():
+      with util.suppress_stdout():
         warnings.simplefilter("ignore")
         
         DD_counts = Corrfunc.theory.DD(autocorr=True, nthreads=nthreads, binfile=rbins, X1=x, Y1=y, Z1=z, periodic=False)
@@ -291,7 +294,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
         # Periodic boundary conditions
         if boxsize is None:
             raise ValueError("`boxsize` cannot be None if `rands` is None")
-        if hf.is_arraylike(boxsize):
+        if util.is_arraylike(boxsize):
             raise ValueError(f"`boxsize` must be a scalar, not {boxsize.__class__}")
         if rpbins[-1]*3 > boxsize:
             raise ValueError(f"cube side length must be at least 3x the largest rp bin, but"
@@ -309,7 +312,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
                         estimator="Landy-Szalay", num_threads=nthreads)
         
         with warnings.catch_warnings():
-          with hf.suppress_stdout():
+          with util.suppress_stdout():
             warnings.simplefilter("ignore")
             return Corrfunc.theory.wp(boxsize, pimax, nthreads,
                                       rpbins, *data.T)["wp"]
@@ -329,7 +332,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
                           estimator="Landy-Szalay", num_threads=nthreads)
     
     with warnings.catch_warnings():
-      with hf.suppress_stdout():
+      with util.suppress_stdout():
         warnings.simplefilter("ignore")
         
         DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
@@ -375,7 +378,7 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
         raise KeyError("Argument func=%s not valid. Must be one of: %s" %(func, '{<callable>, "xi_r", "wp_rp"}'))
     
     N = np.product(nbins)
-    if hf.is_arraylike(centers[0]):
+    if util.is_arraylike(centers[0]):
         N *= len(centers)
     
     centers = np.asarray(centers)
@@ -563,12 +566,13 @@ def _blockbootstrap_subsample(data, rands, Nblock, ind_d, ind_r, nbootstrap, fun
         plt.show()
     return xi, xi_err, xi_err_err
 
+
 def _setupblockbins(rands, bins):
     if len(rands) < 1:
         raise ValueError('`rands` cannot be length zero')
-    if hf.is_arraylike(bins):
+    if util.is_arraylike(bins):
         assert(len(bins) == 3)
-        if hf.is_arraylike(bins[0]):
+        if util.is_arraylike(bins[0]):
             # bins = [x_edges, y_edges, z_edges]
             nx, ny, nz = len(bins[0])-1, len(bins[1])-1, len(bins[2])-1
             bins = (*bins, nx, ny, nz)
@@ -649,9 +653,9 @@ def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=
         # Find the center which the point is closest to
         for center in centers:
             if rdz_distance:
-                dist = hf.rdz_distance(dat, center, rdz_distance)
+                dist = util.rdz_distance(dat, center, rdz_distance)
             else:
-                dist = hf.xyz_distance(dat, center)
+                dist = util.xyz_distance(dat, center)
             
             dist_to_center.append(dist)
         
