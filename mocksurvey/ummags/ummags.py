@@ -102,14 +102,12 @@ def selected_lightcone(output_dir: str,
     None (files are written)
     """
     if not ms.util.explicit_path(output_dir, assert_dir=True):
-        output_dir = os.path.join(ms.UMConfig().config["data_dir"],
-                                  "lightcones", output_dir)
+        output_dir = ms.UMConfig().get_path("lightcones", output_dir)
         pathlib.Path(output_dir).mkdir(parents=True)
     if isinstance(input_dir, ms.LightConeConfig):
         config = input_dir
     else:
         config = ms.LightConeConfig(input_dir, is_temp=True)
-    input_dir = config.config["data_dir"]
     with ms.util.suppress_stdout():
         config.auto_add()
     if selector is None:
@@ -117,7 +115,7 @@ def selected_lightcone(output_dir: str,
 
     nblocks = nblocks_per_dim ** 2
     if input_realization_index == "all":
-        input_realization_index = range(len(config.config["files"]))
+        input_realization_index = range(len(config["files"]))
     input_realization_index = np.atleast_1d(input_realization_index)
 
     assert isinstance(nblocks_per_dim, int)
@@ -125,7 +123,7 @@ def selected_lightcone(output_dir: str,
 
     for index in input_realization_index:
         num = f"_{index}" if len(input_realization_index) > 1 else ""
-        base_fn = f"{config.config['files'][index]}"[:-4] \
+        base_fn = f"{config['files'][index]}"[:-4] \
             if outfile is None else f"{outfile}{num}"
         base_fn = os.path.join(output_dir, base_fn)
 
@@ -152,7 +150,9 @@ def selected_lightcone(output_dir: str,
 def neighbor_spectrum(input_dir: str = ".",
                       input_realization_index: Union[
                           str, int, Sequence[int]] = "all",
-                      make_specmap: bool = False):
+                      make_specmap: bool = False,
+                      best_of: int = 6,
+                      photbands: Sequence[str] = None):
     """
     Take an input lightcone and perform a selection and optionally break it
     up into sky regions. The resulting data is saved in the same directory,
@@ -164,58 +164,70 @@ def neighbor_spectrum(input_dir: str = ".",
     input_realization_index : int | str | array-like (default="all")
         Specify realization index(es) from the input to create
         the selected lightcone(s). All realizations used by default
-    make_specmap : bool (default=False)
+    make_specmap : bool (default = False)
         If True, binary files of the raw synthetic spectra will be
         written ('.spec' extension) in addition to the spectral
-        property files ('.specprop' extension)
+        property files ('.specprop' extension)'
+    best_of : int (default = 6)
+        Number of nearest neighbors to match in mass/redshift/sSFR
+        space prior to choosing the nearest color neighbor
+    photbands : list[str] (default = ['g', 'r', 'y', 'j'])
+        Photometric bands used for nearest-neighbor color matching
+        of the nearest `best_of` neighbors
 
     Returns
     -------
     None (files are written)
     """
+    photbands = util.get_photbands(photbands, "gryj")
     if isinstance(input_dir, ms.LightConeConfig):
         config = input_dir
     else:
         config = ms.LightConeConfig(input_dir, is_temp=True)
-    input_dir = config.config["data_dir"]
+    input_dir = config.get_path()
     with ms.util.suppress_stdout():
         config.auto_add()
 
     if input_realization_index == "all":
-        input_realization_index = range(len(config.config["files"]))
+        input_realization_index = range(len(config["files"]))
     input_realization_index = np.atleast_1d(input_realization_index)
 
     assert input_realization_index.dtype.kind == "i"
 
     for index in input_realization_index:
-        base_fn = f"{config.config['files'][index]}"[:-4]
+        base_fn = f"{config['files'][index]}"[:-4]
         base_fn = os.path.join(input_dir, base_fn)
 
-        phot_fn = f"{base_fn}.npy"
         meta_fn = f"{base_fn}.json"
         prop_fn = f"{base_fn}.specprop"
-        spec_fn = f"{base_fn}.spec"
+        if make_specmap:
+            spec_fn = f"{base_fn}.spec"
+        else:
+            spec_fn = None
 
         cat, meta = config.load(index)
         ngal = len(cat)
         meta = util.metadict_with_spec(meta, ngal)
 
-        nfinder = NeighborSeanSpecFinder(cat)
+        nfinder = NeighborSeanSpecFinder(cat, photbands=photbands)
         nearest = nfinder.find_nearest_specid(
-            num_nearest=6, bestcolor=True)
+            num_nearest=best_of, bestcolor=True)
+        propcat = nfinder.specprops(nearest, cosmo=ms.bplcosmo,
+                                    specmap_filename=spec_fn,
+                                    progress=True)
 
         json.dump(meta, open(meta_fn, "w"), indent=4)
-        np.save(prop_fn, nfinder.specprops(nearest))
+        np.save(prop_fn, propcat)
         os.rename(prop_fn + ".npy", prop_fn)
-        if make_specmap:
-            nfinder.write_specmap(spec_fn, nearest,
-                                  corr="mass", progress=True)
+        # if make_specmap:
+        #     nfinder.write_specmap(spec_fn, nearest,
+        #                           corr="mass", progress=True)
 
 
 class UVData:
     def __init__(self, photbands=None):
         self.photbands = util.get_photbands(photbands)
-        self.names = ["M_" + key.upper() for key in self.photbands]
+        self.names = ["M_" + key for key in self.photbands]
 
         # Load UltraVISTA columns: mass, sSFR_UV, redshift, mass-to-light
         (self.z, self.logm, self.logssfr_uv,
@@ -365,26 +377,38 @@ class SeanSpecStacker:
         self.mapper = pd.merge(fullmapper.iloc[~self.isnan], redshifts,
                                left_index=True, right_index=True)
 
-    def avg_spectrum(self, specids, lumcorr, redshift, cosmo=None,
+    @property
+    def bytes_per_spec(self):
+        specmap = self.get_specmap()
+        return specmap.itemsize * specmap.shape[-1]
+
+    def avg_spectrum(self, specids, lumcorrs, redshift, cosmo=None,
                      return_each_spec=False):
         if cosmo is None:
             cosmo = ms.bplcosmo
+        is_scalar = not ms.util.is_arraylike(specids)
+        specids = np.atleast_2d(np.transpose(specids)).T
+        lumcorrs = np.atleast_2d(np.transpose(lumcorrs)).T
+        redshift = np.atleast_1d(redshift)
+        assert specids.ndim == 2 and lumcorrs.ndim == 2 and redshift.ndim == 1
+
         idx = self.id2idx_specmap(specids)
         z = self.id2redshift(specids)
 
-        lumcorr = (lumcorr * (1+z) / (1+redshift) *
-                   (cosmo.luminosity_distance(z).value /
-                    cosmo.luminosity_distance(redshift).value)**2)
+        lumcorrs = lumcorrs * ms.util.redshift_rest_flux_correction(
+            from_z=z, to_z=redshift[:, None], cosmo=cosmo)
 
-        specs = self.get_specmap()[idx, :] * lumcorr[:, None]
-        waves = self.wave[None, :] / (1 + z[:, None])
-        truewave = self.wave / (1 + redshift)
+        specs = self.get_specmap()[idx, :] * lumcorrs[:, :, None]
+        waves = self.wave[None, None, :] / (1 + z[:, :, None])
+        truewave = self.wave[None, :] / (1 + redshift[:, None])
 
-        eachspec = []
-        for spec, wave in zip(specs, waves):
-            eachspec.append(np.interp(truewave, wave, spec,
-                                      left=np.nan, right=np.nan))
-        avgspec = np.mean(eachspec, axis=0)
+        eachspec = [[np.interp(truewave_i, wave_ij, spec_ij,
+                               left=np.nan, right=np.nan)
+                     for wave_ij, spec_ij in zip(waves_i, specs_i)]
+                    for truewave_i, waves_i, specs_i in zip(truewave, waves, specs)]
+        avgspec = np.mean(eachspec, axis=1)
+        if is_scalar:
+            avgspec, eachspec = avgspec[0], eachspec[0]
         if return_each_spec:
             return avgspec, eachspec
         else:
@@ -406,6 +430,7 @@ class SeanSpecStacker:
 class NeighborSeanSpecFinder:
     def __init__(self, umhalos, photbands=None, snapshot_redshift=None,
                  nwin=501, dz=0.05, seed=None):
+        photbands = util.get_photbands(photbands, "gryj")
         self.uvdat = UVData(photbands=photbands)
         self.umdat = UMData(umhalos, uvdat=self.uvdat,
                             snapshot_redshift=snapshot_redshift,
@@ -422,30 +447,29 @@ class NeighborSeanSpecFinder:
     def id2idx_specmap(self, uvista_id):
         return self.stacker.id2idx_specmap(uvista_id)
 
-    def avg_spectrum(self, specids, lumcorr, redshift, cosmo=None):
-        return self.stacker.avg_spectrum(specids, lumcorr, redshift,
+    def avg_spectrum(self, specids, lumcorrs, redshift, cosmo=None):
+        return self.stacker.avg_spectrum(specids, lumcorrs, redshift,
                                          cosmo=cosmo)
 
+    def sublist_indices(self, length, max_mem_usage=int(1e8)):
+        sublength = int(max_mem_usage / self.stacker.bytes_per_spec)
+        return list(ms.util.generate_sublists(
+            list(range(length)), sublength))
+
+    def init_specmap(self, filename, num_spectra):
+        f = np.memmap(filename, self.stacker.get_specmap().dtype, "w+",
+                      shape=(num_spectra, len(self.stacker.wave)))
+        return f
+
     def write_specmap(self, outfile, neighbor_id, ummask=None,
-                      cosmo=None, corr="mass", verbose=1, progress=True):
+                      cosmo=None, corr="mass", progress=True,
+                      max_mem_usage=int(1e8)):
         if ummask is None:
             ummask = np.ones(self.umdat.z.shape, dtype=bool)
-        if isinstance(progress, str):
-            assert progress.lower() == "notebook", f"progress={progress}" \
-                ". Must be one of {{True, False, 'notebook'}}"
-            import tqdm.notebook as tqdm
-            iterator = tqdm.trange
-        elif progress:
-            import tqdm
-            iterator = tqdm.trange
-        else:
-            iterator = range
-        assert (corr is None or corr == "mass" or corr == "lum"), \
-            f"corr={corr}. Must be one of {{None, 'mass', 'lum'}}"
+        iterator = util.progress_iterator(progress)
 
-        redshift = self.umdat.z[ummask]
-        f = np.memmap(outfile, self.stacker.get_specmap().dtype, "w+",
-                      shape=(len(redshift), len(self.stacker.wave)))
+        um_redshift = self.umdat.z[ummask]
+        f = self.init_specmap(outfile, len(um_redshift))
 
         if np.ndim(neighbor_id) == 1:
             neighbor_id = np.asarray(neighbor_id)[:, None]
@@ -457,11 +481,13 @@ class NeighborSeanSpecFinder:
         elif corr == "lum":
             masscorr = self.lumcorr(neighbor_id, ummask=ummask)
         else:
-            raise AssertionError()
+            raise ValueError(f"Invalid corr={corr}")
 
-        for i in iterator(len(neighbor_id)):
+        sub_index = self.sublist_indices(len(neighbor_id), max_mem_usage)
+        for i in iterator(len(sub_index)):
+            i = sub_index[i]
             f[i] = self.avg_spectrum(neighbor_id[i], masscorr[i],
-                                     redshift[i], cosmo=cosmo)
+                                     um_redshift[i], cosmo=cosmo)
 
     def find_nearest_specid(self, num_nearest=6, bestcolor=True,
                             metric_weights=None, ummask=None, verbose=1):
@@ -515,21 +541,41 @@ class NeighborSeanSpecFinder:
             ans = self.best_color(ans, ummask=ummask)  # .reshape(-1, 1)
         return ans
 
-    def specprops(self, specid):
+    def specprops(self, specid, ummask=None, cosmo=None,
+                  specmap_filename=None, progress=True):
         """
         Return structured array of spectral properties derived from
         Sean's synthetic spectra
         Parameters
         ----------
-        specid : array-like
+        specid : array
             One-dimensional array containing the UltraVISTA ID of
             the galaxies to include in the returned array
+        ummask : numpy mask (default = None)
+            Mask you can apply to UniverseMachine redshifts
+        cosmo : astropy.Cosmology (default = Bolshoi-Planck)
+            Used to calculate distance discrepancy, which is used
+            as a flux correction factor
+        specmap_filename : str (default = None)
+            If supplied, save the spectra as they are generated to
+            a memory map at this filename (alternative to write_specmap)
+        progress : bool | str (default = True)
+            If True, use tqdm progress bar. If 'notebook', use
+            tqdm.notebook progress bar. If False, no progress bar
 
         Returns
         -------
         propcat : structured array
             All spectral properties for each specified galaxy
         """
+        if cosmo is None:
+            cosmo = ms.bplcosmo
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
+        if specmap_filename is None:
+            specmap = None
+        else:
+            specmap = self.init_specmap(specmap_filename, len(specid))
         props = self.stacker.config.load()
         props.index = props["id"].values
         props = props.loc[specid]
@@ -539,6 +585,11 @@ class NeighborSeanSpecFinder:
         for key in props.columns.values:
             propcat[key] = props[key]
 
+        um_redshift = self.umdat.z[ummask]
+        propcat = util.fix_specprops_columns(self, um_redshift, propcat,
+                                             cosmo, max_gband_nan=5000,
+                                             specmap=specmap,
+                                             progress=progress)
         return propcat
 
     def lumcorr(self, spec_id, band=None, ummask=None):

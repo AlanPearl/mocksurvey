@@ -4,6 +4,8 @@ import shutil
 import collections
 import warnings
 from contextlib import contextmanager
+from typing import Union, Iterable, Sized, Generator
+
 import wget
 import numpy as np
 import scipy.special as spec
@@ -75,27 +77,30 @@ def selector_from_meta(meta: dict):
     for key in meta.keys():
         if key.startswith("selector_"):
             selector &= eval(
-                meta[key].replace(" km / (Mpc s),", ",")
+                meta[key]
+                .replace(" km / (Mpc s),", ",")
                 .replace(" K,", ",")
                 .replace("LightConeSelector", "ms.LightConeSelector")
                 .replace("FlatLambdaCDM", "cosmology.FlatLambdaCDM"))
     return selector
 
 
-def make_struc_array(dtypes, name_val_dict):
-    names, vals = list(name_val_dict.keys()), list(name_val_dict.values())
+def make_struc_array(names, values,
+                     dtypes: Union[Iterable[str], str] = "<f4"):
+    if isinstance(dtypes, str):
+        dtypes = [dtypes] * len(names)
 
-    if vals:
-        lengths = [len(val) for val in vals]
+    if len(values):
+        lengths = [len(val) for val in values]
         length = lengths[0]
-        assert np.all([l == length for l in lengths]), \
+        assert np.all([x == length for x in lengths]), \
             f"Arrays must be same length: names={names}, lengths={lengths}"
     else:
         length = 0
 
     dtype = [(n, d) for n, d in zip(names, dtypes)]
     ans = np.zeros(length, dtype=dtype)
-    for n, v in zip(names, vals):
+    for n, v in zip(names, values):
         ans[n] = v
 
     return ans
@@ -115,7 +120,7 @@ def lightcone_array(id=None, upid=None, x=None, y=None, z=None, obs_sm=None,
         else:
             dtypes.append("<f4")
 
-    return make_struc_array(dtypes, array)
+    return make_struc_array(array.keys(), array.values(), dtypes)
 
 
 def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
@@ -223,6 +228,28 @@ def rolling_window(a, window, axis=-1, edge_case=None):
     return rep[selection]
 
 
+def generate_sublists(full_list: Sized, sublength: int) -> Generator:
+    """Break up a list into sub-lists of a given length"""
+    def generator():
+        i = 0
+        imax = len(full_list)
+        while i < imax:
+            yield full_list[i: (i := i + sublength)]
+    return generator()
+
+
+def rejoin_sublists(sub_lists: Iterable) -> Generator:
+    """Iterate over items in sub-lists created by generate_sublists()"""
+    if hasattr(sub_lists, "tolist") and callable(sub_lists.tolist):
+        sub_lists = sub_lists.tolist()
+
+    def generator():
+        for sub_list in sub_lists:
+            for item in sub_list:
+                yield item
+    return generator()
+
+
 def unbiased_std_factor(n):
     """
     Returns 1/c4(n)
@@ -247,6 +274,7 @@ def auto_bootstrap(func, args, nbootstrap=50):
     return mean, std
 
 
+# noinspection PyPep8Naming
 def get_N_subsamples_len_M(sample, N, M, norepeats=False, suppress_warning=False, seed=None):
     """
     Returns (N,M,*) array containing N subsamples, each of length M.
@@ -281,13 +309,14 @@ def get_N_subsamples_len_M(sample, N, M, norepeats=False, suppress_warning=False
             return get_N_subsamples_len_M_list(sample, N, M, maxM, seed)
 
 
+# noinspection PyPep8Naming
 def get_N_subsamples_len_M_list(sample, N, M, maxM, seed=None):
     with temp_seed(seed):
         i = 0
         subsamples = []
         while i < N:
             subsample = set(np.random.choice(maxM, M, replace=False))
-            if not subsample in subsamples:
+            if subsample not in subsamples:
                 subset = []
                 for index in subsample:
                     subset.append(sample[index])
@@ -297,6 +326,7 @@ def get_N_subsamples_len_M_list(sample, N, M, maxM, seed=None):
         return subsamples
 
 
+# noinspection PyPep8Naming
 def get_N_subsamples_len_M_numpy(sample, N, M, maxM, seed=None):
     with temp_seed(seed):
         i = 0
@@ -342,6 +372,7 @@ def redshift_lim_to_dist(delta_redshift, mean_redshift, cosmo):
     return dist
 
 
+# noinspection PyPep8Naming
 def get_random_center(Lbox, fieldshape, numcenters=None, seed=None, pad=30):
     with temp_seed(seed):
         # origin_shift = np.asarray(origin_shift)
@@ -362,6 +393,7 @@ def get_random_center(Lbox, fieldshape, numcenters=None, seed=None, pad=30):
         return center
 
 
+# noinspection PyPep8Naming
 def get_random_gridded_center(Lbox, fieldshape, numcenters=None, pad=None, replace=False, seed=None):
     with temp_seed(seed):
         Lbox = np.asarray(Lbox)
@@ -386,8 +418,10 @@ def get_random_gridded_center(Lbox, fieldshape, numcenters=None, pad=None, repla
             return centers
 
 
+# noinspection PyPep8Naming
 def grid_centers(Lbox, fieldshape, pad=None):
-    if pad is None: pad = np.array([0., 0., 0.])
+    if pad is None:
+        pad = np.array([0., 0., 0.])
     nbd = (Lbox / (np.asarray(fieldshape) + 2 * pad)).astype(int)
     xcen, ycen, zcen = [np.linspace(0, Lbox[i], nbd[i] + 1)[1:] for i in range(3)]
     centers = np.asarray(np.meshgrid(xcen, ycen, zcen)).reshape((3, xcen.size * ycen.size * zcen.size)).T
@@ -399,13 +433,13 @@ def sample_fraction(sample, fraction, seed=None):
     with temp_seed(seed):
         assert (0 <= fraction <= 1)
         if hasattr(sample, "__len__"):
-            N = len(sample)
+            n = len(sample)
             return_indices = False
         else:
-            N = sample
+            n = sample
             return_indices = True
-        Nfrac = int(N * fraction)
-        indices = np.random.choice(N, Nfrac, replace=False)
+        nfrac = int(n * fraction)
+        indices = np.random.choice(n, nfrac, replace=False)
         if return_indices:
             return indices
         else:
@@ -451,6 +485,13 @@ def xyz_convention_ms2um(xyz):
     return xyz
 
 
+def redshift_rest_flux_correction(from_z, to_z, cosmo):
+    shift = (1 + from_z) / (1 + to_z)
+    dist = (cosmo.luminosity_distance(from_z).value /
+            cosmo.luminosity_distance(to_z).value)
+    return shift * dist ** 2
+
+
 def comoving_disth(redshifts, cosmo):
     z = np.asarray(redshifts)
     dist = cosmo.comoving_distance(z).value * cosmo.h
@@ -458,7 +499,7 @@ def comoving_disth(redshifts, cosmo):
             if is_arraylike(dist) else dist)
 
 
-def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
+def distance2redshift(dist, cosmo, vr, zprec=1e-3, h_scaled=True):
     if len(dist) == 0:
         return np.array([])
 
@@ -488,9 +529,14 @@ def distance2redshift(dist, vr, cosmo, zprec=1e-3, h_scaled=True):
 
 def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
     """
-    Convert position array `xyz` and velocity array `vel` (optional), each of shape (N,3), into ra/dec/redshift array, using the (ra,dec) convention of :math:`\\hat{z} \\rightarrow  ({\\rm ra}=0,{\\rm dec}=0)`, :math:`\\hat{x} \\rightarrow ({\\rm ra}=\\frac{\\pi}{2},{\\rm dec}=0)`, :math:`\\hat{y} \\rightarrow ({\\rm ra}=0,{\\rm dec}=\\frac{\\pi}{2})`
+    Convert position array `xyz` and velocity array `vel` (optional),
+    each of shape (N,3), into ra/dec/redshift array, using the
+    (ra,dec) convention of
+    :math:`\\hat{z} \\rightarrow  ({\\rm ra}=0,{\\rm dec}=0)`,
+    :math:`\\hat{x} \\rightarrow ({\\rm ra}=\\frac{\\pi}{2},{\\rm dec}=0)`,
+    :math:`\\hat{y} \\rightarrow ({\\rm ra}=0,{\\rm dec}=\\frac{\\pi}{2})`
     """
-    if not cosmo is None:
+    if cosmo is not None:
         # remove h scaling from position so we can use the cosmo object
         xyz = xyz / cosmo.h
 
@@ -509,7 +555,7 @@ def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
     if cosmo is None:
         redshift = r
     else:
-        redshift = distance2redshift(r, vr, cosmo, zprec, h_scaled=False)
+        redshift = distance2redshift(r, cosmo, vr, zprec, h_scaled=False)
 
     # calculate spherical coordinates
     # theta = np.arccos(xyz[:, 2]/r) # <--- causes large round off error near (x,y) = (0,0)
@@ -541,6 +587,7 @@ def xyz_array(struc_array, keys=None, attributes=False):
     return np.vstack([struc_array[key] for key in keys]).T
 
 
+# noinspection PyPep8Naming,PyUnusedLocal
 def logN(data, rands, njackknife=None, volume_factor=1):
     del rands
     if njackknife is None:
@@ -551,6 +598,7 @@ def logN(data, rands, njackknife=None, volume_factor=1):
     return np.log(volume_factor * jackknife_factor * len(data))
 
 
+# noinspection PyUnusedLocal,PyShadowingNames
 def logn(data, rands, volume, njackknife=None):
     del rands
     if njackknife is None:
@@ -561,15 +609,12 @@ def logn(data, rands, volume, njackknife=None):
     return np.log(jackknife_factor * len(data) / float(volume))
 
 
-# def logN(data, rands, njackknife=None, volume_factor=1):
-#         return logN_box(data, njackknife, volume_factor)
-# logN.__doc__ = "**Only use this function if `rands` argument is required. Else use logN_box**\n" + logN_box.__doc__
-
-def rand_rdz(N, ralim, declim, zlim, seed=None):
+# noinspection PyPep8Naming
+def rand_rdz(N, ralim, declim, zlim, cosmo=None, seed=None):
     """
-Returns an array of shape (N,3) with columns ra,dec,z
-(z is treated as distance) within the specified limits
-such that the selected points are chosen randomly over a uniform distribution
+    Returns an array of shape (N,3) with columns ra,dec,z (z is treated
+    as distance, unless cosmo is specified) within the specified limits such
+    that the selected points are chosen randomly over a uniform distribution
     """
     with temp_seed(seed):
         N = int(N)
@@ -578,7 +623,9 @@ such that the selected points are chosen randomly over a uniform distribution
         ans[:, 1] = np.arcsin((np.sin(declim[1]) - np.sin(declim[0])) * ans[:, 1] + np.sin(declim[0]))
         ans[:, 2] = ((zlim[1] ** 3 - zlim[0] ** 3) * ans[:, 2] + zlim[0] ** 3) ** (1. / 3.)
 
-        return ans
+    if cosmo is not None:
+        ans[:, 2] = distance2redshift(ans[:, 2], cosmo=cosmo, vr=None)
+    return ans
 
 
 def volume(sqdeg, zlim, cosmo=None):
@@ -610,7 +657,7 @@ def rdz_distance(rdz, rdz_prime, cosmo=None):
     
     Returns the distance of each rdz coordinate from rdz_prime
     """
-    if not cosmo is None:
+    if cosmo is not None:
         rdz[:, 2] = comoving_disth(rdz[:, 2], cosmo)
     r, d, z = rdz.T
     rp, dp, zp = rdz_prime
@@ -627,7 +674,7 @@ def unit_vector(theta, phi):
     x = np.sin(theta) * np.cos(phi)
     y = np.sin(theta) * np.sin(phi)
     z = np.cos(theta)
-    return (x, y, z)
+    return x, y, z
 
 
 def make_npoly(radius, n):
@@ -640,22 +687,37 @@ def make_npoly(radius, n):
 
 def vpmax2pimax(vpmax, z, cosmo):
     """
-    Converts peculiar velocity (km/s) to comoving distance (Mpc/h) due to redshift distortion
+    Converts peculiar velocity (km/s) to inferred comoving distance
+    (Mpc/h) between two objects actually located at the same position.
 
     pimax = dChi/dz * z_vp
     ======================
     where z_vp = vpmax/c * (1 + z_cosmo)
     and dChi/dz = c/(H0*E(z))
+
+    Parameters
+    ----------
+    vpmax : float
+        Line-of-sight velocity difference (in km/s) between two objects
+    z : float
+        Cosmological redshift of the two objects
+    cosmo : astropy.Cosmology
+        Specifies cosmological parameters
+
+    Returns
+    -------
+    pimax : float
+        Inferred line-of-sight distance (in Mpc/h)
     """
-    H0_on_h = 100  # km/s/Mpc (use in place of H0 for h-scaling)
-    pimax = vpmax / H0_on_h * (1 + z) / cosmo.efunc(z)
+    hubble_const_over_h = 100.0  # km/s/Mpc (H0, but h-scaled)
+    pimax = vpmax / hubble_const_over_h * (1 + z) / cosmo.efunc(z)
     return pimax
 
 
 def factor_velocity(v, halo_v, halo_vel_factor=None, gal_vel_factor=None, inplace=False):
     if not inplace:
         v = v.copy()
-    if not halo_vel_factor is None:
+    if halo_vel_factor is not None:
         new_halo_v = halo_vel_factor * halo_v
         v += new_halo_v - halo_v
     else:
@@ -819,7 +881,8 @@ def fuzzy_digitize_improved(x, centroids, **args):
 fuzzy_digitize_improved.__doc__ += ht_utils.fuzzy_digitize.__doc__
 
 
-def correction_for_empty_bins(original_centroids, original_indices):
+def correction_for_empty_bins(original_centroids: np.ndarray,
+                              original_indices: np.ndarray):
     """
     You may want to use this function after using
     halotools.utils.fuzzy_digitize (or the modified version of it)
@@ -848,7 +911,7 @@ def correction_for_empty_bins(original_centroids, original_indices):
     bin_is_empty = ~np.isin(np.arange(len(original_centroids)),
                             np.unique(original_indices))
 
-    find_inds = (original_indices[..., None] ==
+    find_inds = (original_indices[(..., None)] ==
                  np.arange(len(original_centroids)))
     correction = np.sum(find_inds * np.cumsum(bin_is_empty), axis=-1)
 
@@ -857,6 +920,15 @@ def correction_for_empty_bins(original_centroids, original_indices):
     new_centroids = np.asarray(original_centroids)[~bin_is_empty]
     new_indices = original_indices - correction
     return new_centroids, new_indices
+
+
+def change_file_extension(filename, new_extension):
+    parts = filename.split(".")
+    if len(parts) == 1:
+        parts.append(new_extension)
+    else:
+        parts[-1] = new_extension
+    return ".".join(parts)
 
 
 def choose_close_index(value, values, tolerance=0.05):
@@ -899,3 +971,7 @@ def wget_download(file_url, outfile, overwrite=False):
     print()
     if overwrite:
         shutil.move(actual, outfile)
+
+
+def config_file_directory():
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), "config")

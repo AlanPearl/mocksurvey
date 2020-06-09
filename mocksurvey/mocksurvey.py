@@ -10,32 +10,35 @@ import os
 import pathlib
 import warnings
 import json
-import tarfile
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
 import astropy.table as astropy_table
+import tarfile
 from natsort import natsorted
 
 # Local modules
 from . import util
 # Local packages
 from .stats import cf
-from .httools import httools
-from .ummags import ummags
+from . import httools
+from . import ummags
+from . import filechunk
 # Default cosmology (Bolshoi-Planck)
 from .httools.httools import bplcosmo
 
 
 uvista_sqdeg = 1.62
 pfs_sqdeg = 15.0
-pfs_max_dict = dict(m_y=22.5, m_j=22.8)
+pfs_max_dict = dict(m_Y=22.5, m_J=22.8)
 
 
 def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, fieldshape="sq",
-                               masslim=None, randfrac=0.7, sqdeg=15.,
+                               masslim=None, randfrac=0.7, sqdeg=15.0,
                                masscol="obs_sm"):
     z_low, z_high = zlim
-    max_dict = dict(m_y=22.5, m_j=22.8)
+    max_dict = pfs_max_dict.copy()
 
     if masslim is None:
         incompsel = LightConeSelector(z_low, z_high, 15., "fullsky",
@@ -54,13 +57,12 @@ class RealizationLoader:
     def __init__(self, selector=None, name="PFS", nreal=None):
         if isinstance(name, LightConeConfig):
             self.config = name
-            self.name = self.config.config["data_dir"]
+            self.name = self.config.get_path()
         else:
             self.config = LightConeConfig(name)
             self.name = name
-        self.nreal = self.nreal_avail = len(self.config.config["files"])
-        self.meta = [json.load(open(self.config.get_filepath(f)))
-                     for f in self.config.config["meta_files"]]
+        self.nreal = self.nreal_avail = len(self.config["files"])
+        self.meta = [self.config.load_meta(i) for i in range(self.nreal)]
         if nreal is not None:
             assert nreal <= self.nreal, f"There are only {self.nreal}" \
                                         f"realizations of {name} available"
@@ -73,6 +75,7 @@ class RealizationLoader:
         self.secondary_selector = None
         self.cosmo = selector.cosmo
 
+        # noinspection PyUnusedLocal
         def _null_selector(*args, **kwargs):
             return slice(None)
         self._null_selector = _null_selector
@@ -140,8 +143,8 @@ class RealizationLoader:
         if not is_arraylike:
             statfuncs = [statfuncs]
 
-        stats: list = np.full((len(statfuncs), self.nreal),
-                              np.nan).tolist()
+        # noinspection PyTypeChecker
+        stats: list = np.full((len(statfuncs), self.nreal), np.nan).tolist()
 
         for j, real in enumerate(self.generator):
             for i, statfunc in enumerate(statfuncs):
@@ -315,8 +318,7 @@ class LightConeSelector:
         if not rdz:
             rands = util.rdz2xyz(rands, cosmo=None, use_um_convention=True)
         else:
-            rands[:, 2] = util.distance2redshift(rands[:, 2],
-                                                 vr=None, cosmo=self.cosmo)
+            rands[:, 2] = util.distance2redshift(rands[:, 2], cosmo=self.cosmo, vr=None)
             # Convert radians to degrees
             if self.deg:
                 rands[:, :2] *= 180 / np.pi
@@ -350,9 +352,8 @@ class CompletenessTester:
             raise ValueError(f"column={column} but must "
                              f"be a string or an array")
 
-        # Get all galaxies selected by position only
-        no_selection = self.selector.field_selection(self.lightcone) & \
-            self.selector.redshift_selection(self.lightcone)
+        # Get all galaxies selected by redshift only
+        no_selection = self.selector.redshift_selection(self.lightcone)
         gals = self.lightcone[no_selection]
         column = column[no_selection]
 
@@ -363,7 +364,7 @@ class CompletenessTester:
         gals = gals if max_val else gals[::-1]
         column = column if max_val else column[::-1]
 
-        selection = self.selector.dict_selection(gals)
+        selection = self.selector.dict_selection(gals) & no_selection
         frac = np.cumsum(selection) / (np.arange(1, len(gals)+1))
 
         mass = column[::-1]
@@ -372,29 +373,37 @@ class CompletenessTester:
         return mass, completeness
 
 
-class BaseConfig:
+class BaseConfig(dict):
     """
     Abstract template class. Do not instantiate.
     """
-    def __init__(self, config_dir, config_file, data_dir=None, is_temp=False):
+    def __init__(self, config_file, data_dir=None, is_temp=False):
+        dict.__init__(self)
         self.is_temp = is_temp
-        self._read_config(config_dir, config_file)
+        self._init_dict(data_dir=data_dir)
+        self._read_config(config_file)
         if data_dir:
-            self.config["data_dir"] = os.path.abspath(data_dir)
-            self.update()
-        if data_dir is None and "data_dir" not in self.config:
-            raise ValueError("Your first time running this, you "
-                             "must provide the path to where you "
+            self["data_dir"] = os.path.abspath(data_dir)
+        if data_dir is None and self["data_dir"] is None:
+            raise ValueError("Your first time using "
+                             f"{type(self).__name__}, you "
+                             "must set the path to where you "
                              "will be storing the files.")
 
-        if "files" not in self.config:
-            self.config["files"] = []
+    def _init_dict(self, data_dir=None):
+        self.update({"data_dir": data_dir, "files": []})
+
+    def clear_files(self):
+        self.clear_keys(["files"])
 
     def __repr__(self):
-        return f"{type(self).__name__}(\"{self.config['data_dir']}\")"
+        return f"{type(self).__name__}(\"{self.get_path()}\")"
 
-    def get_filepath(self, filename):
-        return os.path.join(self.config["data_dir"], filename)
+    def dict(self):
+        return dict(self)
+
+    def get_path(self, filename="", *args):
+        return os.path.join(self["data_dir"], filename, *args)
 
     def auto_add(self):
         """
@@ -402,42 +411,40 @@ class BaseConfig:
 
         Takes no arguments and returns None.
         """
-        d = self.config["data_dir"]
+        self.clear_files()
+        d = self.get_path()
+        # self.clear()
+
         files = [f for f in natsorted(os.listdir(d))
                  if os.path.isfile(os.path.join(d, f))]
 
         n = len(files)
         for f in files:
             try:
-                self.add(f)
+                self.add_file(f)
             except ValueError:
                 n -= 1
 
-        print(f"Successfully stored {n} files to {self}")
+        print(f"Total of {n} files stored in {self}")
+        self.save()
 
-    def update(self):
+    def save(self):
         """
         Update the config file to account for any changes that have
         been made to this object. For example:
-            -Files could be added via config.add()
-            -Files could be removed via config.remove()
+            -Files could be added via config.add_file()
+            -Files could be removed via config.remove_file()
             -Data directory could be changed by instantiating this
             object via config = SomeConfig(data_dir="path/to/new/dir")
 
         Takes no arguments and returns None.
         """
-        if not self.is_temp:
-            # Only write config file if absolute path was set
-            lines = []
-            for key in self.config:
-                val = self.config[key]
-                line = f"{key} = {repr(val)}"
-                lines.append(line)
 
-            with open(self._filepath, "w") as f:
-                f.write("\n".join(lines))
+        # Don't write the file if this is a temporary config
+        if not self.is_temp and not self["data_dir"] is None:
+            json.dump(self, open(self._filepath, "w"), indent=4)
 
-    def add(self, filename):
+    def add_file(self, filename):
         """
         Add a new file to store
 
@@ -450,18 +457,19 @@ class BaseConfig:
         -------
         None
         """
-        if filename in self.config["files"]:
+        if filename in self["files"]:
             raise ValueError("That file is already stored")
 
-        fullpath = os.path.join(self.config["data_dir"], filename)
+        fullpath = os.path.join(self.get_path(), filename)
         if not os.path.isfile(fullpath):
             raise FileNotFoundError(f"{fullpath} does not exist.")
 
-        self.config["files"].append(filename)
+        self["files"].append(filename)
 
-    def remove(self, filename):
+    def remove_file(self, filename):
         """
-        Remove a binary file from our records. Note this does NOT delete the file.
+        Remove a data file from a config. Note this does NOT delete the file.
+        It is the child config's responsibility to call self.save() after this
 
         Parameters
         ----------
@@ -474,45 +482,48 @@ class BaseConfig:
             The index of the file being removed
         """
         try:
-            i = self.config["files"].index(filename)
+            i = self["files"].index(filename)
         except ValueError:
             raise ValueError(f"Cannot remove {filename}, as it is not"
                              f" currently stored. Currently stored "
-                             f"files: {self.config['files']}")
+                             f"files: {self['files']}")
 
-        del self.config["files"][i]
+        del self["files"][i]
         return i
 
-    def reset(self):
+    def delete(self):
+        self.clear_keys(keep=[])
+        os.remove(self._filepath)
+
+    def clear_keys(self, keys=None, keep=None):
         """
         Erases the config file for this object; all files are forgotten
         """
-        os.remove(self._filepath)
+        if keys is None:
+            if keep is None:
+                keep = ["data_dir"]
+        else:
+            keep = [key for key in self.keys() if key not in keys]
+        keep = {key: self[key] for key in keep}
 
-    def _read_config(self, dirname, filename):
-        dirpath = os.path.join(os.path.dirname(
-                os.path.realpath(__file__)), dirname)
+        self.clear()
+        self._init_dict()
+        self.update(keep)
+
+    def _read_config(self, filename):
+        dirpath = util.config_file_directory()
         filepath = os.path.join(dirpath, filename)
 
-        self.config = {}
         self._filepath = filepath
 
+        #  Don't read the file if this is a temporary config
         if not self.is_temp:
-            # Only read file if absolute path was set
             if not os.path.isdir(dirpath):
                 os.mkdir(dirpath)
-            if not os.path.isfile(filepath):
-                open(filepath, "a").close()
 
-            with open(filepath) as f:
-                code = f.read()
-
-            config, empty = {}, {}
-            exec(code, config)
-            exec("", empty)
-            [config.pop(i) for i in empty]
-
-            self.config = config.copy()
+            if os.path.isfile(filepath):
+                config = json.load(open(filepath))
+                self.update(config)
 
 
 class UMConfig(BaseConfig):
@@ -529,36 +540,38 @@ class UMConfig(BaseConfig):
     is_temp = False
 
     def __init__(self, data_dir=None):
-        config_dir, config_file = "config", "um-config.py"
-        BaseConfig.__init__(self, config_dir, config_file, data_dir)
+        config_file = "config-um.json"
+        BaseConfig.__init__(self, config_file, data_dir)
 
-        if "z" not in self.config:
-            self.config["z"] = []
-        if "lightcones" not in self.config:
-            self.config["lightcones"] = []
-        self.update()
+    def _init_dict(self, data_dir=None):
+        BaseConfig._init_dict(self, data_dir)
+        self.update({"z": [], "lightcones": [],
+                     "lightcone_config": None,
+                     "lightcone_executable": None})
+
+    def clear_files(self):
+        # BaseConfig.clear_files()
+        self.clear_keys(["files", "z"])
 
     def set_lightcone_config(self, filepath):
         assert(os.path.isfile(filepath)), f"file does not exist: {filepath}"
-        self.config["lightcone_config"] = os.path.abspath(filepath)
-        self.update()
+        self["lightcone_config"] = os.path.abspath(filepath)
 
     def set_lightcone_executable(self, filepath):
         assert (os.path.isfile(filepath)), f"file does not exist: {filepath}"
-        self.config["lightcone_executable"] = os.path.abspath(filepath)
-        self.update()
+        self["lightcone_executable"] = os.path.abspath(filepath)
 
     def get_lightcone_config(self):
-        return self.config["lightcone_config"]
+        return self["lightcone_config"]
 
     def get_lightcone_executable(self):
-        return self.config["lightcone_executable"]
+        return self["lightcone_executable"]
 
     def is_lightcone_ready(self):
-        return ("lightcone_config" in self.config and
-                "lightcone_executable" in self.config and
-                os.path.isfile(self.config["lightcone_config"]) and
-                os.path.isfile(self.config["lightcone_executable"]))
+        return (self["lightcone_config"] is not None and
+                self["lightcone_executable"] is not None and
+                os.path.isfile(self["lightcone_config"]) and
+                os.path.isfile(self["lightcone_executable"]))
 
     def load(self, redshift=0, thresh=None, ztol=0.05):
         """
@@ -598,7 +611,7 @@ class UMConfig(BaseConfig):
                           ('empty', 'f4')], align=True)
 
         filename, true_z = self._get_file_at_redshift(redshift, ztol)
-        fullpath = self.get_filepath(filename)
+        fullpath = self.get_path(filename)
 
         if isinstance(thresh, str) and thresh.lower() == "none":
             # all 12 million halos
@@ -612,13 +625,13 @@ class UMConfig(BaseConfig):
         """
         In addition to the below, this searches for available lightcones
         """
-        BaseConfig.auto_add(self)
         self.auto_add_lightcones()
         self.setup_snaps_txt()
         self.setup_lightcone_cfg()
+        BaseConfig.auto_add(self)
     auto_add.__doc__ += "\n" + BaseConfig.auto_add.__doc__
 
-    def add(self, filename, redshift=None):
+    def add_file(self, filename, redshift=None):
         """
         Add a new binary file containing a UniverseMachine snapshot
 
@@ -638,13 +651,11 @@ class UMConfig(BaseConfig):
         if redshift is None:
             redshift = self._infer_redshift(filename)
 
-        BaseConfig.add(self, filename)
+        BaseConfig.add_file(self, filename)
 
-        self.config["z"].append(redshift)
+        self["z"].append(redshift)
 
-        self.update()
-
-    def remove(self, filename):
+    def remove_file(self, filename):
         """
         Remove a binary file from our records. Note this does NOT delete the file.
 
@@ -658,9 +669,9 @@ class UMConfig(BaseConfig):
         i : int
             The index of the file being removed
         """
-        i = BaseConfig.remove(self, filename)
-        del self.config["z"][i]
-        self.update()
+        i = BaseConfig.remove_file(self, filename)
+        del self["z"][i]
+        self.save()
         return i
 
     def setup_snaps_txt(self):
@@ -669,17 +680,17 @@ class UMConfig(BaseConfig):
         indices = list(range(len(scales)))
         lines = []
         for fname, scale, index in zip(sfr_cats, scales, indices):
-            if fname in self.config["files"]:
+            if fname in self["files"]:
                 line = f"{index} {scale}"
                 lines.append(line)
         snaps_txt = "\n".join(lines)
-        snaps_file = os.path.join(self.config["data_dir"], "snaps.txt")
+        snaps_file = self.get_path("snaps.txt")
         open(snaps_file, mode="w").write(snaps_txt)
 
     def setup_lightcone_cfg(self, cosmo=bplcosmo):
         lightcone_txt = f"""#Input/output locations and details
-INBASE = {self.config["data_dir"]} # directory with snaps.txt
-OUTBASE = {self.config["data_dir"]} # directory with sfr_catalogs
+INBASE = {self.get_path()} # directory with snaps.txt
+OUTBASE = {self.get_path()} # directory with sfr_catalogs
 NUM_BLOCKS = 144 #The number of cat.box* files
 
 #Box size / cosmology
@@ -700,7 +711,7 @@ BLOCKS_PER_NODE = 24    #Parallel tasks per node
 #Option to calculate ICL
 CALC_ICL = 1
 """
-        lightcone_file = os.path.join(self.config["data_dir"], "lightcone.cfg")
+        lightcone_file = self.get_path("lightcone.cfg")
         open(lightcone_file, mode="w").write(lightcone_txt)
         self.set_lightcone_config(lightcone_file)
 
@@ -708,11 +719,12 @@ CALC_ICL = 1
         """
         Automatically add all lightcones found via add_lightcone
         """
-        path = os.path.join(self.config["data_dir"], "lightcones")
-        pathlib.Path(path).mkdir(exist_ok=True)
-        candidates = [os.path.join(path, name) for name in os.listdir(path)]
-        dirs = [c for c in candidates if os.path.isdir(c)]
-        names = [os.path.split(d)[1] for d in dirs]
+        # path = self.get_path("lightcones")
+        # pathlib.Path(path).mkdir(exist_ok=True)
+        # candidates = [os.path.join(path, name) for name in os.listdir(path)]
+        # dirs = [c for c in candidates if os.path.isdir(c)]
+        self.save()  # this config must exist to find available lightcones
+        names = LightConeConfig.available_lightcones()
         for name in names:
             self.add_lightcone(name)
 
@@ -730,19 +742,18 @@ CALC_ICL = 1
         -------
         None
         """
-        data_dir = self.config["data_dir"]
+        data_dir = self.get_path()
         path = os.path.join(data_dir, "lightcones", name)
         LightConeConfig(path).auto_add()
-        if path not in self.config["lightcones"]:
-            self.config["lightcones"].append(path)
-        self.update()
+        if path not in self["lightcones"]:
+            self["lightcones"].append(path)
 
     def remove_lightcone(self, path):
         raise NotImplementedError()
 
     def _get_file_at_redshift(self, redshift, ztol):
-        i = util.choose_close_index(redshift, self.config["z"], ztol)
-        return self.config["files"][i], self.config["z"][i]
+        i = util.choose_close_index(redshift, self["z"], ztol)
+        return self["files"][i], self["z"][i]
 
     @staticmethod
     def _infer_redshift(filename):
@@ -769,33 +780,59 @@ class LightConeConfig(BaseConfig):
         The path to the directory where you plan on saving all of the binary files.
         If the directory is moved, then you must provide this argument again.
     """
-    def __init__(self, data_dir, is_temp=False):
+    def __init__(self, data_dir=None, is_temp=False):
         self.is_temp = is_temp
-        path, name = os.path.split(data_dir)
-        if name == "":
-            if path == "":
-                raise NotADirectoryError(f"Invalid directory {data_dir}")
-            # In case data_dir ends with a "/"
-            path, name = os.path.split(path)
+        if data_dir is None:
+            raise ValueError("Must supply the name/path to the lightcone.\n"
+                             f"Stored paths: {self.stored_lightcones()}\n"
+                             f"Available names: {self.available_lightcones()}")
 
         # If path is explicit and exists, interpret argument as actual path
         if util.explicit_path(data_dir, assert_dir=True):
             data_dir = os.path.abspath(data_dir)
         # Otherwise, name is a folder in standard data path
         else:
-            data_dir = os.path.join(UMConfig().config["data_dir"],
-                                    "lightcones", data_dir)
+            data_dir = UMConfig().get_path("lightcones", data_dir)
             assert(os.path.isdir(data_dir)), f"{data_dir} does not exist"
 
-        pathname = "-".join(pathlib.Path(data_dir).absolute().parts[1:])
-        config_dir, config_file = "config", f"lightcone-{pathname}-config.py"
-        BaseConfig.__init__(self, config_dir, config_file, data_dir, is_temp)
+        config_file = self._path_to_filename(data_dir)
+        BaseConfig.__init__(self, config_file, data_dir, is_temp)
 
-        if "meta_files" not in self.config:
-            self.config["meta_files"] = []
-        self.update()
+    @staticmethod
+    def stored_lightcones():
+        available = [os.path.join(util.config_file_directory(), x)
+                     for x in os.listdir(util.config_file_directory())
+                     if x.startswith("config-lightcone-")]
+        return [json.load(open(x))["data_dir"] for x in available]
 
-    def load(self, index: int) -> (np.ndarray, dict):
+    @staticmethod
+    def available_lightcones():
+        try:
+            lcdir = UMConfig().get_path("lightcones")
+        except ValueError:
+            return []
+        else:
+            return [x for x in os.listdir(lcdir) if os.path.isdir(
+                os.path.join(lcdir, x))]
+
+    @staticmethod
+    def _path_to_filename(path):
+        parts = pathlib.Path(path).absolute().parts
+        pathname = "&&" + "&&".join(parts[1:])
+        return f"config-lightcone-{pathname}.json"
+
+    def _check_load_index(self, index, check_ext=None):
+        n = len(self["files"])
+        assert isinstance(index, int), "index must be an integer"
+        assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
+        if check_ext is not None:
+            filename = util.change_file_extension(
+                self.get_path(self["files"][index]), check_ext)
+            assert os.path.isfile(
+                filename
+            ), f"File {filename} does not exist"
+
+    def load(self, index: int) -> Tuple[np.ndarray, dict]:
         """
         Load a lightcone catalog, along with its corresponding meta data.
 
@@ -812,11 +849,10 @@ class LightConeConfig(BaseConfig):
         meta : dict
             Dictionay storing additional information about this lightcone
         """
-        n = len(self.config["files"])
-        assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
+        self._check_load_index(index)
 
-        datafile = self.get_filepath(self.config["files"][index])
-        metafile = self.get_filepath(self.config["meta_files"][index])
+        datafile = self.get_path(self["files"][index])
+        metafile = util.change_file_extension(datafile, "json")
 
         data = np.load(datafile)
         meta = json.load(open(metafile))
@@ -836,14 +872,32 @@ class LightConeConfig(BaseConfig):
         meta : dict
             Dictionay storing additional information about this lightcone
         """
-        n = len(self.config["files"])
-        assert isinstance(index, int), "index must be an integer"
-        assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
+        self._check_load_index(index)
 
-        metafile = self.get_filepath(self.config["meta_files"][index])
+        datafile = self.get_path(self["files"][index])
+        metafile = util.change_file_extension(datafile, "json")
         return json.load(open(metafile))
 
-    def add(self, filename, meta_filename=None):
+    def load_specprop(self, index):
+        """Load neighbor-matched spectroscopic properties catalog"""
+        self._check_load_index(index, "specprop")
+
+        datafile = self.get_path(self["files"][index])
+        specpropfile = util.change_file_extension(datafile, "specprop")
+        return np.load(specpropfile)
+
+    def load_specmap(self, index):
+        """Load memory-map of spectra data cube"""
+        self._check_load_index(index, "spec")
+
+        datafile = self.get_path(self["files"][index])
+        specfile = util.change_file_extension(datafile, "spec")
+
+        meta = self.load_meta(index)
+        shape = meta["Ngal"], meta["Nwave"]
+        return np.memmap(specfile, dtype="<f4", shape=shape)
+
+    def add_file(self, filename):
         """
         Add a new file containing a lightcone
 
@@ -851,28 +905,22 @@ class LightConeConfig(BaseConfig):
         ----------
         filename : str
             The name of the file (do not include path)
-        meta_filename : str (optional)
-            The name of the corresponding metadata file (by default, .npy is replaced with .json)
 
         Returns
         -------
         None
         """
-        if meta_filename is None:
-            meta_filename = filename[:-3] + "json"
-        metapath = os.path.join(self.config["data_dir"], meta_filename)
+        meta_filename = util.change_file_extension(filename, "json")
+        metapath = self.get_path(meta_filename)
 
         if not filename.endswith(".npy"):
             raise ValueError(f"lightcone file {filename} must end in '.npy'")
         if not os.path.isfile(metapath):
             raise ValueError(f"metadata file {metapath} does not exist")
 
-        BaseConfig.add(self, filename)
-        self.config["meta_files"].append(meta_filename)
+        BaseConfig.add_file(self, filename)
 
-        self.update()
-
-    def remove(self, filename):
+    def remove_file(self, filename):
         """
         Remove a file from our records. Note this does NOT delete the file.
 
@@ -886,9 +934,8 @@ class LightConeConfig(BaseConfig):
         i : int
             The index of the file being removed
         """
-        i = BaseConfig.remove(self, filename)
-        del self.config["meta_files"][i]
-        self.update()
+        i = BaseConfig.remove_file(self, filename)
+        self.save()
         return i
 
 
@@ -916,18 +963,19 @@ class UVISTAConfig(BaseConfig):
         return f"File type {repr(ftype)} not recognized. " \
                f"Must be one of {set(self.UVISTAFILES.keys())}"
 
-    PHOTBANDS = {"k": "Ks", "h": "H", "j": "J", "y": "Y",
-                 "z": "zp", "i": "ip", "r": "rp", "v": "V",
-                 "g": "gp", "b": "B", "u": "u"}
+    PHOTBANDS = {
+        "u": "u", "b": "B", "v": "V",
+        "g": "gp", "r": "rp", "i": "ip", "z": "zp",
+        "y": "Y", "j": "J", "h": "H", "k": "Ks"
+    }
 
     def __init__(self, data_dir=None, photbands=None):
-        config_dir, config_file = "config", "uvista-config.py"
-        BaseConfig.__init__(self, config_dir, config_file, data_dir)
+        config_file = "config-uvista.json"
+        BaseConfig.__init__(self, config_file, data_dir)
 
         photbands = ummags.util.get_photbands(photbands)
         self.PHOTBANDS = {k: self.PHOTBANDS[k]
                           for k in set(photbands) | {"k"}}
-        self.update()
 
     def get_filepath(self, filetype):
         """
@@ -936,19 +984,18 @@ class UVISTAConfig(BaseConfig):
         each option corresponds to:
         """
         filename = self.UVISTAFILES[filetype]
-        return BaseConfig.get_filepath(self, filename)
+        return BaseConfig.get_path(self, filename)
     get_filepath.__doc__ += "\n" + repr(UVISTAFILES)
 
-    def add(self, filename):
+    def add_file(self, filename):
         if filename not in self.UVISTAFILES.values():
             raise ValueError("That's not a UVISTA file")
 
-        BaseConfig.add(self, filename)
-        self.update()
+        BaseConfig.add_file(self, filename)
 
-    def remove(self, filename):
-        BaseConfig.remove(self, filename)
-        self.update()
+    def remove_file(self, filename):
+        BaseConfig.remove_file(self, filename)
+        self.save()
 
     def get_names(self, filetype):
         if filetype == "p":
@@ -1012,7 +1059,7 @@ class UVISTAConfig(BaseConfig):
             raise ValueError(self._msg1(filetype))
 
     def are_all_files_stored(self):
-        return len(self.config["files"]) == len(self.UVISTAFILES)
+        return len(self["files"]) == len(self.UVISTAFILES)
 
     def load(self, include_rel_mags=False, cosmo=None):
         """
@@ -1087,12 +1134,12 @@ class UVISTAConfig(BaseConfig):
             axis=0)
 
         rel_keys, rel_vals = zip(*relative_mags.items())
-        rel_keys = ["m_" + key.lower() for key in rel_keys]
+        rel_keys = ["m_" + key for key in rel_keys]
         rel_vals = rel_vals if include_rel_mags else []
         rel_keys = rel_keys if include_rel_mags else []
 
         abs_keys, abs_vals = zip(*absolute_mags.items())
-        abs_keys = ["M_" + key.upper() for key in abs_keys]
+        abs_keys = ["M_" + key for key in abs_keys]
 
         names = ["id", "ra", "dec", "redshift", "logm", "logssfr",
                  "d_com", "d_lum", "UVrest", "VJrest", *rel_keys,
@@ -1122,12 +1169,11 @@ class SeanSpectraConfig(BaseConfig):
     """
     is_temp = False
     SEANFILES = ["cosmos_V17.fits", "specid.npy", "wavelength.npy",
-                 "specmap.npy", "isnan.npy", "cosmos_V17_old.fits"]
+                 "spectra.mmap", "isnan.npy", "cosmos_V17_old.fits", "PYOBS"]
 
     def __init__(self, data_dir=None):
-        config_dir, config_file = "config", "seanspec-config.py"
-        BaseConfig.__init__(self, config_dir, config_file, data_dir)
-        self.update()
+        config_file = "config-seanspec.json"
+        BaseConfig.__init__(self, config_file, data_dir)
 
     def get_filepath(self, index=0):
         """
@@ -1135,19 +1181,18 @@ class SeanSpectraConfig(BaseConfig):
         Just give the index of the following list:
         """
         filename = self.SEANFILES[index]
-        return BaseConfig.get_filepath(self, filename)
+        return BaseConfig.get_path(self, filename)
     get_filepath.__doc__ += "\n" + repr(SEANFILES)
 
-    def add(self, filename):
+    def add_file(self, filename):
         if filename not in self.SEANFILES:
             raise ValueError("Invalid SeanSpectra file")
 
-        BaseConfig.add(self, filename)
-        self.update()
+        BaseConfig.add_file(self, filename)
 
-    def remove(self, filename):
-        BaseConfig.remove(self, filename)
-        self.update()
+    def remove_file(self, filename):
+        BaseConfig.remove_file(self, filename)
+        self.save()
 
     @staticmethod
     def names_to_keep(index=0):
@@ -1160,7 +1205,7 @@ class SeanSpectraConfig(BaseConfig):
                 "m_VISTA_Ks"]
 
     def are_all_files_stored(self):
-        return set(self.config["files"]) == set(self.SEANFILES)
+        return set(self["files"]) == set(self.SEANFILES)
 
     def load(self, old_version=False, keep_all_columns=True):
         i = 5 if old_version else 0
@@ -1381,7 +1426,7 @@ class UMWgetter:
 
     def download_sfrcat_index(self, i, overwrite=False):
         file_url = self.url + self.sfr_cats[i]
-        outfile = os.path.join(UMConfig().config["data_dir"], self.sfr_cats[i])
+        outfile = UMConfig().get_path(self.sfr_cats[i])
         util.wget_download(file_url, outfile, overwrite=overwrite)
 
     def download_sfrcat_redshift(self, redshift, overwrite=False):
@@ -1399,14 +1444,34 @@ class UVISTAWgetter:
         Class designed to handle downloading UltraVISTA and SeanSpectra files
         """
 
-        self.uvista_url = "https://pitt.box.com/shared/static/75iv3bi05jv69marxr9393gaue4qgn52.gz"
-        self.sean_url = "https://pitt.box.com/shared/static/drw3r0lk0u7kglbnpmnt8ktb8ld1mggw.gz"
+        self.uvista_url = "https://pitt.box.com/shared/static/" \
+                          "rfcmakle4i6xm5s4uuquzerw9a7sjqf1.gz"
+        self.sean_url = "https://pitt.box.com/shared/static/" \
+                        "tfrah1t7rslp1jsqiccwxcwvfwy7ngw4.gz"
+        self.spec_urls = []
 
-        self.uvista_path = UVISTAConfig().config["data_dir"]
-        self.sean_path = SeanSpectraConfig().config["data_dir"]
+        self.uvista_path = UVISTAConfig().get_path()
+        self.sean_path = SeanSpectraConfig().get_path()
 
-        self.uvista_tarf = os.path.join(self.uvista_path, "UVISTA_data.tar.gz")
-        self.sean_tarf = os.path.join(self.sean_path, "SeanSpectra_data.tar.gz")
+        self.uvista_tarf = UVISTAConfig().get_path("UVISTA_data.tar.gz")
+        self.sean_tarf = SeanSpectraConfig().get_path("SeanSpectra_data.tar.gz")
+        self.spec_chunks = []
+
+    @staticmethod
+    def wget_and_extract(url, tarf, path, overwrite=False):
+        util.wget_download(url, outfile=tarf,
+                           overwrite=overwrite)
+        tar = tarfile.open(tarf)
+        tar.extractall(path=path)
+        os.remove(tarf)
+
+    @staticmethod
+    def check_already_downloaded(wget_files, config):
+        stored_files = config["files"]
+        if ans := set(wget_files).issubset(stored_files):
+            print("All files already downloaded")
+            config.auto_add()
+        return ans
 
     def download_uvista(self, overwrite=False):
         if not overwrite:
@@ -1416,38 +1481,34 @@ class UVISTAWgetter:
                           "UVISTA_final_v4.1.155-161.rf",
                           "UVISTA_final_v4.1.cat",
                           "UVISTA_final_v4.1.zout"]
-            stored_files = UVISTAConfig().config["files"]
-            if set(wget_files).issubset(stored_files):
-                UVISTAConfig().auto_add()
+            if self.check_already_downloaded(wget_files, UVISTAConfig()):
                 return
 
-        util.wget_download(self.uvista_url, outfile=self.uvista_tarf,
-                           overwrite=overwrite)
-        uvista_tar = tarfile.open(self.uvista_tarf)
-
-        for member in uvista_tar.getmembers():
-            member.path = member.path.split("/")[-1]
-
-        uvista_tar.extractall(path=self.uvista_path)
-        os.remove(self.uvista_tarf)
+        self.wget_and_extract(self.uvista_url, self.uvista_tarf,
+                              self.uvista_path, overwrite=overwrite)
         UVISTAConfig().auto_add()
 
-    def download_seanspectra(self, overwrite=False):
+    def download_sean_specprops(self, overwrite=False):
         if not overwrite:
             wget_files = ["specid.npy", "wavelength.npy",
-                          "isnan.npy", "cosmos_V17.fits"]
-            stored_files = SeanSpectraConfig().config["files"]
-            if set(wget_files).issubset(stored_files):
-                SeanSpectraConfig().auto_add()
+                          "isnan.npy", "cosmos_V17.fits",
+                          "PYOBS"]
+            if self.check_already_downloaded(wget_files, SeanSpectraConfig()):
                 return
 
-        util.wget_download(self.sean_url, outfile=self.sean_tarf,
-                           overwrite=overwrite)
-        sean_tar = tarfile.open(self.sean_tarf)
+        self.wget_and_extract(self.sean_url, self.sean_tarf,
+                              self.sean_path, overwrite=overwrite)
+        SeanSpectraConfig().auto_add()
 
-        for member in sean_tar.getmembers():
-            member.path = member.path.split("/")[-1]
+    def download_sean_specmap(self, overwrite=False):
+        if not overwrite:
+            wget_files = ["spectra.mmap"]
+            if self.check_already_downloaded(wget_files, SeanSpectraConfig()):
+                return
 
-        sean_tar.extractall(path=self.sean_path)
-        os.remove(self.sean_tarf)
+        [util.wget_download(url, outfile=f, overwrite=overwrite)
+         for (url, f) in zip(self.spec_urls, self.spec_chunks)]
+
+        filename = os.path.join(self.sean_path, "spectra.mmap")
+        filechunk.joinchunks(filename, rmchunks=True)
         SeanSpectraConfig().auto_add()
