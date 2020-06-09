@@ -11,6 +11,7 @@ import halotools.sim_manager as ht_sim_manager
 
 from . import ummags
 from .. import mocksurvey as ms
+from . import kcorrect
 
 
 def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
@@ -30,7 +31,7 @@ def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
 
 
 def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
-                         true_mass_limit=0):
+                         true_mass_limit=0, cosmo=None):
     """
     Takes the ascii output given by UniverseMachine's `lightcone` code,
     and returns it as a numpy structured array, removing entries with
@@ -44,6 +45,8 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     Note that h-scaling is applied to all distances (including distance
     modulus), and therefore M = m - distmod + 5log(h).
     """
+    if cosmo is None:
+        cosmo = ms.bplcosmo
     photbands = get_photbands(photbands)
 
     cols = {"id": (5, "<i8"), "upid": (7, "<i8"),
@@ -69,15 +72,14 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     # Calculate redshift-space-distorted positions (columns = "x","y","z")
     xyz_real = ms.util.xyz_array(lc_data, keys=["x_real", "y_real", "z_real"])
     vel = ms.util.xyz_array(lc_data, keys=["vx", "vy", "vz"])
-    rdz = ms.util.ra_dec_z(xyz_real, vel, cosmo=ms.bplcosmo)
-    xyz = ms.util.rdz2xyz(rdz, cosmo=ms.bplcosmo)
+    rdz = ms.util.ra_dec_z(xyz_real, vel, cosmo=cosmo)
+    xyz = ms.util.rdz2xyz(rdz, cosmo=cosmo)
 
     # Calculate distance modulus (column = "distmod")
-    dlum = ms.bplcosmo.luminosity_distance(lc_data["redshift"]
-                                           ).value * ms.bplcosmo.h
+    dlum = cosmo.luminosity_distance(lc_data["redshift"]).value * cosmo.h
     distmod = 5 * np.log10(dlum * 1e5)
-    dlum_true = ms.bplcosmo.luminosity_distance(lc_data["redshift_cosmo"]
-                                                ).value * ms.bplcosmo.h
+    dlum_true = cosmo.luminosity_distance(lc_data["redshift_cosmo"]
+                                          ).value * cosmo.h
     distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
 
     # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
@@ -193,9 +195,11 @@ def metadict_with_spec(meta, ngal):
     return dict(Ngal=ngal, Nwave=nwave, header_spec=header_spec, **meta)
 
 
-def get_photbands(photbands):
+def get_photbands(photbands, default=None):
+    if default is None:
+        default = ["u", "b", "v", "g", "r", "i", "z", "y", "j", "h", "k"]
     if photbands is None:
-        photbands = ["g", "r", "y", "j"]
+        photbands = [s.lower() for s in default]
     else:
         photbands = [s.lower() for s in photbands]
 
@@ -273,10 +277,10 @@ def execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
     # homedir = str(pathlib.Path.home()) + "/"
     if executable is None:
         # executable = homedir + "local/src/universemachine/lightcone"
-        executable = ms.UMConfig().config["lightcone_executable"]
+        executable = ms.UMConfig().get_lightcone_executable()
     if umcfg is None:
         # umcfg = homedir + "data/LightCone/um-lightcone.cfg"
-        umcfg = ms.UMConfig().config["lightcone_config"]
+        umcfg = ms.UMConfig().get_lightcone_config()
     if rseed is not None:
         assert(isinstance(rseed, int)), "Random seed must be an integer"
     assert(isinstance(samples, int)), "Number of samples must be " \
@@ -323,7 +327,7 @@ def generate_lightcone_filenames(args, outfilepath=None,
     # then store in the default location
     if (id_tag is not None) and (outfilepath is None):
         try:
-            outfilepath = ms.UMConfig().config["data_dir"]
+            outfilepath = ms.UMConfig().get_path()
         except ValueError:
             raise ValueError("To use an id-tag, you must first choose "
                              "a UMConfig directory to store the files.")
@@ -354,3 +358,161 @@ def generate_lightcone_filenames(args, outfilepath=None,
                         for f in asciifiles]
 
     return asciifiles, moved_asciifiles
+
+
+def progress_iterator(progress):
+    if isinstance(progress, str):
+        assert progress.lower() == "notebook", \
+            f"progress={progress}. Must be one of {{True, False, 'notebook'}}"
+        import tqdm.notebook as tqdm
+        iterator = tqdm.trange
+    elif progress:
+        import tqdm
+        iterator = tqdm.trange
+    else:
+        iterator = range
+
+    return iterator
+
+
+def fill_nan_spec(spec, window_len=1000, inplace=False):
+    assert np.ndim(spec) < 3
+    newdim = np.ndim(spec) < 2
+    if inplace:
+        assert isinstance(spec, np.ndarray)
+    else:
+        spec = np.array(spec)
+    if newdim:
+        spec = spec[None, :]
+    shape = spec.shape
+
+    # All NaNs must be one one side or the other
+    isnan = np.isnan(spec)
+    last_on_left = np.where(np.diff(isnan, axis=-1))
+    assert np.all(np.arange(shape[0]) == last_on_left[0])
+    last_on_left = last_on_left[1]
+
+    window = np.arange(window_len)[None, :] + last_on_left[:, None]
+    window[isnan[:, 0], :] += 1
+    window[~isnan[:, 0], :] += 1 - window_len
+    window[window < 0] = 0
+    window[window >= shape[1]] = shape[1] - 1
+
+    fill = spec[np.arange(shape[0])[:, None], window].mean(axis=1)
+    fill = np.tile(fill[:, None], (1, spec.shape[1]))
+    spec[isnan] = fill[isnan]
+
+    if newdim:
+        spec = spec[0, :]
+    return spec
+
+
+def count_nan(spec):
+    assert np.ndim(spec) < 3
+    newdim = np.ndim(spec) < 2
+    if newdim:
+        spec = spec[None, :]
+
+    isnan = np.isnan(spec)
+    last_on_left = np.where(np.diff(isnan, axis=-1))
+    assert np.all(np.arange(spec.shape[0]) == last_on_left[0])
+
+    counts = last_on_left[1] + 1
+    counts[~isnan[:, 0]] -= spec.shape[1]
+    if newdim:
+        counts = counts[0]
+    return counts
+
+
+def fix_specprops_columns(nfinder, um_redshift, specprops, cosmo,
+                          max_gband_nan=5000, specmap=None, progress=True):
+    nbr_id = specprops["id"]
+    redshifts = um_redshift
+    masscorr = nfinder.masscorr(nbr_id)
+    distcorr = ms.util.redshift_rest_flux_correction(
+        specprops["redshift"], um_redshift, cosmo)
+    wavelength = ms.SeanSpectraConfig().wavelength()
+    hcorr = cosmo.h / 0.7
+
+    # For calculating mag_vals (apparent magnitudes)
+    def get_appmags(integrator, show_progress=True, save_specmap=None):
+        iterator = ms.ummags.util.progress_iterator(show_progress)
+        filternames = integrator.filter_strings
+
+        sub_index = nfinder.sublist_indices(len(nbr_id))
+        ans = np.empty((len(nbr_id), len(filternames)), dtype="<f8")
+        for sub_i in iterator(len(sub_index)):
+            sub_i = sub_index[sub_i]
+            spectra = nfinder.avg_spectrum(nbr_id[sub_i],
+                                           masscorr[sub_i],
+                                           redshifts[sub_i])
+            if save_specmap is not None:
+                save_specmap[sub_i] = spectra
+            fix_nans = np.abs(count_nan(spectra)) <= max_gband_nan
+            spectra[fix_nans] = fill_nan_spec(spectra[fix_nans])
+            for j in range(len(filternames)):
+                ans[sub_i, j] = integrator.appmag_nm_njy(
+                    spectra, filternames[j]
+                )
+        return [*np.transpose(ans)]
+
+    # For calculating line_vals
+    def get_line(linename):
+        ans = specprops[linename]
+        if linename.startswith("Wr_"):
+            # Equivalent widths are not affected by redshift/distance
+            return ans
+        elif linename.startswith("L_"):
+            # Luminosity is affected by the mass and assumed cosmology
+            return ans * masscorr / hcorr ** 2
+        elif linename.startswith("f_"):
+            # Flux is affected by 1/(1+z)d^2 and mass but NOT cosmology
+            return ans * distcorr * masscorr
+        else:
+            raise ValueError(f"Invalid linename={linename}")
+
+    # Collect data from UltraVISTA
+    # ============================
+    uvista_names = ["uvista_" + x for x in
+                    ["id", "ra", "dec", "ltau", "lage", "Av"]]
+    uvista_vals = [specprops[x[7:]] for x in uvista_names]
+    uvista_dtypes = ["<i8" if x == "uvista_id"
+                     else "<f4" for x in uvista_names]
+
+    # Collect apparent magnitudes integrated from the spectra
+    # =======================================================
+    mag_names = [
+        # "m_CFHT_U",
+        "m_HSC_g", "m_HSC_r", "m_HSC_i", "m_HSC_z", "m_HSC_Y",
+        # "m_VISTA_Y", "m_VISTA_J", "m_VISTA_H", "m_VISTA_Ks"
+    ]
+    fintegrator = kcorrect.OptimizedFilterIntegrator(
+        wavelength, [x[2:] for x in mag_names])
+    mag_vals = get_appmags(fintegrator, show_progress=progress,
+                           save_specmap=specmap)
+    mag_dtypes = ["<f4"] * len(mag_names)
+
+    # Collect lines integrated from the spectra
+    # =========================================
+    line_names = [x for x in
+                  ["L_SII_tot", "f_SII_tot", "L_SII6733", "f_SII6733", "Wr_SII6733",
+                   "L_SII6718", "f_SII6718", "Wr_SII6718", "L_NII6585", "f_NII6585",
+                   "Wr_NII6585", "L_NII6549", "f_NII6549", "Wr_NII6549", "L_Ha", "f_Ha",
+                   "Wr_Ha", "L_OIII5008", "f_OIII5008", "Wr_OIII5008", "L_OIII4960",
+                   "f_OIII4960", "Wr_OIII4960", "L_Hb", "f_Hb", "Wr_Hb", "L_Hg", "f_Hg",
+                   "Wr_Hg", "L_Hd", "f_Hd", "Wr_Hd", "L_He", "f_He", "Wr_He", "L_Hz",
+                   "f_Hz", "Wr_Hz", "L_NeIII3870", "f_NeIII3870", "Wr_NeIII3870",
+                   "L_OII_tot", "f_OII_tot", "Wr_OII_tot", "L_OII3729", "f_OII3729",
+                   "Wr_OII3729", "L_OII3727", "f_OII3727", "Wr_OII3727", "Wr_MgI2852",
+                   "Wr_MgII2803", "Wr_MgII2796", "Wr_FeII2600", "Wr_FeII2586", "Wr_FeII2382",
+                   "Wr_FeII2374", "Wr_FeII2344", "Wr_AlII1670", "Wr_FeII1608", "Wr_CIV1548",
+                   "Wr_SiII1526", "Wr_SiIV1402", "Wr_SiIV1393", "Wr_CII1334", "Wr_OI1302",
+                   "Wr_SiII1260", "continuum_Lya", "L_HI1215", "f_HI1215", "Wr_HI1215",
+                   "Wr_SiII1190"] if np.any(specprops[x])]
+    line_vals = [get_line(x) for x in line_names]
+    line_dtypes = ["<f4"] * len(line_names)
+
+    newprops = ms.util.make_struc_array([*mag_names, *line_names, *uvista_names],
+                                        [*mag_vals, *line_vals, *uvista_vals],
+                                        [*mag_dtypes, *line_dtypes, *uvista_dtypes])
+    return newprops

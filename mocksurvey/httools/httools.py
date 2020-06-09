@@ -851,7 +851,7 @@ class MockField:
             volume = util.volume_rdz(ralim, declim, zlim)
             Nran = int(density_rands * volume + 0.5)
 
-            rands = util.rand_rdz(Nran, ralim, declim, zlim, seed)
+            rands = util.rand_rdz(Nran, ralim, declim, zlim, seed=seed)
             rands = self.rdz2xyz(rands, input_is_distance=True)
 
         self._rands = {
@@ -1052,7 +1052,7 @@ class MockField:
                 dist = np.sqrt(np.sum((xyz - self.origin[None, :]) ** 2, axis=1))
 
             vr = np.zeros(dist.shape)
-            redshift = util.distance2redshift(dist, vr, self.simbox.cosmo, self.zprec)
+            redshift = util.distance2redshift(dist, self.simbox.cosmo, vr, self.zprec)
             util.update_table(dataset, {zkey: redshift})
 
         redshift = dataset[zkey]
@@ -1495,7 +1495,8 @@ class SimBox:
             rotation = self.rotation
         self.rotate(rotation, self.gals)
 
-        # TODO: make this assertion work. And then set gals["mgid"] here instead of asserting it
+        # TODOold: make this assertion work.
+        # And then set gals["mgid"] here instead of asserting it
         # assert(np.all(self.gals["mgid"] == np.arange(len(self.gals))))
 
     def get_halos(self):
