@@ -1470,7 +1470,11 @@ class UVISTAWgetter:
         stored_files = config["files"]
         if ans := set(wget_files).issubset(stored_files):
             print("All files already downloaded")
+<<<<<<< HEAD
             config.auto_add()
+=======
+            config().auto_add()
+>>>>>>> b60a28fb8e9d5d9b7f2ed7413fcd7c42e2fbaeac
         return ans
 
     def download_uvista(self, overwrite=False):
