@@ -31,7 +31,7 @@ from .httools.httools import bplcosmo
 
 uvista_sqdeg = 1.62
 pfs_sqdeg = 15.0
-pfs_max_dict = dict(m_Y=22.5, m_J=22.8)
+pfs_max_dict = dict(m_y=22.5, m_j=22.8)
 
 
 def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, fieldshape="sq",
