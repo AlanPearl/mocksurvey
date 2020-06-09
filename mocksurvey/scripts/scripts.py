@@ -15,11 +15,7 @@ class LightCone:
         parser.add_argument(
                     "NAME", type=str, help="name the light"
                     "cone for easy loading with LightConeConfig(NAME).load(i)"
-<<<<<<< HEAD
                     ". This may not work if outfilepath is specified")
-=======
-                    "This may not work if outfilepath is specified")
->>>>>>> b60a28fb8e9d5d9b7f2ed7413fcd7c42e2fbaeac
         parser.add_argument("Z_LOW", type=float, help="Minimum redshift")
         parser.add_argument("Z_HIGH", type=float, help="Maximum redshift")
         parser.add_argument("X_ARCMIN", type=float, help="Horizontal field "
