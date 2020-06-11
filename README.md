@@ -45,7 +45,7 @@ python -m mocksurvey download-uvista
 ```
 #### Download raw synthetic spectra to assign to mock galaxies (~30 GB)
 ```
-python -m mocksurvey download-uvista-spectra
+python -m mocksurvey download-uvista-mock-spectra
 ```
 
 <!-- Deprecated -->
