@@ -66,31 +66,31 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
         pass
 
 
-def selected_lightcone(output_dir: str,
-                       selector: Optional[object] = None,
-                       input_dir: Union[str, object] = ".",
-                       outfile: Optional[str] = None,
-                       input_realization_index: Union[
-                           str, int, Sequence[int]] = "all",
-                       nblocks_per_dim: int = 1) -> None:
+def lightcone_selection(input_name: Union[str, object],
+                        output_name: str,
+                        selector: Optional[object] = None,
+                        outfile: Optional[str] = None,
+                        input_realization: Union[
+                            str, int, Sequence[int]] = "all",
+                        nblocks_per_dim: int = 1) -> None:
     """
     Take an input lightcone and perform a selection and optionally
     break it up into sky regions. The resulting lightcone is saved
     in a new directory.
     Parameters
     ----------
-    output_dir : str
+    output_name : str
         Directory name to save the new lightcone. This directory goes
         into the default lightcone storage location, unless the path
         is explicit (starts with '.', '..', or '/') and already exists
     selector : LightConeSelector (default taken from meta data)
         Specifies the lightcone selection function
-    input_dir : str | LightConeConfig
+    input_name : str | LightConeConfig
         Directory of the input lightcone
     outfile : str (default=None)
         Base of output file names. By default, use the same naming
         convention as the input lightcone
-    input_realization_index : int | str | array-like (default="all")
+    input_realization : int | str | array-like (default="all")
         Specify realization index(es) from the input to create
         the selected lightcone(s). All realizations used by default
     nblocks_per_dim : int (default=1)
@@ -101,31 +101,31 @@ def selected_lightcone(output_dir: str,
     -------
     None (files are written)
     """
-    if not ms.util.explicit_path(output_dir, assert_dir=True):
-        output_dir = ms.UMConfig().get_path("lightcones", output_dir)
-        pathlib.Path(output_dir).mkdir(parents=True)
-    if isinstance(input_dir, ms.LightConeConfig):
-        config = input_dir
+    if isinstance(input_name, ms.LightConeConfig):
+        config = input_name
     else:
-        config = ms.LightConeConfig(input_dir, is_temp=True)
+        config = ms.LightConeConfig(input_name, is_temp=True)
     with ms.util.suppress_stdout():
         config.auto_add()
     if selector is None:
         selector = ms.util.selector_from_meta(config.load_meta(0))
 
     nblocks = nblocks_per_dim ** 2
-    if input_realization_index == "all":
-        input_realization_index = range(len(config["files"]))
-    input_realization_index = np.atleast_1d(input_realization_index)
+    if input_realization is None or input_realization == "all":
+        input_realization = range(len(config["files"]))
+    input_realization = np.ravel(input_realization)
 
-    assert isinstance(nblocks_per_dim, int)
-    assert input_realization_index.dtype.kind == "i"
+    assert ms.util.is_int(nblocks_per_dim), "Integer number of blocks required"
+    assert ms.util.is_int(input_realization), "Integer realizations required"
+    if not ms.util.explicit_path(output_name, assert_dir=True):
+        output_name = ms.UMConfig().get_path("lightcones", output_name)
+        pathlib.Path(output_name).mkdir(parents=True)
 
-    for index in input_realization_index:
-        num = f"_{index}" if len(input_realization_index) > 1 else ""
+    for index in input_realization:
+        num = f"_{index}" if len(input_realization) > 1 else ""
         base_fn = f"{config['files'][index]}"[:-4] \
             if outfile is None else f"{outfile}{num}"
-        base_fn = os.path.join(output_dir, base_fn)
+        base_fn = os.path.join(output_name, base_fn)
 
         cat, meta = config.load(index)
         cat = cat[selector(cat)]
@@ -147,8 +147,8 @@ def selected_lightcone(output_dir: str,
                        repr(selector)}, open(meta_fn, "w"), indent=4)
 
 
-def neighbor_spectrum(input_dir: str = ".",
-                      input_realization_index: Union[
+def lightcone_spectra(input_dir: str = ".",
+                      input_realization: Union[
                           str, int, Sequence[int]] = "all",
                       make_specmap: bool = False,
                       best_of: int = 6,
@@ -161,7 +161,7 @@ def neighbor_spectrum(input_dir: str = ".",
     ----------
     input_dir : str | LightConeConfig
         Directory of the lightcone
-    input_realization_index : int | str | array-like (default="all")
+    input_realization : int | str | array-like (default="all")
         Specify realization index(es) from the input to create
         the selected lightcone(s). All realizations used by default
     make_specmap : bool (default = False)
@@ -188,13 +188,13 @@ def neighbor_spectrum(input_dir: str = ".",
     with ms.util.suppress_stdout():
         config.auto_add()
 
-    if input_realization_index == "all":
-        input_realization_index = range(len(config["files"]))
-    input_realization_index = np.atleast_1d(input_realization_index)
+    if input_realization is None or input_realization == "all":
+        input_realization = range(len(config["files"]))
+    input_realization = np.atleast_1d(input_realization)
 
-    assert input_realization_index.dtype.kind == "i"
+    assert ms.util.is_int(input_realization)
 
-    for index in input_realization_index:
+    for index in input_realization:
         base_fn = f"{config['files'][index]}"[:-4]
         base_fn = os.path.join(input_dir, base_fn)
 
@@ -207,7 +207,9 @@ def neighbor_spectrum(input_dir: str = ".",
 
         cat, meta = config.load(index)
         ngal = len(cat)
-        meta = util.metadict_with_spec(meta, ngal)
+        meta = util.metadict_with_specprop(meta)
+        if make_specmap:
+            meta = util.metadict_with_spec(meta, ngal)
 
         nfinder = NeighborSeanSpecFinder(cat, photbands=photbands)
         nearest = nfinder.find_nearest_specid(

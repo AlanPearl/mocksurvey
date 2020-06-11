@@ -23,7 +23,7 @@ def temp_seed(seed):
     if seed is None:
         # Do NOT alter random state
         do_alter = False
-    elif isinstance(seed, int):
+    elif is_int(seed):
         # New state with specified seed
         do_alter = True
     else:
@@ -348,6 +348,10 @@ def is_arraylike(a):
     # return isinstance(a, (tuple, list, np.ndarray))
     return isinstance(a, collections.abc.Container
                       ) and not isinstance(a, str)
+
+
+def is_int(a):
+    return np.asarray(a).dtype.kind == "i"
 
 
 def angular_separation(ra1, dec1, ra2=0, dec2=0):

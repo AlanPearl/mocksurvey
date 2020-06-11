@@ -1,12 +1,15 @@
 from sys import argv
 import argparse
-from .scripts import scripts
+from . import scripts
 
 available_scripts = {
     "lightcone": scripts.LightCone,
+    "lightcone-selection": scripts.LightConeSelection,
+    "lightcone-spectra": scripts.LightConeSpectra,
     "set-data-path": scripts.SetDataPath,
     "download-um": scripts.DownloadUM,
     "download-uvista": scripts.DownloadUVISTA,
+    "download-uvista-specmap": scripts.DownloadUVISTASpecMap,
     "config": scripts.Config,
 }
 

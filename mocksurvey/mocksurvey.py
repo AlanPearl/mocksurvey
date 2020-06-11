@@ -823,7 +823,7 @@ class LightConeConfig(BaseConfig):
 
     def _check_load_index(self, index, check_ext=None):
         n = len(self["files"])
-        assert isinstance(index, int), "index must be an integer"
+        assert util.is_int(index), "index must be an integer"
         assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
         if check_ext is not None:
             filename = util.change_file_extension(
@@ -1443,27 +1443,38 @@ class UVISTAWgetter:
         """
         Class designed to handle downloading UltraVISTA and SeanSpectra files
         """
+        self.uvista_config = UVISTAConfig()
+        self.sean_config = SeanSpectraConfig()
 
         self.uvista_url = "https://pitt.box.com/shared/static/" \
                           "rfcmakle4i6xm5s4uuquzerw9a7sjqf1.gz"
         self.sean_url = "https://pitt.box.com/shared/static/" \
                         "tfrah1t7rslp1jsqiccwxcwvfwy7ngw4.gz"
-        self.spec_urls = []
+        self.spec_urls = ["https://pitt.box.com/shared/static/"
+                          "2sxv6neh4533t9hiej0zj8wk997bnee6.0",
+                          "https://pitt.box.com/shared/static/"
+                          "lxdqnf1n77c8m6f3m6s44tyxr3nehu3j.1"]
 
-        self.uvista_path = UVISTAConfig().get_path()
-        self.sean_path = SeanSpectraConfig().get_path()
+        self.uvista_path = self.uvista_config.get_path()
+        self.sean_path = self.sean_config.get_path()
+        self.spec_path = self.sean_path
 
-        self.uvista_tarf = UVISTAConfig().get_path("UVISTA_data.tar.gz")
-        self.sean_tarf = SeanSpectraConfig().get_path("SeanSpectra_data.tar.gz")
-        self.spec_chunks = []
+        self.uvista_tarf = self.uvista_config.get_path("UVISTA_data.tar.gz")
+        self.sean_tarf = self.sean_config.get_path("SeanSpectra_data.tar.gz")
+        self.spec_tarf = self.sean_config.get_path("spectra.mmap.tar.gz")
 
     @staticmethod
-    def wget_and_extract(url, tarf, path, overwrite=False):
-        util.wget_download(url, outfile=tarf,
-                           overwrite=overwrite)
+    def decompress_tar(tarf):
         tar = tarfile.open(tarf)
-        tar.extractall(path=path)
+        tar.extractall(path=os.path.dirname(tarf))
         os.remove(tarf)
+
+    @staticmethod
+    def wget_and_join_chunks(urls, tarf, overwrite=False):
+        for i, url in enumerate(urls):
+            util.wget_download(url, outfile=f"{tarf}.chunk.{i}",
+                               overwrite=overwrite)
+        filechunk.joinchunks(tarf, rmchunks=True)
 
     @staticmethod
     def check_already_downloaded(wget_files, config):
@@ -1481,11 +1492,12 @@ class UVISTAWgetter:
                           "UVISTA_final_v4.1.155-161.rf",
                           "UVISTA_final_v4.1.cat",
                           "UVISTA_final_v4.1.zout"]
-            if self.check_already_downloaded(wget_files, UVISTAConfig()):
+            if self.check_already_downloaded(wget_files, self.uvista_config):
                 return
 
-        self.wget_and_extract(self.uvista_url, self.uvista_tarf,
-                              self.uvista_path, overwrite=overwrite)
+        util.wget_download(self.uvista_url, outfile=self.uvista_tarf,
+                           overwrite=overwrite)
+        self.decompress_tar(self.uvista_tarf)
         UVISTAConfig().auto_add()
 
     def download_sean_specprops(self, overwrite=False):
@@ -1493,22 +1505,21 @@ class UVISTAWgetter:
             wget_files = ["specid.npy", "wavelength.npy",
                           "isnan.npy", "cosmos_V17.fits",
                           "PYOBS"]
-            if self.check_already_downloaded(wget_files, SeanSpectraConfig()):
+            if self.check_already_downloaded(wget_files, self.sean_config):
                 return
 
-        self.wget_and_extract(self.sean_url, self.sean_tarf,
-                              self.sean_path, overwrite=overwrite)
+        util.wget_download(self.sean_url, outfile=self.sean_tarf,
+                           overwrite=overwrite)
+        self.decompress_tar(self.sean_tarf)
         SeanSpectraConfig().auto_add()
 
     def download_sean_specmap(self, overwrite=False):
         if not overwrite:
             wget_files = ["spectra.mmap"]
-            if self.check_already_downloaded(wget_files, SeanSpectraConfig()):
+            if self.check_already_downloaded(wget_files, self.sean_config):
                 return
 
-        [util.wget_download(url, outfile=f, overwrite=overwrite)
-         for (url, f) in zip(self.spec_urls, self.spec_chunks)]
-
-        filename = os.path.join(self.sean_path, "spectra.mmap")
-        filechunk.joinchunks(filename, rmchunks=True)
+        self.wget_and_join_chunks(self.spec_urls, self.spec_tarf,
+                                  overwrite=overwrite)
+        self.decompress_tar(self.spec_tarf)
         SeanSpectraConfig().auto_add()

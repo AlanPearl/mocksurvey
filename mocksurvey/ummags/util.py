@@ -129,26 +129,35 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     (executable, config, z_low, z_high,
      x_arcmin, y_arcmin, samples) = cmd.split()[:7]
 
-    header = """# Structured array of halo/galaxy properties
+    header = """# Structured array of mock galaxy/halo properties
 # Load via 
 # >>> data = np.load("filename.npy")
 # Cosmology: FlatLambdaCDM(H0=67.8, Om0=0.307, Ob0=0.048)
 #
-# Useful columns:
-# ===============
-# x_real, y_real, z_real - True comoving position in Mpc/h
-# x,y,z - Velocity-distorted comoving position in Mpc/h
+# Column descriptions:
+# (Note: Observer at origin, and x-axis is approximately line-of-sight)
+# ====================
+# x_real, y_real, z_real - true comoving position in Mpc/h
+# x,y,z - velocity-distorted comoving position in Mpc/h
 # vx, vy, vz - Velocity in km/s
-# (Note: Observer at origin, x-axis is ~line-of-sight)
-# ra,dec - Celestial coords in degrees: range [-180,180) and [-90,90]
-# redshift[_cosmo] - velocity-distorted [and cosmological] redshift
-# m_{g/r/y/j} - apparent magnitudes in observed bands fit to UltraVISTA
+# ra,dec - celestial coords in degrees: range [-180,180) and [-90,90]
+# redshift[_cosmo] - distorted [and cosmological] redshift
+# m_{u,b,v,g,r,i,z,y,j} - apparent magnitudes fit to UltraVISTA photometry
 # obs_sm - "observed" stellar mass from UniverseMachine in Msun
 # obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
-# halo_mvir - Halo mass in Msun
-# upid - ID of central or -1 if central
+# true_{sm,sfr} - same, but UniverseMachine "truth" (not recommended to use)
+# sfr_uv - ultraviolet SFR (abundance-matched to UltraVISTA) in Msun/yr
+# distmod[_cosmo] - distorted [and cosmological] dist. modulus = m - M + 5logh
+# Host halo information:
+# =====================
+# id - ID of host halo
+# upid - ID of the central, or -1 if central
+# halo_mvir[_peak] - mass in Msun [and the peak value over all time]
+# halo_vmax[_peak] - maximum circular velocity in km/s [and peak value]
+# halo_rvir - virial radius 
+# halo_delta_vmax_rank - z-score of a proxy for halo accretion rate --> sSFR
+# scale_snapshot - the scale-factor of the snapshot this halo was taken from
 """
-
     return dict(header=header, z_low=float(z_low), z_high=float(z_high),
                 x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
                 samples=int(samples), photbands=photbands,
@@ -156,12 +165,31 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
                 Rmatrix=rot_matrix, seed=seed, origin=origin,
                 config=config, executable=executable, cmd=cmd)
 
-    # return dict(header=header, Rmatrix=rot_matrix, seed=seed, origin=origin,
-    #             cmd=cmd, photbands=photbands, obs_mass_limit=obs_mass_limit,
-    #             true_mass_limit=true_mass_limit, executable=executable,
-    #             config=config, z_low=float(z_low), z_high=float(z_high),
-    #             x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
-    #             samples=int(samples))
+
+def metadict_with_specprop(meta):
+    if "header_specprop" in meta:
+        del meta["header_specprop"]
+
+    header_specprop = """# Structured array of spectral features.
+# Nearest-neighbor matched to the synthetic spectra library compiled
+# by Sean Johnson for galaxies in the UltraVISTA photometric survey.
+# These spectra assume solar metallicity (Z = 0.02), the stellar mass
+# given in the mock catalog, and an exponential SFH given by ltau/lage.
+#
+# Load via 
+# >>> data = np.load("filename.specprop")
+#
+# Column descriptions:
+# ====================
+# m_HSC_{g,r,i,z,y} - Apparent magnitude integrated over the given HSC filter
+# L_<line> - Intrinsic luminosity of the given <line> in erg/s
+# f_<line> - Observed flux of the given <line> in erg/s/cm^2
+# Wr_<line> - Equivalent width of the given <line> in nanometers
+# uvista_id - ID of the UltraVISTA galaxy this spectrum was simulated for
+# uvista_{ra,dec} - Celestial coordinate of this UltraVISTA galaxy in degrees
+# uvista_{ltau,lage,Av} - Properties (other than mass) used to generate spectra
+"""
+    return dict(header_specprop=header_specprop, **meta)
 
 
 def metadict_with_spec(meta, ngal):
@@ -173,13 +201,16 @@ def metadict_with_spec(meta, ngal):
         del meta["Nwave"]
 
     nwave = ms.SeanSpectraConfig().wavelength().size
-    header_spec = """# Binary array of the spectrum of each galaxy in the catalog
+    header_spec = """# Binary array of the spectrum of each galaxy in the mock.
+# Nearest-neighbor matched to the synthetic spectra library compiled
+# by Sean Johnson for galaxies in the UltraVISTA photometric survey.
+#
 # Flux units: nJy
 # Wavelength grid [units: nm] = np.geomspace(
 #     380.0, 1259.9885444552458, 74370)
 #
-# Loading instructions
-# ====================
+# Loading instructions:
+# =====================
 # First, load the meta data to get the array's shape
 # >>> meta = json.load(open("filename.json"))
 # >>> shape = meta["Ngal"], meta["Nwave"]
@@ -191,7 +222,6 @@ def metadict_with_spec(meta, ngal):
 # >>> i = 123
 # >>> spec = np.memmap("filename.spec", dtype="<f4", shape=shape)[i]
 """
-
     return dict(Ngal=ngal, Nwave=nwave, header_spec=header_spec, **meta)
 
 
@@ -282,9 +312,8 @@ def execute_lightcone_code(z_low, z_high, x_arcmin, y_arcmin,
         # umcfg = homedir + "data/LightCone/um-lightcone.cfg"
         umcfg = ms.UMConfig().get_lightcone_config()
     if rseed is not None:
-        assert(isinstance(rseed, int)), "Random seed must be an integer"
-    assert(isinstance(samples, int)), "Number of samples must be " \
-                                      "an integer"
+        assert ms.util.is_int(rseed), "Random seed must be an integer"
+    assert ms.util.is_int(samples), "Number of samples must be an integer"
 
     args = ["'"+str(id_tag)+"'", str(int(do_collision_test)),
             str(float(ra)), str(float(dec)), str(float(theta)), str(rseed)]
@@ -468,6 +497,7 @@ def fix_specprops_columns(nfinder, um_redshift, specprops, cosmo,
         elif linename.startswith("f_"):
             # Flux is affected by 1/(1+z)d^2 and mass but NOT cosmology
             return ans * distcorr * masscorr
+        # elif linename.startswith("continuum_"): <-- these are all zeros
         else:
             raise ValueError(f"Invalid linename={linename}")
 
@@ -510,7 +540,7 @@ def fix_specprops_columns(nfinder, um_redshift, specprops, cosmo,
                    "Wr_SiII1260", "continuum_Lya", "L_HI1215", "f_HI1215", "Wr_HI1215",
                    "Wr_SiII1190"] if np.any(specprops[x])]
     line_vals = [get_line(x) for x in line_names]
-    line_dtypes = ["<f4"] * len(line_names)
+    line_dtypes = ["<f8" if x.startswith("L_") else "<f4" for x in line_names]
 
     newprops = ms.util.make_struc_array([*mag_names, *line_names, *uvista_names],
                                         [*mag_vals, *line_vals, *uvista_vals],
