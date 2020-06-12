@@ -48,7 +48,8 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
         raise RuntimeError("lightcone code failed")
 
     # Move lightcone files to their desired locations
-    pathlib.Path(moved_files[0]).parent.mkdir(parents=True, exist_ok=True)
+    data_dir = str(pathlib.Path(moved_files[0]).parent)
+    pathlib.Path(data_dir).mkdir(parents=True, exist_ok=True)
     for origin, destination in zip(files, moved_files):
         pathlib.Path(origin).rename(destination)
 
@@ -59,11 +60,8 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
 
-    # If we used the id-tag functionality, update the config file
-    try:
-        ms.UMConfig().auto_add_lightcones()
-    except ValueError:
-        pass
+    # Print location of the stored files
+    ms.LightConeConfig(data_dir, is_temp=True).auto_add()
 
 
 def lightcone_selection(input_name: Union[str, object],
@@ -146,8 +144,11 @@ def lightcone_selection(input_name: Union[str, object],
             json.dump({**meta, f"selector_{selector_num}":
                        repr(selector)}, open(meta_fn, "w"), indent=4)
 
+    # Print location of the stored files
+    ms.LightConeConfig(output_name, is_temp=True).auto_add()
 
-def lightcone_spectra(input_dir: str = ".",
+
+def lightcone_spectra(input_name: str = ".",
                       input_realization: Union[
                           str, int, Sequence[int]] = "all",
                       make_specmap: bool = False,
@@ -159,7 +160,7 @@ def lightcone_spectra(input_dir: str = ".",
     but with the same names, but with extensions '.spec' and '.specprop'
     Parameters
     ----------
-    input_dir : str | LightConeConfig
+    input_name : str | LightConeConfig
         Directory of the lightcone
     input_realization : int | str | array-like (default="all")
         Specify realization index(es) from the input to create
@@ -180,11 +181,11 @@ def lightcone_spectra(input_dir: str = ".",
     None (files are written)
     """
     photbands = util.get_photbands(photbands, "gryj")
-    if isinstance(input_dir, ms.LightConeConfig):
-        config = input_dir
+    if isinstance(input_name, ms.LightConeConfig):
+        config = input_name
     else:
-        config = ms.LightConeConfig(input_dir, is_temp=True)
-    input_dir = config.get_path()
+        config = ms.LightConeConfig(input_name, is_temp=True)
+    input_name = config.get_path()
     with ms.util.suppress_stdout():
         config.auto_add()
 
@@ -196,7 +197,7 @@ def lightcone_spectra(input_dir: str = ".",
 
     for index in input_realization:
         base_fn = f"{config['files'][index]}"[:-4]
-        base_fn = os.path.join(input_dir, base_fn)
+        base_fn = os.path.join(input_name, base_fn)
 
         meta_fn = f"{base_fn}.json"
         prop_fn = f"{base_fn}.specprop"
@@ -221,9 +222,9 @@ def lightcone_spectra(input_dir: str = ".",
         json.dump(meta, open(meta_fn, "w"), indent=4)
         np.save(prop_fn, propcat)
         os.rename(prop_fn + ".npy", prop_fn)
-        # if make_specmap:
-        #     nfinder.write_specmap(spec_fn, nearest,
-        #                           corr="mass", progress=True)
+
+    # Print location of the stored files
+    ms.LightConeConfig(input_name, is_temp=True).auto_add()
 
 
 class UVData:

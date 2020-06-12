@@ -9,7 +9,7 @@ available_scripts = {
     "set-data-path": scripts.SetDataPath,
     "download-um": scripts.DownloadUM,
     "download-uvista": scripts.DownloadUVISTA,
-    "download-uvista-specmap": scripts.DownloadUVISTASpecMap,
+    "download-uvista-mock-spectra": scripts.DownloadUVISTAMockSpectra,
     "config": scripts.Config,
 }
 

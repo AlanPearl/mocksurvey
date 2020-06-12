@@ -623,7 +623,7 @@ class UMConfig(BaseConfig):
 
     def auto_add(self):
         """
-        In addition to the below, this searches for available lightcones
+        In addition to that below, this searches for available lightcones
         """
         self.auto_add_lightcones()
         self.setup_snaps_txt()
@@ -723,10 +723,12 @@ CALC_ICL = 1
         # pathlib.Path(path).mkdir(exist_ok=True)
         # candidates = [os.path.join(path, name) for name in os.listdir(path)]
         # dirs = [c for c in candidates if os.path.isdir(c)]
+        self.clear_keys(["lightcones"])
         self.save()  # this config must exist to find available lightcones
         names = LightConeConfig.available_lightcones()
         for name in names:
             self.add_lightcone(name)
+        self.save()
 
     def add_lightcone(self, name):
         """

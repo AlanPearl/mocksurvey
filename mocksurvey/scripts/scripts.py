@@ -284,7 +284,7 @@ class DownloadUVISTA:
         wgetter.download_sean_specprops(overwrite=a.overwrite)
 
 
-class DownloadUVISTASpecMap:
+class DownloadUVISTAMockSpectra:
     desc = "Download the raw spectra needed " \
            "for assigning to nearest-neighbors in the mock"
 
