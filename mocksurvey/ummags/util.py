@@ -103,7 +103,7 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     for i, (name, dtype) in enumerate(xyz_dtype):
         final_lightcone_array[name] = xyz[:, i]
     for (name, dtype) in mag_dtype:
-        final_lightcone_array[name] = magdf[name[-1].lower()]
+        final_lightcone_array[name] = magdf[name]
     for (name, dtype) in lc_data.dtype.descr:
         final_lightcone_array[name] = lc_data[name]
     final_lightcone_array["sfr_uv"] = sfr_uv
