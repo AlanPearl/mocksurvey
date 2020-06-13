@@ -61,7 +61,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
 
     # Print location of the stored files
-    ms.LightConeConfig(data_dir, is_temp=True).auto_add()
+    ms.LightConeConfig(data_dir).auto_add()
 
 
 def lightcone_selection(input_name: Union[str, object],
@@ -145,7 +145,7 @@ def lightcone_selection(input_name: Union[str, object],
                        repr(selector)}, open(meta_fn, "w"), indent=4)
 
     # Print location of the stored files
-    ms.LightConeConfig(output_name, is_temp=True).auto_add()
+    ms.LightConeConfig(output_name).auto_add()
 
 
 def lightcone_spectra(input_name: str = ".",
@@ -184,7 +184,7 @@ def lightcone_spectra(input_name: str = ".",
     if isinstance(input_name, ms.LightConeConfig):
         config = input_name
     else:
-        config = ms.LightConeConfig(input_name, is_temp=True)
+        config = ms.LightConeConfig(input_name)
     input_name = config.get_path()
     with ms.util.suppress_stdout():
         config.auto_add()
@@ -224,7 +224,7 @@ def lightcone_spectra(input_name: str = ".",
         os.rename(prop_fn + ".npy", prop_fn)
 
     # Print location of the stored files
-    ms.LightConeConfig(input_name, is_temp=True).auto_add()
+    ms.LightConeConfig(input_name).auto_add()
 
 
 class UVData:
@@ -248,7 +248,7 @@ class UVData:
         logssfr_uv = (np.log10(uvista_cat["sfr_uv"])
                       - uvista_cat["logm"]).values
         abs_mag = pd.DataFrame({
-            name[-1].lower(): uvista_cat[name].values for name in self.names})
+            name: uvista_cat[name].values for name in self.names})
         # m2l = np.array([logm + uvista_cat[name].values / 2.5
         #                         for name in self.names]).T
         uvista_id = uvista_cat["id"].values

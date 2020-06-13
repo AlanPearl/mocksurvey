@@ -230,9 +230,9 @@ def get_photbands(photbands, default=None):
         default = ["u", "b", "v", "g", "r", "i", "z",
                    "y", "j", "h", "k", "ch1", "ch2"]
     if photbands is None:
-        photbands = [s.lower() for s in default]
+        photbands = [s.lower() for s in default if s]
     else:
-        photbands = [s.lower() for s in photbands]
+        photbands = [s.lower() for s in photbands if s]
 
     return photbands
 
