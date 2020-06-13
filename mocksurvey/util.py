@@ -4,7 +4,7 @@ import shutil
 import collections
 import warnings
 from contextlib import contextmanager
-from typing import Union, Iterable, Sized, Generator
+from typing import Union, Iterable, Sized, Generator, Sequence
 
 import wget
 import numpy as np
@@ -570,10 +570,6 @@ def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
     dec = np.arctan2(xyz[:, 1], r_cyl_eq)
     ra = np.arctan2(xyz[:, 0], xyz[:, 2])
 
-    # convert spherical coordinates into ra,dec
-    # ra = phi
-    # dec = np.pi/2.0 - theta
-
     return np.vstack([ra, dec, redshift]).T.astype(np.float32)
 
 
@@ -935,36 +931,49 @@ def change_file_extension(filename, new_extension):
     return ".".join(parts)
 
 
-def choose_close_index(value, values, tolerance=0.05):
+def choose_close_index(value, values, tolerance=0.05, permit_multiple=False):
     """
     Return the index of `values` containing the specified `value`
-    within some `tolerance`. If there is not exactly one index within
+    within some `tolerance`. If there is not exactly one index withFin
     the tolerance, a ValueError is raised.
 
-    Set ``tolerance="none"`` to return the closest index to your specified
-    `value`, regardless of how far off it is.
+    Parameters
+    ----------
+    value : float
+        Value to choose from the list of `values`
+    values : Sequence[float]
+        List from which to select the `value`
+    tolerance : Union[float, str]
+        Demand that abs(`value` - `values`[`index`]) <= `tolerance`.
+        Set "none" to return the closest index to your specified
+        `value`, regardless of how far off it is.
+    permit_multiple : bool
+        If True, then no errors will be raised in the case that multiple
+        values are within the specified `tolerance`. The index of the nearest
+        value will be returned. The default is False unless `tolerance`="none"
+
+    Returns
+    -------
+    index : int
+        index where a value approximately equal to `value` is located in the
+        `values` sequence
+
     """
-    if isinstance(tolerance, str):
-        # Return the closest index, regardless of how far away the value is
-        if value == np.inf:
-            return np.argmax(values)
-        elif value == -np.inf:
-            return np.argmin(values)
-        else:
-            return np.argmin(np.abs(value - np.asarray(values)))
-    else:
+    discrepancy = np.abs(np.asarray(values) - value)
+
+    if not isinstance(tolerance, str):
         # Demand exactly one value within the tolerance
         # else raise ValueError
-        wh = np.where(np.isclose(values, value,
+        wh = np.where(np.isclose(discrepancy, 0,
                                  rtol=0, atol=tolerance))[0]
         if len(wh) < 1:
-            raise ValueError(f"No values matching {value}. Try "
-                             f"increasing tolerance from {tolerance}. Available "
+            raise ValueError(f"No values matching {value}. Try increasing"
+                             f" tolerance from {tolerance}. Available "
                              f"values: {values}")
-        if len(wh) > 1:
+        if not permit_multiple and len(wh) > 1:
             raise ValueError("Multiple matching redshifts:"
-                             f"{values[wh]}")
-        return wh[0]
+                             f"{np.asarray(values)[wh]}")
+    return np.argmin(discrepancy)
 
 
 def wget_download(file_url, outfile, overwrite=False):

@@ -344,10 +344,10 @@ class UMData:
     def fit_mass_to_light(self):
         from sklearn import ensemble
 
-        s = np.isfinite(self.uvdat.logssfr_uv)
         x = np.array([self.uvdat.logssfr_uv,
                       self.uvdat.z]).T
         y = self.uvdat.m2l
+        s = np.isfinite(self.uvdat.logssfr_uv)  # & np.isfinite(y).all(axis=1)
 
         regressor = ensemble.RandomForestRegressor(n_estimators=10)
         regressor.fit(x[s], y[s])

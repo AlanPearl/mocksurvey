@@ -31,7 +31,8 @@ class LightCone:
 
         # Option to change which photometric bands to return
         parser.add_argument(
-            "--photbands", type=str, metavar="STRING", default="UBVGRIZYJHK",
+            "--photbands", type=str, metavar="STRING",
+            default="u,b,v,g,r,i,z,y,j,h,k,ch1,ch2",
             help="String of photometric bands to calculate apparent "
                  "magnitudes by abundance-matching to UltraVISTA. "
                  "Use all available bands by default")

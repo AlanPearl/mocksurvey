@@ -589,7 +589,7 @@ class UMConfig(BaseConfig):
             "none" loads the entire table and is equivalent to
             ``thresh = lambda cat: slice(None)``
 
-        ztol : float (default = 0.05)
+        ztol : float (default = 0.005)
             A match must be within redshift +/- ztol
 
         Returns
@@ -610,7 +610,8 @@ class UMConfig(BaseConfig):
                           ('obs_sfr', 'f4'), ('obs_uv', 'f4'),
                           ('empty', 'f4')], align=True)
 
-        filename, true_z = self._get_file_at_redshift(redshift, ztol)
+        filename, true_z = self._get_file_at_redshift(
+            redshift, ztol)
         fullpath = self.get_path(filename)
 
         if isinstance(thresh, str) and thresh.lower() == "none":
@@ -754,7 +755,8 @@ CALC_ICL = 1
         raise NotImplementedError()
 
     def _get_file_at_redshift(self, redshift, ztol):
-        i = util.choose_close_index(redshift, self["z"], ztol)
+        i = util.choose_close_index(
+            redshift, self["z"], ztol, permit_multiple=True)
         return self["files"][i], self["z"][i]
 
     @staticmethod
@@ -968,7 +970,8 @@ class UVISTAConfig(BaseConfig):
     PHOTBANDS = {
         "u": "u", "b": "B", "v": "V",
         "g": "gp", "r": "rp", "i": "ip", "z": "zp",
-        "y": "Y", "j": "J", "h": "H", "k": "Ks"
+        "y": "Y", "j": "J", "h": "H", "k": "Ks",
+        "ch1": "ch1", "ch2": "ch2", "ch3": "ch3", "ch4": "ch4"
     }
 
     def __init__(self, data_dir=None, photbands=None):
@@ -1060,6 +1063,12 @@ class UVISTAConfig(BaseConfig):
         else:
             raise ValueError(self._msg1(filetype))
 
+    def load_filetype(self, ftype):
+        return pd.read_csv(
+            self.get_filepath(ftype), delim_whitespace=True,
+            names=self.get_names(ftype), skiprows=self.get_skips(ftype),
+            usecols=self.names_to_keep(ftype))
+
     def are_all_files_stored(self):
         return len(self["files"]) == len(self.UVISTAFILES)
 
@@ -1084,12 +1093,12 @@ class UVISTAConfig(BaseConfig):
         -------
         catalog : DataFrame
             Contains all observational data for each UltraVISTA galaxy
-            in Adam Muzzin's K-selected catalog (with )
+            in Adam Muzzin's K-selected catalog
         """
 
         # Define a little h correction factor. Muzzin used h = 0.7
         # Dependence on Luminosity or Stellar Mass = h^-2
-        # Dependence on Time or Distasnce = h^-1
+        # Dependence on Time or Distance = h^-1
         # Dependence on SFR = Mass/Time = h^-1
         # Dependence on sSFR = 1/Time = h^1
         if cosmo is None:
@@ -1100,10 +1109,7 @@ class UVISTAConfig(BaseConfig):
             raise ValueError("Can't load until all files are stored")
 
         ftypes = ["p", "f", "z", "s", "uv", "vj"]
-        dat = [pd.read_csv(
-                self.get_filepath(s), delim_whitespace=True,
-                names=self.get_names(s), skiprows=self.get_skips(s),
-                usecols=self.names_to_keep(s)) for s in ftypes]
+        dat = [self.load_filetype(s) for s in ftypes]
 
         uvrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
         vjrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
@@ -1433,8 +1439,8 @@ class UMWgetter:
 
     def download_sfrcat_redshift(self, redshift, overwrite=False):
         zmin, zmax = np.min(redshift), np.max(redshift)
-        imin = util.choose_close_index(zmax, self.redshifts, "any")
-        imax = util.choose_close_index(zmin, self.redshifts, "any")
+        imin = util.choose_close_index(zmax, self.redshifts, "none")
+        imax = util.choose_close_index(zmin, self.redshifts, "none")
         for i in range(imin, imax+1):
             self.download_sfrcat_index(i, overwrite=overwrite)
         UMConfig().auto_add()

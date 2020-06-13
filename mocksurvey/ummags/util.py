@@ -142,7 +142,7 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 # vx, vy, vz - Velocity in km/s
 # ra,dec - celestial coords in degrees: range [-180,180) and [-90,90]
 # redshift[_cosmo] - distorted [and cosmological] redshift
-# m_{u,b,v,g,r,i,z,y,j} - apparent magnitudes fit to UltraVISTA photometry
+# m_{u,b,v,g,r,i,z,y,j,ch1,ch2} - app. magnitudes fit to UltraVISTA photometry
 # obs_sm - "observed" stellar mass from UniverseMachine in Msun
 # obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
 # true_{sm,sfr} - same, but UniverseMachine "truth" (not recommended to use)
@@ -183,8 +183,8 @@ def metadict_with_specprop(meta):
 # ====================
 # m_HSC_{g,r,i,z,y} - Apparent magnitude integrated over the given HSC filter
 # L_<line> - Intrinsic luminosity of the given <line> in erg/s
-# f_<line> - Observed flux of the given <line> in erg/s/cm^2
-# Wr_<line> - Equivalent width of the given <line> in nanometers
+# f_<line> - Observed flux of the given <line> in erg/s/cm^2/Ang
+# Wr_<line> - Equivalent width of the given <line> in Angstroms
 # uvista_id - ID of the UltraVISTA galaxy this spectrum was simulated for
 # uvista_{ra,dec} - Celestial coordinate of this UltraVISTA galaxy in degrees
 # uvista_{ltau,lage,Av} - Properties (other than mass) used to generate spectra
@@ -227,7 +227,8 @@ def metadict_with_spec(meta, ngal):
 
 def get_photbands(photbands, default=None):
     if default is None:
-        default = ["u", "b", "v", "g", "r", "i", "z", "y", "j", "h", "k"]
+        default = ["u", "b", "v", "g", "r", "i", "z",
+                   "y", "j", "h", "k", "ch1", "ch2"]
     if photbands is None:
         photbands = [s.lower() for s in default]
     else:
