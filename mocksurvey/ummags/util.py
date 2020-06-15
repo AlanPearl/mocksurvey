@@ -91,7 +91,7 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
     # Name the new columns and specify their dtypes
     xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
-    mag_dtype = [(f"m_{s}", "f4") for s in magdf.columns]
+    mag_dtype = [(s, "f4") for s in magdf.columns]
     other_dtype = [("sfr_uv", "<f4"),
                    ("distmod", "<f4"), ("distmod_cosmo", "<f4")]
 

@@ -13,17 +13,20 @@ from .. import mocksurvey as ms
 
 def lightcone(z_low, z_high, x_arcmin, y_arcmin,
               executable=None, umcfg=None, samples=1,
-              photbands=None, keep_ascii_files=False,
+              photbands=None,
               obs_mass_limit=8e8, true_mass_limit=0,
               outfilepath=None, outfilebase=None, id_tag=None,
               do_collision_test=False, ra=0.,
-              dec=0., theta=0., rseed=None):
+              dec=0., theta=0., rseed=None,
+              keep_ascii_files=False, start_from_ascii=False):
 
     # Predict/generate filenames
     fake_id = "_tmp_file_made_by_mocksurvey_lightcone_"
     args = [z_low, z_high, x_arcmin, y_arcmin, samples, id_tag, fake_id]
     files, moved_files = util.generate_lightcone_filenames(
         args, outfilepath, outfilebase)
+    data_dir = str(pathlib.Path(moved_files[0]).parent)
+
     # Check prerequisites
     assert(vparse(ht.__version__) >= vparse("0.7dev"))
     if not ms.UVISTAConfig().are_all_files_stored():
@@ -40,18 +43,18 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     if umcfg is None:
         umcfg = ms.UMConfig().get_lightcone_config()
 
-    # Execute the lightcone code in the UniverseMachine package
-    if util.execute_lightcone_code(
-            *args[:4], executable, umcfg, samples, id_tag=fake_id,
-            do_collision_test=do_collision_test,
-            ra=ra, dec=dec, theta=theta, rseed=rseed):
-        raise RuntimeError("lightcone code failed")
+    if not start_from_ascii:
+        # Execute the lightcone code in the UniverseMachine package
+        if util.execute_lightcone_code(
+                *args[:4], executable, umcfg, samples, id_tag=fake_id,
+                do_collision_test=do_collision_test,
+                ra=ra, dec=dec, theta=theta, rseed=rseed):
+            raise RuntimeError("lightcone code failed")
 
-    # Move lightcone files to their desired locations
-    data_dir = str(pathlib.Path(moved_files[0]).parent)
-    pathlib.Path(data_dir).mkdir(parents=True, exist_ok=True)
-    for origin, destination in zip(files, moved_files):
-        pathlib.Path(origin).rename(destination)
+        # Move lightcone files to their desired locations
+        pathlib.Path(data_dir).mkdir(parents=True, exist_ok=True)
+        for origin, destination in zip(files, moved_files):
+            pathlib.Path(origin).rename(destination)
 
     # Convert the enormous ascii file into a binary table + meta data
     for filename in moved_files:
