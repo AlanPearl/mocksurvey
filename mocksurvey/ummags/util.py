@@ -86,12 +86,12 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     uvdat = ummags.UVData(photbands=photbands)
     umdat = ummags.UMData(lc_data, uvdat=uvdat)
     sfr_uv = 10 ** umdat.logssfr_uv * lc_data["obs_sm"]
-    magdf = pd.DataFrame({k: umdat.abs_mag[k] + distmod_cosmo
+    magdf = pd.DataFrame({f"m_{k}": umdat.abs_mag[k] + distmod_cosmo
                           for k in umdat.abs_mag.columns})
 
     # Name the new columns and specify their dtypes
-    xyz_dtype = [(s, "f4") for s in ("x", "y", "z")]
-    mag_dtype = [(s, "f4") for s in magdf.columns]
+    xyz_dtype = [(s, "<f4") for s in ("x", "y", "z")]
+    mag_dtype = [(s, "<f4") for s in magdf.columns]
     other_dtype = [("sfr_uv", "<f4"),
                    ("distmod", "<f4"), ("distmod_cosmo", "<f4")]
 
@@ -154,7 +154,7 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 # upid - ID of the central, or -1 if central
 # halo_mvir[_peak] - mass in Msun [and the peak value over all time]
 # halo_vmax[_peak] - maximum circular velocity in km/s [and peak value]
-# halo_rvir - virial radius 
+# halo_rvir - virial radius in comoving kpc/h
 # halo_delta_vmax_rank - z-score of a proxy for halo accretion rate --> sSFR
 # scale_snapshot - the scale-factor of the snapshot this halo was taken from
 """

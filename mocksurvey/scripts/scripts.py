@@ -85,7 +85,7 @@ class LightCone:
         a = self.parser.parse_args()
         if "," in a.photbands:
             a.photbands = a.photbands.split(",")
-            a.photbands = [s.strip() for s in a.photbands if s]
+            a.photbands = [x for s in a.photbands if (x := s.strip())]
         ms.ummags.lightcone(
             a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
             executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
