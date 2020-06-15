@@ -24,7 +24,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     fake_id = "_tmp_file_made_by_mocksurvey_lightcone_"
     args = [z_low, z_high, x_arcmin, y_arcmin, samples, id_tag, fake_id]
     files, moved_files = util.generate_lightcone_filenames(
-        args, outfilepath, outfilebase)
+        args, outfilepath, outfilebase, start_from_ascii)
     data_dir = str(pathlib.Path(moved_files[0]).parent)
 
     # Check prerequisites

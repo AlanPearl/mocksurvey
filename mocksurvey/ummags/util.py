@@ -348,7 +348,8 @@ def default_lightcone_filenames(z_low, z_high, x_arcmin, y_arcmin,
 
 
 def generate_lightcone_filenames(args, outfilepath=None,
-                                 outfilebase=None):
+                                 outfilebase=None,
+                                 start_from_ascii=False):
     fake_id = args.pop()
     z_low, z_high, x_arcmin, y_arcmin, samples, id_tag = args
     args[-1] = "" if args[-1] is None else args[-1]
@@ -363,7 +364,7 @@ def generate_lightcone_filenames(args, outfilepath=None,
                              "a UMConfig directory to store the files.")
 
         outfilepath = os.path.join(outfilepath, "lightcones", id_tag)
-        if pathlib.Path(outfilepath).is_dir():
+        if pathlib.Path(outfilepath).is_dir() != start_from_ascii:
             outfilepath = None
             raise IsADirectoryError(
                 f"Lightcone with id-tag={id_tag} already exists at "
