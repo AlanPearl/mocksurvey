@@ -251,7 +251,8 @@ class UVData:
         logssfr_uv = (np.log10(uvista_cat["sfr_uv"])
                       - uvista_cat["logm"]).values
         abs_mag = pd.DataFrame({
-            name: uvista_cat[name].values for name in self.names})
+            band: uvista_cat[name].values
+            for name, band in zip(self.names, self.photbands)})
         # m2l = np.array([logm + uvista_cat[name].values / 2.5
         #                         for name in self.names]).T
         uvista_id = uvista_cat["id"].values
