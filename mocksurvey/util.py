@@ -503,7 +503,7 @@ def comoving_disth(redshifts, cosmo):
             if is_arraylike(dist) else dist)
 
 
-def distance2redshift(dist, cosmo, vr, zprec=1e-3, h_scaled=True):
+def distance2redshift(dist, cosmo, vr=None, zprec=1e-3, h_scaled=True):
     if len(dist) == 0:
         return np.array([])
 
@@ -550,7 +550,7 @@ def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
 
     # radial velocity from observer (at origin)
     if vel is None:
-        vr = np.zeros(xyz.shape[0])
+        vr = None
     else:
         r_safe = r.copy()
         r_safe[r_safe == 0] = 1.
