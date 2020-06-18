@@ -10,6 +10,7 @@ import os
 import pathlib
 import warnings
 import json
+import inspect
 from typing import Tuple
 
 import numpy as np
@@ -54,7 +55,7 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, fieldshape="sq",
 
 
 class RealizationLoader:
-    def __init__(self, selector=None, name="PFS", nreal=None):
+    def __init__(self, name="PFS", selector=None, nreal=None):
         if isinstance(name, LightConeConfig):
             self.config = name
             self.name = self.config.get_path()
@@ -209,13 +210,11 @@ class LightConeSelector:
     def __repr__(self):
         d = self.__dict__.copy()
         d["center_radec"] = self.field.center_rdz.tolist()[:2]
-        for key in ("field", "field_selector", "z_low", "z_high",
-                    "sqdeg", "fieldshape"):
-            del d[key]
+        kw = "".join([f", {key}={repr(d[key])}" for key in
+                      inspect.getfullargspec(self.__init__).args[1:]])
+        kw = kw.replace(" km / (Mpc s)", "").replace(" K", "")
 
-        return f"{type(self).__name__}(z_low={self.z_low}, " \
-               f"z_high={self.z_high}, sqdeg={self.sqdeg}, " \
-               f"fieldshape={repr(self.fieldshape)}, **{d})"
+        return f"{type(self).__name__}({kw})"
 
     def __str__(self):
         return f"{type(self).__name__}(z_low={self.z_low}, " \
@@ -364,7 +363,7 @@ class CompletenessTester:
         gals = gals if max_val else gals[::-1]
         column = column if max_val else column[::-1]
 
-        selection = self.selector.dict_selection(gals) & no_selection
+        selection = self.selector.dict_selection(gals)
         frac = np.cumsum(selection) / (np.arange(1, len(gals)+1))
 
         mass = column[::-1]
