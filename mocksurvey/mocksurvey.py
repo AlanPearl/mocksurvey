@@ -979,8 +979,7 @@ class UVISTAConfig(BaseConfig):
         BaseConfig.__init__(self, config_file, data_dir)
 
         photbands = ummags.util.get_photbands(photbands)
-        self.PHOTBANDS = {k: self.PHOTBANDS[k]
-                          for k in set(photbands) | {"k"}}
+        self.PHOTBANDS = {k: self.PHOTBANDS[k] for k in photbands}
 
     def get_filepath(self, filetype):
         """
@@ -1004,18 +1003,19 @@ class UVISTAConfig(BaseConfig):
 
     def get_names(self, filetype):
         if filetype == "p":
-            return ['id', 'ra', 'dec', 'xpix', 'ypix', 'Ks_tot', 'eKs_tot', 'Ks',
-                    'eKs', 'H', 'eH', 'J', 'eJ', 'Y', 'eY', 'ch4', 'ech4', 'ch3',
-                    'ech3', 'ch2', 'ech2', 'ch1', 'ech1', 'zp', 'ezp', 'ip', 'eip',
-                    'rp', 'erp', 'V', 'eV', 'gp', 'egp', 'B', 'eB', 'u', 'eu',
-                    'IA484', 'eIA484', 'IA527', 'eIA527', 'IA624', 'eIA624',
-                    'IA679', 'eIA679', 'IA738', 'eIA738', 'IA767', 'eIA767',
-                    'IB427', 'eIB427', 'IB464', 'eIB464', 'IB505', 'eIB505', 'IB574',
-                    'eIB574', 'IB709', 'eIB709', 'IB827', 'eIB827', 'fuv', 'efuv',
-                    'nuv', 'enuv', 'mips24', 'emips24', 'K_flag', 'K_star',
-                    'K_Kron', 'apcor', 'z_spec', 'z_spec_cc', 'z_spec_id', 'star',
-                    'contamination', 'nan_contam', 'orig_cat_id', 'orig_cat_field',
-                    'USE']
+            return [
+                'id', 'ra', 'dec', 'xpix', 'ypix', 'Ks_tot', 'eKs_tot', 'Ks',
+                'eKs', 'H', 'eH', 'J', 'eJ', 'Y', 'eY', 'ch4', 'ech4', 'ch3',
+                'ech3', 'ch2', 'ech2', 'ch1', 'ech1', 'zp', 'ezp', 'ip', 'eip',
+                'rp', 'erp', 'V', 'eV', 'gp', 'egp', 'B', 'eB', 'u', 'eu',
+                'IA484', 'eIA484', 'IA527', 'eIA527', 'IA624', 'eIA624',
+                'IA679', 'eIA679', 'IA738', 'eIA738', 'IA767', 'eIA767',
+                'IB427', 'eIB427', 'IB464', 'eIB464', 'IB505', 'eIB505',
+                'IB574', 'eIB574', 'IB709', 'eIB709', 'IB827', 'eIB827', 'fuv',
+                'efuv', 'nuv', 'enuv', 'mips24', 'emips24', 'K_flag', 'K_star',
+                'K_Kron', 'apcor', 'z_spec', 'z_spec_cc', 'z_spec_id', 'star',
+                'contamination', 'nan_contam', 'orig_cat_id', 'orig_cat_field',
+                'USE']
         elif filetype == "z":
             return ['id', 'z_spec', 'z_a', 'z_m1', 'chi_a', 'z_p', 'chi_p',
                     'z_m2', 'odds', 'l68', 'u68', 'l95', 'u95', 'l99', 'u99',
@@ -1035,9 +1035,10 @@ class UVISTAConfig(BaseConfig):
 
     def names_to_keep(self, filetype):
         if filetype == "p":
-            return ["id", "ra", "dec", "Ks_tot",
-                    *self.PHOTBANDS.values(), "star", "K_flag", "zp",
-                    "ip", "contamination", "nan_contam"]
+            return list(
+                {"id", "ra", "dec", "Ks_tot", *self.PHOTBANDS.values(),
+                 "star", "K_flag", "zp", "ip", "contamination",
+                 "nan_contam", "Ks"})
         elif filetype == "z":
             return ["z_peak"]
         elif filetype == "f":
@@ -1129,24 +1130,31 @@ class UVISTAConfig(BaseConfig):
                 key: -2.5 * np.log10(dat[0][val] * aperture_factor) + 25
                 for (key, val) in self.PHOTBANDS.items()
             }
+            if "k" in relative_mags.keys():
+                kmag = relative_mags["k"]
+            else:
+                kmag = -2.5 * np.log10(dat[0]["Ks_tot"]) + 25
+            distmod = 5 * np.log10(d_lum * 1e5)
             absolute_mags = {
-                key: val - 5 * np.log10(d_lum * 1e5)
+                key: val - distmod
                 for (key, val) in relative_mags.items()
             }
 
         selection = np.all([
-            np.isfinite(list(absolute_mags.values())).all(axis=0),
-            np.isfinite(logm), z > 1.1e-2, relative_mags["k"] < 23.4,
+            *(np.isfinite(x) for x in list(absolute_mags.values())),
+            np.isfinite(logm), z > 1.1e-2, kmag < 23.4,
             dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
             dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
             axis=0)
 
-        rel_keys, rel_vals = zip(*relative_mags.items())
+        # rel_keys, rel_vals = zip(*relative_mags.items())
+        rel_keys, rel_vals = relative_mags.keys(), relative_mags.values()
         rel_keys = ["m_" + key for key in rel_keys]
         rel_vals = rel_vals if include_rel_mags else []
         rel_keys = rel_keys if include_rel_mags else []
 
-        abs_keys, abs_vals = zip(*absolute_mags.items())
+        # abs_keys, abs_vals = zip(*absolute_mags.items())
+        abs_keys, abs_vals = absolute_mags.keys(), absolute_mags.values()
         abs_keys = ["M_" + key for key in abs_keys]
 
         names = ["id", "ra", "dec", "redshift", "logm", "logssfr",
