@@ -18,10 +18,15 @@ ___
 # Installation Instructions
 ___
 ```
+pip install --upgrade git+https://github.com/AlanPearl/mocksurvey.git
+```
+<!--
+```
 cd /path/to/download/source/code
 git clone https://github.com/AlanPearl/mocksurvey
 pip install ./mocksurvey
 ```
+-->
 
 #### Set path to a directory where you would like to store downloaded data
 ```
