@@ -86,9 +86,15 @@ def selector_from_meta(meta: dict):
 
 
 def make_struc_array(names, values,
-                     dtypes: Union[Iterable[str], str] = "<f4"):
+                     dtypes: Union[Iterable[str], str] = "<f4",
+                     subshapes: Union[Sized, None] = None):
+    if subshapes is None:
+        subshapes = [() for _ in names]
+    subshapes = [() if x is None else
+                 (tuple(x) if is_arraylike(x) else (x,))
+                 for x in subshapes]
     if isinstance(dtypes, str):
-        dtypes = [dtypes] * len(names)
+        dtypes = [dtypes for _ in names]
 
     if len(values):
         lengths = [len(val) for val in values]
@@ -98,7 +104,7 @@ def make_struc_array(names, values,
     else:
         length = 0
 
-    dtype = [(n, d) for n, d in zip(names, dtypes)]
+    dtype = [(n, d, s) for n, d, s in zip(names, dtypes, subshapes)]
     ans = np.zeros(length, dtype=dtype)
     for n, v in zip(names, values):
         ans[n] = v
