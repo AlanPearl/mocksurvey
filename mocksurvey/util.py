@@ -471,12 +471,15 @@ def kwargs2attributes(obj, kwargs):
     obj.__dict__.update(kwargs)
 
 
-def rdz2xyz(rdz, cosmo, use_um_convention=False):
+def rdz2xyz(rdz, cosmo, use_um_convention=False, deg=False):
     """If cosmo=None then z is assumed to already be distance, not redshift."""
     if cosmo is None:
         dist = rdz[:, 2]
     else:
         dist = comoving_disth(rdz[:, 2], cosmo)
+    if deg:
+        rdz = rdz.copy()
+        rdz[:, :2] *= np.pi / 180.0
 
     z = (dist * np.cos(rdz[:, 1]) * np.cos(rdz[:, 0])).astype(np.float32)
     x = (dist * np.cos(rdz[:, 1]) * np.sin(rdz[:, 0])).astype(np.float32)
