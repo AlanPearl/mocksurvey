@@ -138,8 +138,7 @@ def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     This function is just a wrapper for rolling_window,
     and is essentially implemented by the following code:
     
-    >>> def apply_over_window(func, a, window, **kwargs):
-    >>>     return func(rolling_window(a, window), axis=-1, **kwargs)
+    >>> return func(rolling_window(a, window, axis=axis), axis=-1)
     
     See rolling_window docstring for more info
     """

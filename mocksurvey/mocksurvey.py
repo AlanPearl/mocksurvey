@@ -210,8 +210,8 @@ class LightConeSelector:
     def __repr__(self):
         d = self.__dict__.copy()
         d["center_radec"] = self.field.center_rdz.tolist()[:2]
-        kw = "".join([f", {key}={repr(d[key])}" for key in
-                      inspect.getfullargspec(self.__init__).args[1:]])
+        kw = ", ".join([f"{key}={repr(d[key])}" for key in
+                        inspect.getfullargspec(self.__init__).args[1:]])
         kw = kw.replace(" km / (Mpc s)", "").replace(" K", "")
 
         return f"{type(self).__name__}({kw})"
