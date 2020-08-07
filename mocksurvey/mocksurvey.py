@@ -11,6 +11,7 @@ import pathlib
 import warnings
 import json
 import inspect
+from contextlib import nullcontext
 from typing import Tuple
 
 import numpy as np
@@ -119,7 +120,11 @@ class RealizationLoader:
         else:
             return (v := self._all_catalogs[index])[s2(v)]
 
-    def cosmic_var(self, statfuncs, take_var=False):
+    def _mapfunc(self, args):
+        lightcone, statfuncs = args
+        return [statfunc(lightcone, self) for statfunc in statfuncs]
+
+    def apply(self, statfuncs, take_var=False, nthread=1):
         """
         Parameters
         ----------
@@ -132,6 +137,10 @@ class RealizationLoader:
             the desired statistic instead of an array of values
             across realizations (which you could then take the variance of)
 
+        nthread : int (default=1)
+            If greater than 1, this many subprocesses will apply
+            the statfunc on each realization in parallel.
+
         Returns
         -------
         results : array
@@ -143,13 +152,19 @@ class RealizationLoader:
         is_arraylike = util.is_arraylike(statfuncs)
         if not is_arraylike:
             statfuncs = [statfuncs]
+        if nthread > 1:
+            from multiprocessing import Pool
+            pool_cm, pool_args = Pool, (nthread,)
+        else:
+            pool_cm, pool_args = nullcontext, ()
 
-        # noinspection PyTypeChecker
-        stats: list = np.full((len(statfuncs), self.nreal), np.nan).tolist()
-
-        for j, real in enumerate(self.generator):
-            for i, statfunc in enumerate(statfuncs):
-                stats[i][j] = statfunc(real, self)
+        with pool_cm(*pool_args) as pool:
+            mapper = pool.map if nthread > 1 else map
+            stats = list(mapper(
+                self._mapfunc,
+                ((x, statfuncs) for x in self.generator))
+            )
+        stats = np.moveaxis(np.array(stats), 0, 1)
 
         results = np.array(stats)
         if take_var:
