@@ -740,6 +740,7 @@ CALC_ICL = 1
         # dirs = [c for c in candidates if os.path.isdir(c)]
         self.clear_keys(["lightcones"])
         self.save()  # this config must exist to find available lightcones
+        pathlib.Path(self.get_path("lightcones")).mkdir(exist_ok=True)
         names = LightConeConfig.available_lightcones()
         for name in names:
             self.add_lightcone(name)

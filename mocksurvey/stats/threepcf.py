@@ -178,14 +178,66 @@ def reobtain_triplet_counts(zeta, rrr):
     return np.einsum("abcd,dab->cab", matrix, zeta * rrr[:1])
 
 
-def slepian_compression(cf, r_edges, min_side=30.0,
-                        fractional=False, weighted=True):
+def three_point_compression(cf, r_edges, min_side=30.0, r2max=False,
+                            fractional=False, weighted=True):
+    """
+    Integrates over r2 to get a volume-weighted average.
+
+    Integration bounds for r2 (r2_low and r2_high) will depend
+    on the r1 bin, and the values r2max and fractional.
+    There are five different compression schemes:
+
+    - For r2max=False & fractional=False (Slepian et al. 2017):
+    r2_low = min_side & r2_high = r1_low - min_side
+
+    - For r2max=False & fractional=True:
+    r2_low = min_side * r1_low & r2_high = (1 - min_side) * r1_low
+
+    - For r2max=<float> & fractional=False:
+    r2_low = r1_high + min_side & r2_high = r2max
+
+    - For r2max=<float> & fractional="lower"
+    r2_low = r1_high * (1 + min_side) & r2_high = r2max
+
+    - For r2max=<float> & fractional=True:
+    r2_low = r1_high * (1 + min_side) & r2_high = r1_high * r2max
+
+    Parameters
+    ----------
+    cf : np.ndarray (of shape (N, N))
+        The uncompressed three-point correlation function, binned
+        symmetrically into r1 and r2
+    r_edges : np.ndarray (of shape (N+1,))
+        Bin edges for either r1 or r2 (must be the same)
+    min_side : float (default = 30)
+        Either the minimum triangle side-length, or the minimum
+        side-length divided by r1 if fractional = True or "lower"
+    r2max : Union[bool, float] (default = False)
+        If False, r2 is bound to be less than r1. Otherwise, this
+        must be a float to specify the upper bound of r2.
+    fractional : Union[bool, str] (default = False)
+        See the effect of this parameter on the compression schemes
+    weighted : bool (default = True)
+        If true, the compression is weighted by volume
+
+    Returns
+    -------
+    compressed_cf : np.ndarray (of shape (N,))
+        Three-point correlation function as a function of r1 only
+    """
     weights = np.diff(r_edges**3) if weighted else np.ones_like(r_edges[:-1])
 
-    # Select min_side < r1 < r2 - min_side [Mpc/h]
-    lows = [min_side * edge for edge in r_edges[:-1]] if fractional \
-        else [min_side] * len(r_edges[:-1])
-    highs = [x - y for x, y in zip(r_edges[:-1], lows)]
+    # Select min_side < r2 < r1 - min_side [Mpc/h]
+    if r2max:
+        lows = [(1 + min_side) * edge if fractional
+                else min_side + edge for edge in r_edges[1:]]
+        highs = [r2max * edge if fractional
+                 else r2max for edge in r_edges[1:]]
+    else:
+        lows = [min_side * edge for edge in r_edges[:-1]] if fractional \
+            else [min_side] * len(r_edges[:-1])
+        highs = [x - y for x, y in zip(r_edges[:-1], lows)]
+
     low_inds = [_closest(low, r_edges) for low in lows]
     high_inds = [_closest(high, r_edges) for high in highs]
 
