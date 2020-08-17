@@ -120,7 +120,7 @@ class LightConeSelection:
         # Optional positional argument
         parser.add_argument(
             "SQDEG", type=float, help="Size of the field in square degrees. "
-                                      "Full sky by default")
+                                      "Full sky by default", nargs="?")
 
         # Options to modify the selection function
         parser.add_argument(

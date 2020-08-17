@@ -518,7 +518,7 @@ class NeighborSeanSpecFinder:
         # Instantiate the nearest-neighbor regressor with metric
         # d^2 = (logM/1)^2 + (logsSFR/0.75)^2 + (z/2)^2
         reg = neighbors.NearestNeighbors(
-                num_nearest,
+                n_neighbors=num_nearest,
                 metric="wminkowski",
                 metric_params=dict(w=metric_weights))
 
