@@ -27,20 +27,16 @@ from .stats import cf
 from . import httools
 from . import ummags
 from . import filechunk
+from . import surveys
 # Default cosmology (Bolshoi-Planck)
 from .httools.httools import bplcosmo
-
-
-uvista_sqdeg = 1.62
-pfs_sqdeg = 15.0
-pfs_max_dict = dict(m_y=22.5, m_j=22.8)
 
 
 def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, fieldshape="sq",
                                masslim=None, randfrac=0.7, sqdeg=15.0,
                                masscol="obs_sm"):
     z_low, z_high = zlim
-    max_dict = pfs_max_dict.copy()
+    max_dict = surveys.pfs.max_dict.copy()
 
     if masslim is None:
         incompsel = LightConeSelector(z_low, z_high, 15., "fullsky",

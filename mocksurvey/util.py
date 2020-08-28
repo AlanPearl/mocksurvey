@@ -951,7 +951,7 @@ def choose_close_index(value, values, tolerance=0.05, permit_multiple=False):
         Value to choose from the list of `values`
     values : Sequence[float]
         List from which to select the `value`
-    tolerance : Union[float, str]
+    tolerance : float | str
         Demand that abs(`value` - `values`[`index`]) <= `tolerance`.
         Set "none" to return the closest index to your specified
         `value`, regardless of how far off it is.
@@ -975,9 +975,9 @@ def choose_close_index(value, values, tolerance=0.05, permit_multiple=False):
         wh = np.where(np.isclose(discrepancy, 0,
                                  rtol=0, atol=tolerance))[0]
         if len(wh) < 1:
-            raise ValueError(f"No values matching {value}. Try increasing"
-                             f" tolerance from {tolerance}. Available "
-                             f"values: {values}")
+            raise ValueError(f"No values matching {value}. Available "
+                             f"values: {values}. Try increasing "
+                             f"tolerance={tolerance}.")
         if not permit_multiple and len(wh) > 1:
             raise ValueError("Multiple matching redshifts:"
                              f"{np.asarray(values)[wh]}")
