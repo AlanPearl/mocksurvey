@@ -634,12 +634,13 @@ class UMConfig(BaseConfig):
 
     def auto_add(self):
         """
-        In addition to that below, this searches for available lightcones
+        In addition to that below, this searches for available
+        lightcones and sets up a lightcone.cfg and snaps.txt
         """
         self.auto_add_lightcones()
-        self.setup_snaps_txt()
         self.setup_lightcone_cfg()
         BaseConfig.auto_add(self)
+        self.setup_snaps_txt()
     auto_add.__doc__ += "\n" + BaseConfig.auto_add.__doc__
 
     def add_file(self, filename, redshift=None):
