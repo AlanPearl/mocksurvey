@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class MOONRISESurvey:
     # Parameters taken from Maiolino+ 2020
     z_samples = {
@@ -30,14 +33,14 @@ class MOONRISESurvey:
         },
         # Two fields from the VIDEO survey
         "XMM-LSS": {
-            "completeness": 0.9,
+            "completeness": 0.7,
             "schemes": {
                 "Xswitch": {"sqdeg": 3.0 / 2},
                 "Stare": {"sqdeg": 6.0 / 2}
             }
         },
         "ECDFS": {
-            "completeness": 0.9,
+            "completeness": 0.7,
             "schemes": {
                 "Xswitch": {"sqdeg": 3.0 / 2},
                 "Stare": {"sqdeg": 6.0 / 2}
@@ -73,13 +76,9 @@ class MOONRISESurvey:
         self.max_dict = self.z_samples[z_sample]["max_dict"]
 
         if field == "combine":
-            self.completeness = sum(
-                x["schemes"][scheme]["sqdeg"] * x["completeness"]
-                for x in self.fields.values()
-            ) / sum(
-                x["schemes"][scheme]["sqdeg"]
-                for x in self.fields.values()
-            )
+            a = [x["schemes"][scheme]["sqdeg"] for x in self.fields.values()]
+            w = [x["completeness"] for x in self.fields.values()]
+            self.completeness = np.average(a, weights=w)
         else:
             self.completeness = self.fields[field]["completeness"]
 
@@ -89,3 +88,8 @@ class MOONRISESurvey:
 moons_low = MOONRISESurvey(0, "combine", "Stare")
 moons_mid = MOONRISESurvey(1, "combine", "Stare")
 moons_high = MOONRISESurvey(2, "combine", "Stare")
+
+# Same as before, using the "Xswitch" scheme (more likely)
+moons_x_low = MOONRISESurvey(0, "combine", "Xswitch")
+moons_x_mid = MOONRISESurvey(1, "combine", "Xswitch")
+moons_x_high = MOONRISESurvey(2, "combine", "Xswitch")
