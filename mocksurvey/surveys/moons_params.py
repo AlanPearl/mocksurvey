@@ -76,9 +76,9 @@ class MOONRISESurvey:
         self.max_dict = self.z_samples[z_sample]["max_dict"]
 
         if field == "combine":
-            a = [x["schemes"][scheme]["sqdeg"] for x in self.fields.values()]
-            w = [x["completeness"] for x in self.fields.values()]
-            self.completeness = np.average(a, weights=w)
+            w = [x["schemes"][scheme]["sqdeg"] for x in self.fields.values()]
+            comp = [x["completeness"] for x in self.fields.values()]
+            self.completeness = np.average(comp, weights=w)
         else:
             self.completeness = self.fields[field]["completeness"]
 
