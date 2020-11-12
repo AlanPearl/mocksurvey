@@ -13,7 +13,7 @@ from .. import mocksurvey as ms
 
 def lightcone(z_low, z_high, x_arcmin, y_arcmin,
               executable=None, umcfg=None, samples=1,
-              photbands=None,
+              photbands=None, nomags=False,
               obs_mass_limit=8e8, true_mass_limit=0,
               outfilepath=None, outfilebase=None, id_tag=None,
               do_collision_test=False, ra=0.,
@@ -59,7 +59,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     # Convert the enormous ascii file into a binary table + meta data
     for filename in moved_files:
         util.convert_ascii_to_npy_and_json(
-            filename,
+            filename, nomags=nomags,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
 

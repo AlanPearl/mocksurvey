@@ -36,6 +36,10 @@ class LightCone:
             help="String of photometric bands to calculate apparent "
                  "magnitudes by abundance-matching to UltraVISTA. "
                  "Use all available bands by default")
+        parser.add_argument(
+                "--nomags", action="store_true",
+                help="Don't calculate sfr_uv or absolute magnitudes"
+        )
 
         # Options to specify paths
         parser.add_argument(
@@ -89,7 +93,7 @@ class LightCone:
         ms.ummags.lightcone(
             a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
             executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
-            photbands=a.photbands,
+            photbands=a.photbands, nomags=a.nomags,
             obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
             outfilepath=a.outfilepath, id_tag=a.NAME,
             do_collision_test=a.do_collision_test, ra=a.ra_center,

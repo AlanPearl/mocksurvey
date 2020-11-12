@@ -31,7 +31,7 @@ def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
 
 
 def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
-                         true_mass_limit=0, cosmo=None):
+                         true_mass_limit=0, cosmo=None, nomags=False):
     """
     Takes the ascii output given by UniverseMachine's `lightcone` code,
     and returns it as a numpy structured array, removing entries with
@@ -86,9 +86,13 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
     uvdat = ummags.UVData(photbands=photbands)
     umdat = ummags.UMData(lc_data, uvdat=uvdat)
-    sfr_uv = 10 ** umdat.logssfr_uv * lc_data["obs_sm"]
-    magdf = pd.DataFrame({f"m_{k}": umdat.abs_mag[k] + distmod_cosmo
-                          for k in umdat.abs_mag.columns})
+    if nomags:
+        sfr_uv = np.full_like(dlum, np.nan)
+        magdf = pd.DataFrame({f"m_{k}": sfr_uv for k in uvdat.photbands})
+    else:
+        sfr_uv = 10 ** umdat.logssfr_uv * lc_data["obs_sm"]
+        magdf = pd.DataFrame({f"m_{k}": umdat.abs_mag[k] + distmod_cosmo
+                              for k in umdat.abs_mag.columns})
 
     # Name the new columns and specify their dtypes
     xyz_dtype = [(s, "<f4") for s in ("x", "y", "z")]
@@ -115,7 +119,7 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
 
 def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
-                        true_mass_limit=0):
+                        true_mass_limit=0, nomags=False):
     photbands = get_photbands(photbands)
 
     with open(filename) as f:
@@ -129,12 +133,14 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 
     (executable, config, z_low, z_high,
      x_arcmin, y_arcmin, samples) = cmd.split()[:7]
+    nomags_msg = (' *Note*: This was run with nomags=True, so m_{{*}}'
+                  ' and sfr_uv columns are missing.\n')
 
-    header = """# Structured array of mock galaxy/halo properties
+    header = f"""# Structured array of mock galaxy/halo properties
 # Load via 
 # >>> data = np.load("filename.npy")
 # Cosmology: FlatLambdaCDM(H0=67.8, Om0=0.307, Ob0=0.048)
-#
+#{nomags_msg if nomags else ''}
 # Column descriptions:
 # (Note: Observer at origin, and x-axis is approximately line-of-sight)
 # ====================
@@ -143,10 +149,10 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 # vx, vy, vz - Velocity in km/s
 # ra,dec - celestial coords in degrees: range [-180,180) and [-90,90]
 # redshift[_cosmo] - distorted [and cosmological] redshift
-# m_{u,b,v,g,r,i,z,y,j,ch1,ch2} - app. magnitudes fit to UltraVISTA photometry
+# m_{{u,b,v,g,r,i,z,y,j,ch1,ch2}} - app. magnitudes fit to UltraVISTA photometry
 # obs_sm - "observed" stellar mass from UniverseMachine in Msun
 # obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
-# true_{sm,sfr} - same, but UniverseMachine "truth" (not recommended to use)
+# true_{{sm,sfr}} - same, but UniverseMachine "truth" (not recommended to use)
 # sfr_uv - ultraviolet SFR (abundance-matched to UltraVISTA) in Msun/yr
 # obs_uv - AB absolute magnitude at 1500 Angstroms (unreliable for z < 4)
 # distmod[_cosmo] - distorted [and cosmological] dist. modulus = m - M + 5logh
