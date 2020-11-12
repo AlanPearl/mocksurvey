@@ -56,7 +56,8 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
             "redshift": (2, "<f4"), "redshift_cosmo": (3, "<f4"),
             "scale_snapshot": (4, "<f4"), "obs_sm": (28, "<f4"),
             "obs_sfr": (29, "<f4"), "true_sm": (25, "<f4"),
-            "true_sfr": (27, "<f4"), "halo_mvir": (16, "<f4"),
+            "true_sfr": (27, "<f4"), "obs_uv": (32, "<f4"),
+            "halo_mvir": (16, "<f4"),
             "halo_mvir_peak": (18, "<f4"), "halo_vmax": (17, "<f4"),
             "halo_vmax_peak": (19, "<f4"), "halo_rvir": (20, "<f4"),
             "halo_delta_vmax_rank": (21, "<f4")}
@@ -147,6 +148,7 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 # obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
 # true_{sm,sfr} - same, but UniverseMachine "truth" (not recommended to use)
 # sfr_uv - ultraviolet SFR (abundance-matched to UltraVISTA) in Msun/yr
+# obs_uv - AB absolute magnitude at 1500 Angstroms (unreliable for z < 4)
 # distmod[_cosmo] - distorted [and cosmological] dist. modulus = m - M + 5logh
 # Host halo information:
 # =====================
