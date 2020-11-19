@@ -15,12 +15,19 @@ from . import kcorrect
 
 
 def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
-                                  remove_ascii_file=False, **kwargs):
+                                  remove_ascii_file=False,
+                                  obs_mass_limit=8e8, true_mass_limit=0,
+                                  photbands=None, cosmo=None, nomags=False):
     if outfilebase is None:
         outfilebase = ".".join(asciifile.split(".")[:-1])
 
-    data = lightcone_from_ascii(asciifile, **kwargs)
-    metadict = metadict_from_ascii(asciifile, **kwargs)
+    ascii_data = load_ascii_data(asciifile)
+    data = lightcone_from_ascii(ascii_data, photbands=photbands,
+                                cosmo=cosmo, nomags=nomags)
+    metadict = metadict_from_ascii(asciifile, photbands=photbands,
+                                   obs_mass_limit=obs_mass_limit,
+                                   true_mass_limit=true_mass_limit,
+                                   nomags=nomags)
 
     np.save(outfilebase + ".npy", data)
     json.dump(metadict, open(outfilebase + ".json", "w"), indent=4)
@@ -30,25 +37,11 @@ def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
         os.remove(asciifile)
 
 
-def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
-                         true_mass_limit=0, cosmo=None, nomags=False):
+def load_ascii_data(filename, obs_mass_limit=8e8, true_mass_limit=0):
     """
-    Takes the ascii output given by UniverseMachine's `lightcone` code,
-    and returns it as a numpy structured array, removing entries with
-    mass lower than the specified limit. Reading the ascii table may take
-    up to 20 minutes for large lightcones.
-
-    Several new columns are added, calculated using functions in this
-    module. Velocity-distorted positions replace the x, y, and z
-    columns, and the old ones are renamed x_real, y_real, and z_real.
-    Additionally, apparent magnitudes and distance modulus are calculated.
-    Note that h-scaling is applied to all distances (including distance
-    modulus), and therefore M = m - distmod + 5log(h).
+    This is the longest part of the process. It just loads the
+    UniverseMachine output needed for lightcone_from_ascii()
     """
-    if cosmo is None:
-        cosmo = ms.bplcosmo
-    photbands = get_photbands(photbands)
-
     cols = {"id": (5, "<i8"), "upid": (7, "<i8"),
             "x_real": (10, "<f4"), "y_real": (11, "<f4"),
             "z_real": (12, "<f4"), "vx": (13, "<f4"), "vy": (14, "<f4"),
@@ -66,31 +59,51 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     masslimit = {"obs_sm": obs_mass_limit, "true_sm": true_mass_limit}
     reader = ht_sim_manager.tabular_ascii_reader.TabularAsciiReader(
                              filename, cols, row_cut_min_dict=masslimit)
-    lc_data = reader.read_ascii()
+    return reader.read_ascii()
+
+
+def lightcone_from_ascii(ascii_data, photbands=None, cosmo=None, nomags=False):
+    """
+    Takes the ascii output given by UniverseMachine's `lightcone` code,
+    and returns it as a numpy structured array, removing entries with
+    mass lower than the specified limit. Reading the ascii table may take
+    up to 20 minutes for large lightcones.
+
+    Several new columns are added, calculated using functions in this
+    module. Velocity-distorted positions replace the x, y, and z
+    columns, and the old ones are renamed x_real, y_real, and z_real.
+    Additionally, apparent magnitudes and distance modulus are calculated.
+    Note that h-scaling is applied to all distances (including distance
+    modulus), and therefore M = m - distmod + 5log(h).
+    """
+    if cosmo is None:
+        cosmo = ms.bplcosmo
+    photbands = get_photbands(photbands)
 
     # Limit RA to the range [-180,180) (column = "ra")
-    lc_data["ra"] = (lc_data["ra"] + 180) % 360 - 180
+    ascii_data["ra"] = (ascii_data["ra"] + 180) % 360 - 180
     # Calculate redshift-space-distorted positions (columns = "x","y","z")
-    xyz_real = ms.util.xyz_array(lc_data, keys=["x_real", "y_real", "z_real"])
-    vel = ms.util.xyz_array(lc_data, keys=["vx", "vy", "vz"])
+    xyz_real = ms.util.xyz_array(ascii_data,
+                                 keys=["x_real", "y_real", "z_real"])
+    vel = ms.util.xyz_array(ascii_data, keys=["vx", "vy", "vz"])
     rdz = ms.util.ra_dec_z(xyz_real, vel, cosmo=cosmo)
     xyz = ms.util.rdz2xyz(rdz, cosmo=cosmo)
 
     # Calculate distance modulus (column = "distmod")
-    dlum = cosmo.luminosity_distance(lc_data["redshift"]).value * cosmo.h
+    dlum = cosmo.luminosity_distance(ascii_data["redshift"]).value * cosmo.h
     distmod = 5 * np.log10(dlum * 1e5)
-    dlum_true = cosmo.luminosity_distance(lc_data["redshift_cosmo"]
+    dlum_true = cosmo.luminosity_distance(ascii_data["redshift_cosmo"]
                                           ).value * cosmo.h
     distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
 
     # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
     uvdat = ummags.UVData(photbands=photbands)
-    umdat = ummags.UMData(lc_data, uvdat=uvdat)
+    umdat = ummags.UMData(ascii_data, uvdat=uvdat)
     if nomags:
         sfr_uv = np.full_like(dlum, np.nan)
         magdf = pd.DataFrame({f"m_{k}": sfr_uv for k in uvdat.photbands})
     else:
-        sfr_uv = 10 ** umdat.logssfr_uv * lc_data["obs_sm"]
+        sfr_uv = 10 ** umdat.logssfr_uv * ascii_data["obs_sm"]
         magdf = pd.DataFrame({f"m_{k}": umdat.abs_mag[k] + distmod_cosmo
                               for k in umdat.abs_mag.columns})
 
@@ -100,17 +113,17 @@ def lightcone_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     other_dtype = [("sfr_uv", "<f4"),
                    ("distmod", "<f4"), ("distmod_cosmo", "<f4")]
 
-    full_dtype = (xyz_dtype + lc_data.dtype.descr + mag_dtype +
+    full_dtype = (xyz_dtype + ascii_data.dtype.descr + mag_dtype +
                   other_dtype)
 
     # Copy all columns into a new structured numpy array
-    final_lightcone_array = np.zeros(lc_data.shape, full_dtype)
+    final_lightcone_array = np.zeros(ascii_data.shape, full_dtype)
     for i, (name, dtype) in enumerate(xyz_dtype):
         final_lightcone_array[name] = xyz[:, i]
     for (name, dtype) in mag_dtype:
         final_lightcone_array[name] = magdf[name]
-    for (name, dtype) in lc_data.dtype.descr:
-        final_lightcone_array[name] = lc_data[name]
+    for (name, dtype) in ascii_data.dtype.descr:
+        final_lightcone_array[name] = ascii_data[name]
     final_lightcone_array["sfr_uv"] = sfr_uv
     final_lightcone_array["distmod"] = distmod
     final_lightcone_array["distmod_cosmo"] = distmod_cosmo
@@ -134,7 +147,7 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
     (executable, config, z_low, z_high,
      x_arcmin, y_arcmin, samples) = cmd.split()[:7]
     nomags_msg = (' *Note*: This was run with nomags=True, so m_{{*}}'
-                  ' and sfr_uv columns are missing.\n')
+                  ' and sfr_uv columns are missing or NaN.\n')
 
     header = f"""# Structured array of mock galaxy/halo properties
 # Load via 

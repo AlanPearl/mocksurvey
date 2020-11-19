@@ -10,6 +10,7 @@ available_scripts = {
     "download-um": scripts.DownloadUM,
     "download-uvista": scripts.DownloadUVISTA,
     "download-uvista-mock-spectra": scripts.DownloadUVISTAMockSpectra,
+    # TODO: "download-sdss": scripts.DownloadSDSS,
     "config": scripts.Config,
 }
 

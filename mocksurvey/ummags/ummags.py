@@ -25,7 +25,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     args = [z_low, z_high, x_arcmin, y_arcmin, samples, id_tag, fake_id]
     files, moved_files = util.generate_lightcone_filenames(
         args, outfilepath, outfilebase, start_from_ascii)
-    data_dir = str(pathlib.Path(moved_files[0]).parent)
+    data_dir = str(pathlib.Path(moved_files[0]).parent.absolute())
 
     # Check prerequisites
     assert(vparse(ht.__version__) >= vparse("0.7dev"))
