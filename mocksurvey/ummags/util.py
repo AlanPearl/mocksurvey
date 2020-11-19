@@ -306,14 +306,16 @@ def cam_binned_z(m, z, prop, m2, z2, prop2, nwin=501, dz=0.05,
     centroids: np.ndarray
     centroids, inds2 = ms.util.correction_for_empty_bins(centroids, inds2)
     inds = ms.util.fuzzy_digitize_improved(z, centroids, seed=seed,
-                                           min_counts=min_counts_in_z2_bins)
+                                           min_counts=0)
 
     new_prop = np.full_like(prop, np.nan)
     for i in range(len(centroids)):
         s, s2 = inds == i, inds2 == i
-        nwin1 = min([nwin, s2.sum()//2*2-1])
+        if not s.sum():
+            continue
+        nwin1 = min([nwin, s2.sum()//2*2-1, s.sum()//2*2-1])
         if nwin1 < 2:
-            print(f"Warning: Only {s2.sum()} galaxies in the z"
+            print(f"Warning: Only {s2.sum()} real galaxies in the z"
                   f"={centroids[i]} bin. You should use a larger"
                   f"value of dz than {dz}")
         new_prop[s] = ht_empirical_models.conditional_abunmatch(
