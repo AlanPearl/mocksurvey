@@ -1,0 +1,51 @@
+{
+    "header": "# Structured array of mock galaxy/halo properties\n# Load via \n# >>> data = np.load(\"filename.npy\")\n# Cosmology: FlatLambdaCDM(H0=67.8, Om0=0.307, Ob0=0.048)\n#\n# Column descriptions:\n# (Note: Observer at origin, and x-axis is approximately line-of-sight)\n# ====================\n# x_real, y_real, z_real - true comoving position in Mpc/h\n# x,y,z - velocity-distorted comoving position in Mpc/h\n# vx, vy, vz - Velocity in km/s\n# ra,dec - celestial coords in degrees: range [-180,180) and [-90,90]\n# redshift[_cosmo] - distorted [and cosmological] redshift\n# m_{u,b,v,g,r,i,z,y,j,ch1,ch2} - app. magnitudes fit to UltraVISTA photometry\n# obs_sm - \"observed\" stellar mass from UniverseMachine in Msun\n# obs_sfr - \"observed\" SFR from UniverseMachine in Msun/yr\n# true_{sm,sfr} - same, but UniverseMachine \"truth\" (not recommended to use)\n# sfr_uv - ultraviolet SFR (abundance-matched to UltraVISTA) in Msun/yr\n# obs_uv - AB absolute magnitude at 1500 Angstroms (unreliable for z < 4)\n# distmod[_cosmo] - distorted [and cosmological] dist. modulus = m - M + 5logh\n# Host halo information:\n# =====================\n# id - ID of host halo\n# upid - ID of the central, or -1 if central\n# halo_mvir[_peak] - mass in Msun [and the peak value over all time]\n# halo_vmax[_peak] - maximum circular velocity in km/s [and peak value]\n# halo_rvir - virial radius in comoving kpc/h\n# halo_delta_vmax_rank - z-score of a proxy for halo accretion rate --> sSFR\n# scale_snapshot - the scale-factor of the snapshot this halo was taken from\n",
+    "z_low": 0.8,
+    "z_high": 1.0,
+    "x_arcmin": 5.0,
+    "y_arcmin": 5.0,
+    "samples": 1,
+    "photbands": [
+        "u",
+        "b",
+        "v",
+        "g",
+        "r",
+        "i",
+        "z",
+        "y",
+        "j",
+        "h",
+        "k",
+        "ch1",
+        "ch2"
+    ],
+    "obs_mass_limit": 800000000.0,
+    "true_mass_limit": 0,
+    "Rmatrix": [
+        [
+            0.511762,
+            0.30931,
+            0.801516
+        ],
+        [
+            -0.265626,
+            0.944197,
+            -0.194771
+        ],
+        [
+            -0.817033,
+            -0.113227,
+            0.565364
+        ]
+    ],
+    "seed": 1234567,
+    "origin": [
+        246.286835,
+        191.762421,
+        164.045258
+    ],
+    "config": "/home/alan/data/UniverseMachine/lightcone.cfg",
+    "executable": "/home/alan/local/src/universemachine/lightcone",
+    "cmd": "/home/alan/local/src/universemachine/lightcone /home/alan/data/UniverseMachine/lightcone.cfg 0.8 1.0 5.0 5.0 1 _tmp_file_made_by_mocksurvey_lightcone_ 0 0.0 0.0 0.0 1234567"
+}
