@@ -955,18 +955,77 @@ class LightConeConfig(BaseConfig):
         return i
 
 
-class UVISTAConfig(BaseConfig):
+class BaseDataConfig(BaseConfig):
     """
-    Keeps track of the locations of locally saved UVISTA files.
+    Base class for loading in observational data which will be used
+    for assigning M/L ratios into UniverseMachine galaxies
+    """
 
-    Parameters
-    ----------
-    data_dir : str (required on first run)
-        The path to the directory where you plan on saving all of the files.
-        If the directory is moved, then you must provide this argument again.
-    """
+    # These parameters must be defined in the subclass
+    # ================================================
+    DATANAME = None  # unique string identifying this dataset
+    FILES = None  # dictionary whose values are filenames
+    PHOTBANDS = None  # dictionary whose keys will go into the mock
+
+    def load(self, *args, **kwargs):
+        raise NotImplementedError("load() must be defined in subclass")
+
+    @staticmethod
+    def get_photbands(photbands, default=None):
+        raise NotImplementedError("get_photbands() must be defined in subclass")
+    # ================================================
+
     is_temp = False
-    UVISTAFILES = {
+
+    def _msg1(self, ftype):
+        return f"File type {repr(ftype)} not recognized. " \
+               f"Must be one of {set(self.FILES.keys())}"
+
+    def __init__(self, data_dir=None, photbands=None):
+        """
+        Keeps track of the locations of locally saved data files,
+        and controls which data to load for UM calibration.
+
+        Parameters
+        ----------
+        data_dir : str (required on first run)
+            The path to the directory where you plan on saving all of the files.
+            If the directory is moved, then you must provide this argument again.
+        """
+        config_file = f"config-{self.DATANAME.lower()}.json"
+        BaseConfig.__init__(self, config_file, data_dir)
+
+        photbands = self.get_photbands(photbands)
+        self.PHOTBANDS = {k: self.PHOTBANDS[k] for k in photbands}
+
+    def get_filepath(self, filetype):
+        """
+        Returns the absolute path to the requested file.
+        Filetype options can be found in self.FILES.keys()
+        which correspond to self.FILES.values().
+        """
+        filename = self.FILES[filetype]
+        return BaseConfig.get_path(self, filename)
+
+    def add_file(self, filename):
+        if filename not in self.FILES.values():
+            raise ValueError(f"That's not a {self.DATANAME} file")
+
+        BaseConfig.add_file(self, filename)
+
+    def remove_file(self, filename):
+        BaseConfig.remove_file(self, filename)
+        self.save()
+
+    def are_all_files_stored(self):
+        return len(self["files"]) == len(self.FILES)
+
+
+class UVISTAConfig(BaseDataConfig):
+    # Parameters needed for BaseDataConfig
+    # ====================================
+    DATANAME = "uvista"  # unique string identifying this dataset
+    FILES = {
         "p": "UVISTA_final_v4.1.cat",  # photometric catalog
         "z": "UVISTA_final_v4.1.zout",  # EAZY output
         "f": "UVISTA_final_BC03_v4.1.fout",  # FAST output
@@ -975,10 +1034,6 @@ class UVISTAConfig(BaseConfig):
         "vj": "UVISTA_final_v4.1.155-161.rf",  # rest-frame V,J
     }
 
-    def _msg1(self, ftype):
-        return f"File type {repr(ftype)} not recognized. " \
-               f"Must be one of {set(self.UVISTAFILES.keys())}"
-
     PHOTBANDS = {
         "u": "u", "b": "B", "v": "V",
         "g": "gp", "r": "rp", "i": "ip", "z": "zp",
@@ -986,32 +1041,17 @@ class UVISTAConfig(BaseConfig):
         "ch1": "ch1", "ch2": "ch2", "ch3": "ch3", "ch4": "ch4"
     }
 
-    def __init__(self, data_dir=None, photbands=None):
-        config_file = "config-uvista.json"
-        BaseConfig.__init__(self, config_file, data_dir)
+    @staticmethod
+    def get_photbands(photbands, default=None):
+        if default is None:
+            default = ["u", "b", "v", "g", "r", "i", "z",
+                       "y", "j", "h", "k", "ch1", "ch2"]
+        if photbands is None:
+            photbands = [s.lower() for s in default if s]
+        else:
+            photbands = [s.lower() for s in photbands if s]
 
-        photbands = ummags.util.get_photbands(photbands)
-        self.PHOTBANDS = {k: self.PHOTBANDS[k] for k in photbands}
-
-    def get_filepath(self, filetype):
-        """
-        Returns the absolute path to the requested file.
-        Filetype options are "p", "z", "f", and "s" where
-        each option corresponds to:
-        """
-        filename = self.UVISTAFILES[filetype]
-        return BaseConfig.get_path(self, filename)
-    get_filepath.__doc__ += "\n" + repr(UVISTAFILES)
-
-    def add_file(self, filename):
-        if filename not in self.UVISTAFILES.values():
-            raise ValueError("That's not a UVISTA file")
-
-        BaseConfig.add_file(self, filename)
-
-    def remove_file(self, filename):
-        BaseConfig.remove_file(self, filename)
-        self.save()
+        return photbands
 
     def get_names(self, filetype):
         if filetype == "p":
@@ -1082,9 +1122,6 @@ class UVISTAConfig(BaseConfig):
             names=self.get_names(ftype), skiprows=self.get_skips(ftype),
             usecols=self.names_to_keep(ftype))
 
-    def are_all_files_stored(self):
-        return len(self["files"]) == len(self.UVISTAFILES)
-
     def load(self, include_rel_mags=False, cosmo=None):
         """
         Load catalog of UltraVISTA data. Masses and SFRs
@@ -1124,8 +1161,8 @@ class UVISTAConfig(BaseConfig):
         ftypes = ["p", "f", "z", "s", "uv", "vj"]
         dat = [self.load_filetype(s) for s in ftypes]
 
-        uvrest = -2.5*np.log10(dat[4]["L153"]/dat[4]["L155"])
-        vjrest = -2.5*np.log10(dat[5]["L155"]/dat[5]["L161"])
+        uvrest = -2.5 * np.log10(dat[4]["L153"] / dat[4]["L155"])
+        vjrest = -2.5 * np.log10(dat[5]["L155"] / dat[5]["L161"])
         z = dat[2]["z_peak"]
         sfr_tot = dat[3]["SFR_tot"] / h_corr
         sfr_uv = dat[3]["SFR_UV"] / h_corr
@@ -1180,6 +1217,115 @@ class UVISTAConfig(BaseConfig):
         data = pd.DataFrame(data)
         data = data[selection]
         data.index = np.arange(len(data))
+
+        return data
+
+
+class SDSSConfig(BaseDataConfig):
+    # Parameters needed for BaseDataConfig
+    # ====================================
+    DATANAME = "sdss"  # unique string identifying this dataset
+    FILES = {
+        "all": "Stripe82-SDSS-matched.npy"
+    }
+
+    PHOTBANDS = {
+        "u": "U", "g": "G", "r": "R", "i": "I", "z": "Z"
+    }
+
+    @staticmethod
+    def get_photbands(photbands, default=None):
+        if default is None:
+            default = ["u", "g", "r", "i", "z"]
+        if photbands is None:
+            photbands = [s.lower() for s in default if s]
+        else:
+            photbands = [s.lower() for s in photbands if s]
+
+        return photbands
+
+    def load_filetype(self, ftype):
+        return np.load(self.get_filepath(ftype))
+
+    def load(self, include_rel_mags=False, cosmo=None):
+        """
+        Load catalog of Stripe 82 data. Masses and SFRs
+        are not h-scaled (units of Msun and yr), but
+        distances and absolute magnitudes are h-scaled
+        (units of Mpc/h and +5logh). Photometry taken
+        from SDSS.
+
+        Parameters
+        ----------
+        include_rel_mags : bool
+            If true, include columns with apparent magnitudes in each
+            photband. Columns use the same name as absolute magnitudes
+            but in lower case (e.g., 'm_g')
+        cosmo : astropy.cosmology.Cosmology
+            Cosmology object used to calculate distances and specify
+            a little h value (default = Bolshoi-Planck cosmology)
+
+        Returns
+        -------
+        catalog : DataFrame
+            Contains all observational data for each SDSS galaxy
+            from the Stripe 82 MGC
+        """
+
+        # Define a little h correction factor. Muzzin used h = 0.7
+        # Dependence on Luminosity or Stellar Mass = h^-2
+        # Dependence on Time or Distance = h^-1
+        # Dependence on SFR = Mass/Time = h^-1
+        # Dependence on sSFR = 1/Time = h^1
+        if cosmo is None:
+            cosmo = bplcosmo
+        h_corr = cosmo.h / 0.7
+
+        if not self.are_all_files_stored():
+            raise ValueError("Can't load until all files are stored")
+
+        data = self.load_filetype("all")
+
+        z = data["ZBEST"]
+        rest_ugrizyhjk = data["ABSMAG_BEST"]
+        logm = data["MASS_IR_BEST"] - 2 * np.log10(h_corr)
+
+        # not actually sSFR, just a color which correlates with M/L ratio
+        logssfr_uv = rest_ugrizyhjk[:, 1] - rest_ugrizyhjk[:, 4]
+        sfr_uv = 10 ** (logssfr_uv + logm)
+
+        d_com = cosmo.comoving_distance(z).value * cosmo.h
+        d_lum = cosmo.luminosity_distance(z).value * cosmo.h
+
+        relative_mags = {
+            key: data[f"MODELMAG_{val}"]
+            for (key, val) in self.PHOTBANDS.items()
+        }
+        distmod = 5 * np.log10(d_lum * 1e5)
+        absolute_mags = {
+            key: val - distmod
+            for (key, val) in relative_mags.items()
+        }
+
+        rel_keys, rel_vals = relative_mags.keys(), relative_mags.values()
+        rel_keys = ["m_" + key for key in rel_keys]
+        rel_vals = rel_vals if include_rel_mags else []
+        rel_keys = rel_keys if include_rel_mags else []
+
+        abs_keys, abs_vals = absolute_mags.keys(), absolute_mags.values()
+        abs_keys = ["M_" + key for key in abs_keys]
+
+        names = ["id", "ra", "dec", "redshift", "logm",
+                 "d_com", "d_lum", *rel_keys,
+                 *abs_keys, "sfr_uv"]
+        cols = [data["OBJID"], data["RA"], data["DEC"], z, logm,
+                d_com, d_lum, *rel_vals,
+                *abs_vals, sfr_uv]
+
+        # Trim only a few of the furthest outliers
+        selection = (-4 < logssfr_uv) & (logssfr_uv < 10)
+        data = dict(zip(names, (col[selection] for col in cols)))
+        data = pd.DataFrame(data)
 
         return data
 
@@ -1551,3 +1697,9 @@ class UVISTAWgetter:
                                   overwrite=overwrite)
         self.decompress_tar(self.spec_tarf)
         SeanSpectraConfig().auto_add()
+
+
+available_calibrations = {
+    "uvista": UVISTAConfig,
+    "sdss": SDSSConfig,
+}

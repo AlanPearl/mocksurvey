@@ -14,7 +14,7 @@ from .. import mocksurvey as ms
 from . import kcorrect
 
 
-def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
+def convert_ascii_to_npy_and_json(asciifile, calibration, outfilebase=None,
                                   remove_ascii_file=False,
                                   obs_mass_limit=8e8, true_mass_limit=0,
                                   photbands=None, cosmo=None, nomags=False):
@@ -22,9 +22,9 @@ def convert_ascii_to_npy_and_json(asciifile, outfilebase=None,
         outfilebase = ".".join(asciifile.split(".")[:-1])
 
     ascii_data = load_ascii_data(asciifile)
-    data = lightcone_from_ascii(ascii_data, photbands=photbands,
+    data = lightcone_from_ascii(ascii_data, calibration, photbands=photbands,
                                 cosmo=cosmo, nomags=nomags)
-    metadict = metadict_from_ascii(asciifile, photbands=photbands,
+    metadict = metadict_from_ascii(asciifile, calibration, photbands=photbands,
                                    obs_mass_limit=obs_mass_limit,
                                    true_mass_limit=true_mass_limit,
                                    nomags=nomags)
@@ -62,7 +62,8 @@ def load_ascii_data(filename, obs_mass_limit=8e8, true_mass_limit=0):
     return reader.read_ascii()
 
 
-def lightcone_from_ascii(ascii_data, photbands=None, cosmo=None, nomags=False):
+def lightcone_from_ascii(ascii_data, calibration, photbands=None,
+                         cosmo=None, nomags=False):
     """
     Takes the ascii output given by UniverseMachine's `lightcone` code,
     and returns it as a numpy structured array, removing entries with
@@ -78,7 +79,6 @@ def lightcone_from_ascii(ascii_data, photbands=None, cosmo=None, nomags=False):
     """
     if cosmo is None:
         cosmo = ms.bplcosmo
-    photbands = get_photbands(photbands)
 
     # Limit RA to the range [-180,180) (column = "ra")
     ascii_data["ra"] = (ascii_data["ra"] + 180) % 360 - 180
@@ -97,7 +97,7 @@ def lightcone_from_ascii(ascii_data, photbands=None, cosmo=None, nomags=False):
     distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
 
     # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
-    uvdat = ummags.UVData(photbands=photbands)
+    uvdat = ummags.UVData(calibration, photbands=photbands)
     umdat = ummags.UMData(ascii_data, uvdat=uvdat)
     if nomags:
         sfr_uv = np.full_like(dlum, np.nan)
@@ -131,9 +131,11 @@ def lightcone_from_ascii(ascii_data, photbands=None, cosmo=None, nomags=False):
     return final_lightcone_array
 
 
-def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
+def metadict_from_ascii(filename, calibration, photbands=None, obs_mass_limit=8e8,
                         true_mass_limit=0, nomags=False):
-    photbands = get_photbands(photbands)
+    data_config = ms.available_calibrations[calibration]()
+    photbands = data_config.get_photbands(photbands)
+    dataname = calibration.upper()
 
     with open(filename) as f:
         [f.readline() for _ in range(1)]
@@ -162,11 +164,11 @@ def metadict_from_ascii(filename, photbands=None, obs_mass_limit=8e8,
 # vx, vy, vz - Velocity in km/s
 # ra,dec - celestial coords in degrees: range [-180,180) and [-90,90]
 # redshift[_cosmo] - distorted [and cosmological] redshift
-# m_{{u,b,v,g,r,i,z,y,j,ch1,ch2}} - app. magnitudes fit to UltraVISTA photometry
+# m_{{u,b,v,g,r,i,z,y,j,ch1,ch2}} - app. magnitudes calibrated to {dataname}
 # obs_sm - "observed" stellar mass from UniverseMachine in Msun
 # obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
 # true_{{sm,sfr}} - same, but UniverseMachine "truth" (not recommended to use)
-# sfr_uv - ultraviolet SFR (abundance-matched to UltraVISTA) in Msun/yr
+# sfr_uv - ultraviolet SFR (abundance-matched to {dataname})
 # obs_uv - AB absolute magnitude at 1500 Angstroms (unreliable for z < 4)
 # distmod[_cosmo] - distorted [and cosmological] dist. modulus = m - M + 5logh
 # Host halo information:
@@ -246,16 +248,16 @@ def metadict_with_spec(meta, ngal):
     return dict(Ngal=ngal, Nwave=nwave, header_spec=header_spec, **meta)
 
 
-def get_photbands(photbands, default=None):
-    if default is None:
-        default = ["u", "b", "v", "g", "r", "i", "z",
-                   "y", "j", "h", "k", "ch1", "ch2"]
-    if photbands is None:
-        photbands = [s.lower() for s in default if s]
-    else:
-        photbands = [s.lower() for s in photbands if s]
-
-    return photbands
+# def get_photbands(photbands, default=None):
+#     if default is None:
+#         default = ["u", "b", "v", "g", "r", "i", "z",
+#                    "y", "j", "h", "k", "ch1", "ch2"]
+#     if photbands is None:
+#         photbands = [s.lower() for s in default if s]
+#     else:
+#         photbands = [s.lower() for s in photbands if s]
+#
+#     return photbands
 
 
 def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz, nwin=501):

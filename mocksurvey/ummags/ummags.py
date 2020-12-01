@@ -13,7 +13,7 @@ from .. import mocksurvey as ms
 
 def lightcone(z_low, z_high, x_arcmin, y_arcmin,
               executable=None, umcfg=None, samples=1,
-              photbands=None, nomags=False,
+              calibration="uvista", photbands=None, nomags=False,
               obs_mass_limit=8e8, true_mass_limit=0,
               outfilepath=None, outfilebase=None, id_tag=None,
               do_collision_test=False, ra=0.,
@@ -59,7 +59,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     # Convert the enormous ascii file into a binary table + meta data
     for filename in moved_files:
         util.convert_ascii_to_npy_and_json(
-            filename, nomags=nomags,
+            filename, calibration, nomags=nomags,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
 
@@ -156,6 +156,7 @@ def lightcone_spectra(input_name: str = ".",
                           str, int, Sequence[int]] = "all",
                       make_specmap: bool = False,
                       best_of: int = 6,
+                      calibration="uvista",
                       photbands: Sequence[str] = None):
     """
     Take an input lightcone and perform a selection and optionally break it
@@ -175,6 +176,9 @@ def lightcone_spectra(input_name: str = ".",
     best_of : int (default = 6)
         Number of nearest neighbors to match in mass/redshift/sSFR
         space prior to choosing the nearest color neighbor
+    calibration : str
+        "uvista" or "sdss" or custom name of the dataset being used
+        to calibrate the photometry in UniverseMachine
     photbands : list[str] (default = ['g', 'r', 'y', 'j'])
         Photometric bands used for nearest-neighbor color matching
         of the nearest `best_of` neighbors
@@ -183,7 +187,8 @@ def lightcone_spectra(input_name: str = ".",
     -------
     None (files are written)
     """
-    photbands = util.get_photbands(photbands, "gryj")
+    if photbands is None:
+        photbands = list("gryj")
     if isinstance(input_name, ms.LightConeConfig):
         config = input_name
     else:
@@ -215,7 +220,8 @@ def lightcone_spectra(input_name: str = ".",
         if make_specmap:
             meta = util.metadict_with_spec(meta, ngal)
 
-        nfinder = NeighborSeanSpecFinder(cat, photbands=photbands)
+        nfinder = NeighborSeanSpecFinder(cat, photbands=photbands,
+                                         calibration=calibration)
         nearest = nfinder.find_nearest_specid(
             num_nearest=best_of, bestcolor=True)
         propcat = nfinder.specprops(nearest, cosmo=ms.bplcosmo,
@@ -231,8 +237,10 @@ def lightcone_spectra(input_name: str = ".",
 
 
 class UVData:
-    def __init__(self, photbands=None):
-        self.photbands = util.get_photbands(photbands)
+    def __init__(self, calibration, photbands=None):
+        self.calibration = calibration
+        self.photbands = ms.available_calibrations[
+            calibration].get_photbands(photbands)
         self.names = ["M_" + key for key in self.photbands]
 
         # Load UltraVISTA columns: mass, sSFR_UV, redshift, mass-to-light
@@ -244,7 +252,8 @@ class UVData:
         return self.logm[:, None] + self.abs_mag.values / 2.5
 
     def load_uvista(self):
-        uvista_cat = ms.UVISTAConfig(photbands=self.photbands).load()
+        uvista_cat = ms.available_calibrations[self.calibration](
+            photbands=self.photbands).load()
 
         z = uvista_cat["redshift"].values
         logm = uvista_cat["logm"].values
@@ -253,8 +262,6 @@ class UVData:
         abs_mag = pd.DataFrame({
             band: uvista_cat[name].values
             for name, band in zip(self.names, self.photbands)})
-        # m2l = np.array([logm + uvista_cat[name].values / 2.5
-        #                         for name in self.names]).T
         uvista_id = uvista_cat["id"].values
 
         return z, logm, logssfr_uv, abs_mag, uvista_id
@@ -285,7 +292,8 @@ class UMData:
         self.nwin = nwin
         self.dz = dz
         if self.uvdat is None:
-            self.uvdat = UVData()
+            print("Warning: Defaulting to UltraVISTA calibration")
+            self.uvdat = UVData("uvista")
 
         # Extract UniverseMachine columns: mass, sSFR, and redshift
         self.logm = np.log10(umhalos["obs_sm"])
@@ -435,10 +443,9 @@ class SeanSpecStacker:
 
 
 class NeighborSeanSpecFinder:
-    def __init__(self, umhalos, photbands=None, snapshot_redshift=None,
-                 nwin=501, dz=0.05, seed=None):
-        photbands = util.get_photbands(photbands, "gryj")
-        self.uvdat = UVData(photbands=photbands)
+    def __init__(self, umhalos, photbands=None, calibration="uvista",
+                 snapshot_redshift=None, nwin=501, dz=0.05, seed=None):
+        self.uvdat = UVData(calibration, photbands=photbands)
         self.umdat = UMData(umhalos, uvdat=self.uvdat,
                             snapshot_redshift=snapshot_redshift,
                             nwin=nwin, dz=dz, seed=seed)

@@ -31,6 +31,11 @@ class LightCone:
 
         # Option to change which photometric bands to return
         parser.add_argument(
+            "--calibration", type=str, metavar="NAME", default="uvista",
+            help="String identifier for the dataset with which to "
+                 "calibrate photometry into UniverseMachine"
+        )
+        parser.add_argument(
             "--photbands", type=str, metavar="STRING",
             default="u,b,v,g,r,i,z,y,j,h,k,ch1,ch2",
             help="String of photometric bands to calculate apparent "
@@ -93,7 +98,7 @@ class LightCone:
         ms.ummags.lightcone(
             a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
             executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
-            photbands=a.photbands, nomags=a.nomags,
+            calibration=a.calibration, photbands=a.photbands, nomags=a.nomags,
             obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
             outfilepath=a.outfilepath, id_tag=a.NAME,
             do_collision_test=a.do_collision_test, ra=a.ra_center,
@@ -235,6 +240,10 @@ class SetDataPath:
         pathlib.Path(path).mkdir(exist_ok=True)
         ms.UMConfig(path).auto_add()
 
+        path = os.path.join(a.DATAPATH, "SDSS")
+        pathlib.Path(path).mkdir(exist_ok=True)
+        ms.UVISTAConfig(path).auto_add()
+
         path = os.path.join(a.DATAPATH, "UVISTA")
         pathlib.Path(path).mkdir(exist_ok=True)
         ms.UVISTAConfig(path).auto_add()
@@ -274,9 +283,31 @@ class DownloadUM:
             redshift, overwrite=a.overwrite)
 
 
+# TODO
+# class DownloadSDSS:
+#     desc = "Downloads all data required by " \
+#            "mocksurvey for calibration to SDSS"
+#
+#     def __init__(self, parser):
+#         self.parser = parser
+#         parser.description = self.desc
+#         parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
+#
+#         # Options
+#         # parser.add_argument("--verbose", "-v", action="store_true")
+#         parser.add_argument("--overwrite", "-o", action="store_true")
+#
+#     def __call__(self):
+#         a = self.parser.parse_args()
+#
+#         # TODO: Write SDSSWgetter analogously to UVISTAWgetter
+#         wgetter = ms.SDSSWgetter()
+#         wgetter.download_sdss(overwrite=a.overwrite)
+
+
 class DownloadUVISTA:
     desc = "Downloads all data required by " \
-           "mocksurvey for fitting to UltraVISTA"
+           "mocksurvey for calibration to UltraVISTA"
 
     def __init__(self, parser):
         self.parser = parser
@@ -325,6 +356,7 @@ class Config:  # TODO: write list-all-configs delete-directory command
 
         self.datasets = {
             "UM": ms.UMConfig,
+            "SDSS": ms.SDSSConfig,
             "UVISTA": ms.UVISTAConfig,
             "SeanSpectra": ms.SeanSpectraConfig,
             "LightCone": ms.LightConeConfig,

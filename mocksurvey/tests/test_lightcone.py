@@ -21,7 +21,7 @@ class TestLightCone(unittest.TestCase):
 
         # Might want to suppress stdout here as well
         ms.ummags.lightcone(0.8, 1.0, 5, 5, rseed=1234567,
-                            outfilepath=path,
+                            outfilepath=path, calibration="uvista",
                             outfilebase="test_lightcone_tmp",
                             keep_ascii_files=True)
 
@@ -35,11 +35,12 @@ class TestLightCone(unittest.TestCase):
         os.remove(os.path.join(path, "test_lightcone_tmp_0.npy"))
         os.remove(os.path.join(path, "test_lightcone_tmp_0.json"))
 
-        assert np.all(data == test)
-        assert j == j_test
+        assert np.all(data == test), "generated lightcone is not as expected"
+        assert j == j_test, "json not as expected"
         for key in n_test.dtype.names:
             if key.startswith("m_"):
-                assert n_test[key].min() < n[key].mean() < n_test[key].max()
+                assert n_test[key].min() < n[key].mean() < n_test[key].max(), \
+                    f"{key} column not as expected"
 
 
 if __name__ == "__main__":
