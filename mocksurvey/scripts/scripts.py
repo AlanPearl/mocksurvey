@@ -37,10 +37,9 @@ class LightCone:
         )
         parser.add_argument(
             "--photbands", type=str, metavar="STRING",
-            default="u,b,v,g,r,i,z,y,j,h,k,ch1,ch2",
-            help="String of photometric bands to calculate apparent "
-                 "magnitudes by abundance-matching to UltraVISTA. "
-                 "Use all available bands by default")
+            default="all available",
+            help="Comma-separated bands to calculate apparent "
+                 "magnitudes by abundance-matching to UltraVISTA.")
         parser.add_argument(
                 "--nomags", action="store_true",
                 help="Don't calculate sfr_uv or absolute magnitudes"
@@ -95,6 +94,11 @@ class LightCone:
         if "," in a.photbands:
             a.photbands = a.photbands.split(",")
             a.photbands = [x for s in a.photbands if (x := s.strip())]
+        elif a.photbands == "all available":
+            a.photbands = None
+        else:
+            raise ValueError("--photbands must receive a comma-separated "
+                             "list of bands (e.g., 'g,r,i,z,y,h,j,k,ch1,ch2')")
         ms.ummags.lightcone(
             a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
             executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
