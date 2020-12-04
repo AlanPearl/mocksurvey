@@ -1291,7 +1291,7 @@ class SDSSConfig(BaseDataConfig):
         logm = data["MASS_IR_BEST"] - 2 * np.log10(h_corr)
 
         # not actually sSFR, just a color which correlates with M/L ratio
-        logssfr_uv = rest_ugrizyhjk[:, 1] - rest_ugrizyhjk[:, 4]
+        logssfr_uv = rest_ugrizyhjk[:, 4] - rest_ugrizyhjk[:, 1]
         sfr_uv = 10 ** (logssfr_uv + logm)
 
         d_com = cosmo.comoving_distance(z).value * cosmo.h
