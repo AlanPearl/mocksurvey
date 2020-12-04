@@ -175,7 +175,8 @@ class RealizationLoader:
 class LightConeSelector:
     def __init__(self, z_low, z_high, sqdeg=None, fieldshape="sq",
                  sample_fraction=1., min_dict=None, max_dict=None,
-                 cosmo=None, center_radec=None, realspace=False, deg=True):
+                 cosmo=None, center_radec=None, realspace=False, deg=True,
+                 custom_selector=None):
         if cosmo is None:
             cosmo = bplcosmo
         assert isinstance(fieldshape, str)
@@ -210,12 +211,16 @@ class LightConeSelector:
         self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=fieldshape,
                                   center_rdz=center_radec, delta_z=dz)
         self.field_selector = self.field.field_selector
+        self.custom_selector = custom_selector
 
     def __call__(self, lightcone, seed=None):
         conditions = [self.field_selection(lightcone),
                       self.redshift_selection(lightcone),
                       self.rand_selection(lightcone, seed=seed),
                       self.dict_selection(lightcone)]
+        if self.custom_selector is not None:
+            conditions.append(self.custom_selector(lightcone))
+
         return np.all(conditions, axis=0)
 
     def __repr__(self):
