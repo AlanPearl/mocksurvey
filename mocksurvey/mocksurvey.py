@@ -1321,14 +1321,14 @@ class SDSSConfig(BaseDataConfig):
         abs_keys = ["M_" + key for key in abs_keys]
 
         names = ["id", "ra", "dec", "redshift", "logm",
-                 "d_com", "d_lum", *rel_keys,
-                 *abs_keys, "sfr_uv"]
+                 "d_com", "d_lum", *rel_keys, *abs_keys, "sfr_uv"]
         cols = [data["OBJID"], data["RA"], data["DEC"], z, logm,
-                d_com, d_lum, *rel_vals,
-                *abs_vals, sfr_uv]
+                d_com, d_lum, *rel_vals, *abs_vals, sfr_uv]
 
         # Trim only a few of the furthest outliers
-        selection = (-4 < logssfr_uv) & (logssfr_uv < 10)
+        selection = (-4 < logssfr_uv) & (logssfr_uv < 10) & (logm > 0)
+        for rel_mag in relative_mags.values():
+            selection &= rel_mag > -30  # (brighter than the Sun)
         data = dict(zip(names, (col[selection] for col in cols)))
         data = pd.DataFrame(data)
 
