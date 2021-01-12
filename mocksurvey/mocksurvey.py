@@ -25,9 +25,10 @@ from . import util
 # Local packages
 from .stats import cf
 from . import httools
-from . import ummags
 from . import filechunk
 from . import surveys
+# noinspection PyUnresolvedReferences
+from . import ummags, diffhod
 # Default cosmology (Bolshoi-Planck)
 from .httools.httools import bplcosmo
 
@@ -745,7 +746,7 @@ CALC_ICL = 1
         pathlib.Path(self.get_path("lightcones")).mkdir(exist_ok=True)
         names = LightConeConfig.available_lightcones()
         for name in names:
-            self.add_lightcone(name)
+            self.add_lightcone(str(name))
         self.save()
 
     def add_lightcone(self, name):
@@ -1409,6 +1410,7 @@ class SeanSpectraConfig(BaseConfig):
 
 
 class UMWgetter:
+    # TODO: These files were moved to Peter's Google Drive
     url = "http://behroozi.users.hpc.arizona.edu/UniverseMachine/DR1/SFR/"
     webpage = """[   ] sfr_catalog_0.055623.bin          01-Dec-2019 10:16  11K
     [   ] sfr_catalog_0.060123.bin          01-Dec-2019 10:16  126K
