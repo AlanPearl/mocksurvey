@@ -7,6 +7,8 @@ from contextlib import contextmanager
 from typing import Union, Iterable, Sized, Generator, Sequence
 
 import wget
+import requests
+import tqdm
 import numpy as np
 import scipy.special as spec
 from scipy.interpolate import interp1d
@@ -539,7 +541,7 @@ def distance2redshift(dist, cosmo, vr=None, zprec=1e-3, h_scaled=True):
     return redshift
 
 
-def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
+def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3, deg=False):
     """
     Convert position array `xyz` and velocity array `vel` (optional),
     each of shape (N,3), into ra/dec/redshift array, using the
@@ -547,6 +549,8 @@ def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
     :math:`\\hat{z} \\rightarrow  ({\\rm ra}=0,{\\rm dec}=0)`,
     :math:`\\hat{x} \\rightarrow ({\\rm ra}=\\frac{\\pi}{2},{\\rm dec}=0)`,
     :math:`\\hat{y} \\rightarrow ({\\rm ra}=0,{\\rm dec}=\\frac{\\pi}{2})`
+
+    If cosmo is None, redshift is replaced with comoving distance (same units as xyz)
     """
     if cosmo is not None:
         # remove h scaling from position so we can use the cosmo object
@@ -574,9 +578,13 @@ def ra_dec_z(xyz, vel=None, cosmo=None, zprec=1e-3):
     # theta = np.arctan2(r_cyl, xyz[:, 2])
     # phi = np.arctan2(xyz[:, 1], xyz[:, 0])
 
-    # make ra,dec = 0,0 in the z direction
+    # Put ra,dec = 0,0 on the z-axis
     dec = np.arctan2(xyz[:, 1], r_cyl_eq)
     ra = np.arctan2(xyz[:, 0], xyz[:, 2])
+
+    if deg:
+        ra *= 180 / np.pi
+        dec *= 180 / np.pi
 
     return np.vstack([ra, dec, redshift]).T.astype(np.float32)
 
@@ -638,8 +646,8 @@ def rand_rdz(N, ralim, declim, zlim, cosmo=None, seed=None):
 
 def volume(sqdeg, zlim, cosmo=None):
     """
-    Returns the comoving volume of a chunk of a sphere of given limits in
-    ra, dec, and z. z is interpreted as distance unless cosmo is given
+    Returns the comoving volume of a chunk of a sphere in units of [Mpc/h]^3.
+    z is interpreted as distance [Mpc/h] unless cosmo is given
     """
     if cosmo is not None:
         zlim = comoving_disth(zlim, cosmo)
@@ -654,8 +662,8 @@ def volume_rdz(ralim, declim, zlim, cosmo=None):
     """
     if cosmo is not None:
         zlim = comoving_disth(zlim, cosmo)
-    return 2. / 3. * (ralim[1] - ralim[0]) * np.sin((declim[1] - declim[0]) / 2.) \
-        * (zlim[1] ** 3 - zlim[0] ** 3)
+    omega = 2. * (ralim[1] - ralim[0]) * np.sin((declim[1] - declim[0]) / 2.)
+    return omega/3. * (zlim[1] ** 3 - zlim[0] ** 3)
 
 
 def rdz_distance(rdz, rdz_prime, cosmo=None):
@@ -992,6 +1000,75 @@ def wget_download(file_url, outfile, overwrite=False):
     print()
     if overwrite:
         shutil.move(actual, outfile)
+
+
+def download_file_from_google_drive(fileid, destination, progress=True,
+                                    overwrite=True, size=None):
+    """
+    Downloads a shared file from Google Drive
+    (based on code by turdus-merula on stackoverflow)
+
+    Parameters
+    ----------
+    fileid : str
+        The ID of the Google Drive file. File must be shared to anyone
+        with link. The ID is the long random-looking string in the middle
+        of the link.
+    destination : str
+        Where to place the file and what to name it
+    progress : bool
+        If true (default), display progress bar during download
+    overwrite : bool
+        If true (default), overwrite the file if it already exists
+    size : int | None
+        Size of download in bytes. This helps the progress bar, since
+        the server doesn't always specify the size of the file
+
+    Returns
+    -------
+        None
+
+    """
+    if not overwrite and os.path.isfile(destination):
+        return
+    if progress:
+        print(f"Downloading file to {destination}...")
+    url = "https://docs.google.com/uc?export=download"
+
+    with requests.Session() as session:
+        response = session.get(url, params={"id": fileid}, stream=True)
+        token = _get_confirm_token(response)
+
+        if token:
+            params = {"id": fileid, "confirm": token}
+            response = session.get(url, params=params, stream=True)
+
+    _save_response_content(response, destination, progress=progress, size=size)
+
+
+def _get_confirm_token(response):
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            return value
+
+    return None
+
+
+def _save_response_content(response, destination, progress=True, size=None):
+    chunk_size = 32768
+
+    if size is None:
+        size_in_bytes = int(response.headers.get('content-length', 0))
+    else:
+        size_in_bytes = size
+    prog_bar = tqdm.tqdm(total=size_in_bytes, unit='iB',
+                         unit_scale=True, disable=not progress)
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(chunk_size):
+            if chunk:  # filter out keep-alive new chunks
+                prog_bar.update(len(chunk))
+                f.write(chunk)
+    prog_bar.close()
 
 
 def config_file_directory():

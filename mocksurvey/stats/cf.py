@@ -1,13 +1,18 @@
+import warnings
+
+import numpy as np
+import halotools.mock_observables as htmo
+
+from mocksurvey import util
+
 try:
     corrfunc_works = True
     import Corrfunc.theory
-    from Corrfunc.utils import convert_rp_pi_counts_to_wp#, convert_3d_counts_to_cf
+    from Corrfunc.utils import convert_rp_pi_counts_to_wp
 except ImportError:
     corrfunc_works = False
-    import halotools.mock_observables as mockobs
-import numpy as np
-import warnings
-from mocksurvey import util
+    Corrfunc = None
+    convert_rp_pi_counts_to_wp = None
 
 
 class PairCounts:
@@ -42,39 +47,83 @@ class PairCounts:
 # Count pairs in 3D r bins
 # ========================
 def paircount_r(data, rands, rbins, nthreads=1, pair_counter_func="DD",
-                kwargs=None, pc_kwargs=None, precomputed=(None, None, None)):
+                kwargs=None, pc_kwargs=None, precomputed=(None, None, None),
+                is_celestial_data=False):
+    """
+    Parameters
+    ----------
+    data : np.ndarray
+    rands : np.ndarray
+    rbins : np.ndarray
+    nthreads : int
+    pair_counter_func : str | callable
+    kwargs : dict
+    pc_kwargs : dict
+    precomputed : tuple[np.ndarray | None]
+        Precomputed PairCount counts of DD, DR, and RR. Counts
+        that have not been precomputed must be set to None
+    is_celestial_data : bool
+        If false (defalt), data input is cartesian (x,y,z). If true,
+        data input is interpreted as (ra,dec,dist)
+
+    Returns
+    -------
+    paircounts : PairCounts
+        Object that stores the number of DD, DR, and RR pair counts
+        at each bin specified/made up by Corrfunc
+
+    """
     if kwargs is None:
         kwargs = {}
     if pc_kwargs is None:
         pc_kwargs = {}
-    x,y,z = data.T
-    xr,yr,zr = rands.T
-    
+    x, y, z = data.T
+    xr, yr, zr = rands.T
+
     if callable(pair_counter_func):
         pass
     elif pair_counter_func.lower() == "dd":
         pair_counter_func = Corrfunc.theory.DD
     else:
         raise ValueError("pair_counter_func must be callable")
-    
+
     DD_counts, DR_counts, RR_counts = precomputed
-    if len(data)<2:
+    if len(data) < 2:
         DD_counts = [np.nan]
-    if len(data)<2 or len(rands)<2:
+    if len(data) < 2 or len(rands) < 2:
         DR_counts = [np.nan]
-    if len(rands)<2:
+    if len(rands) < 2:
         RR_counts = [np.nan]
 
+    if is_celestial_data:
+        x = x % 360
+        xr = xr % 360
+        coordnames = ["RA", "DEC", "CZ"]
+        kwargs.setdefault("cosmology", 2)
+        kwargs.setdefault("is_comoving_dist", True)
+    else:
+        coordnames = ["X", "Y", "Z"]
+        kwargs.setdefault("periodic", False)
+
     if DD_counts is None:
-        DD_counts = pair_counter_func(autocorr=True, nthreads=nthreads, **kwargs,
-                binfile=rbins, X1=x, Y1=y, Z1=z, periodic=False)["npairs"]
+        names = [x + "1" for x in coordnames]
+        coords = dict(zip(names, [x, y, z]))
+        DD_counts = pair_counter_func(
+            autocorr=True, nthreads=nthreads, binfile=rbins,
+            **coords, **kwargs)["npairs"]
     if DR_counts is None:
-        DR_counts = pair_counter_func(autocorr=False, nthreads=nthreads, **kwargs,
-                binfile=rbins, X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)["npairs"]
+        names = [x + "1" for x in coordnames] + [x + "2" for x in coordnames]
+        coords = dict(zip(names, [x, y, z, xr, yr, zr]))
+        DR_counts = pair_counter_func(
+            autocorr=False, nthreads=nthreads, binfile=rbins,
+            **coords, **kwargs)["npairs"]
     if RR_counts is None:
-        RR_counts = pair_counter_func(autocorr=True, nthreads=nthreads, **kwargs,
-                binfile=rbins, X1=xr, Y1=yr, Z1=zr, periodic=False)["npairs"]
-    
+        names = [x + "1" for x in coordnames]
+        coords = dict(zip(names, [xr, yr, zr]))
+        RR_counts = pair_counter_func(
+            autocorr=True, nthreads=nthreads, binfile=rbins,
+            **coords, **kwargs)["npairs"]
+
     args = [data.shape[0], rands.shape[0]]
     args += [DD_counts, DR_counts, RR_counts]
     args += [len(rbins)-1]
@@ -83,16 +132,25 @@ def paircount_r(data, rands, rbins, nthreads=1, pair_counter_func="DD",
 
 # Count pairs in rp and pi bins
 # =============================
-def paircount_rp_pi(data, rands, rpbins, pimax=50.0, nthreads=1, precomputed=(None,None,None)):
-    answer = paircount_r(data, rands, rpbins, nthreads, Corrfunc.theory.DDrppi,
-                 {"pimax":pimax}, {"pimax":pimax}, precomputed)
+def paircount_rp_pi(data, rands, rpbins, pimax=50.0, nthreads=1,
+                    precomputed=(None, None, None), is_celestial_data=False):
+    if is_celestial_data:
+        func = Corrfunc.mocks.DDrppi_mocks
+    else:
+        func = Corrfunc.theory.DDrppi
+    answer = paircount_r(data, rands, rpbins, nthreads, func,
+                         {"pimax": pimax}, {"pimax": pimax}, precomputed,
+                         is_celestial_data=is_celestial_data)
 
     return answer
 
+
 def counts_to_wp(pc):
     # Only estimator available: Landy & Szalay (1993)
-    return convert_rp_pi_counts_to_wp(pc.Ndata, pc.Ndata, pc.Nrand, pc.Nrand,
-                    pc.DD, pc.DR, pc.DR, pc.RR, pc.n_rpbins, pc.pimax)
+    return convert_rp_pi_counts_to_wp(
+        pc.Ndata, pc.Ndata, pc.Nrand, pc.Nrand,
+        pc.DD, pc.DR, pc.DR, pc.RR, pc.n_rpbins, pc.pimax)
+
 
 def counts_to_xi(pc):
     """
@@ -105,14 +163,16 @@ def counts_to_xi(pc):
     if not pc.pimax is None:
         Nrp = pc.n_rpbins
         Npi = len(xi)//Nrp
-        assert(len(xi)%Nrp == 0)
+        assert(len(xi) % Nrp == 0)
         xi = np.reshape(xi, (Nrp, Npi))
     return xi
+
 
 def RRrppi_periodic(N, boxsize, rpbins, pibins):
     drp2 = np.diff(rpbins**2)
     dpi = np.diff(pibins)
-    return N**2 / boxsize**3 * 2*np.pi * drp2[:,None] * dpi[None,:]
+    return N**2 / boxsize**3 * 2*np.pi * drp2[:, None] * dpi[None, :]
+
 
 # Returns the bias as a function of rp (rpbins must be given)
 # ===========================================================
@@ -162,7 +222,7 @@ def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='L
     x,y,z = data.T * array_factor
     
     if not corrfunc_works:
-        return mockobs.rp_pi_tpcf(data, rpbins, pibins, randoms=rands, 
+        return htmo.rp_pi_tpcf(data, rpbins, pibins, randoms=rands,
                                   num_threads=nthreads, estimator=estimator)
 
     if rands is None:
@@ -205,6 +265,7 @@ def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='L
         else:
             raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
 
+
 # Returns the 3D correlation function xi(r) using Corrfunc
 # ========================================================
 def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay'):
@@ -230,7 +291,7 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
         return np.nan
     
     if not corrfunc_works:
-        return mockobs.tpcf(data, rbins, randoms=rands, estimator=estimator, num_threads=nthreads)
+        return htmo.tpcf(data, rbins, randoms=rands, estimator=estimator, num_threads=nthreads)
     
     with warnings.catch_warnings():
       with util.suppress_stdout():
@@ -255,8 +316,9 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
     else:
         raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
 
+
 def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
-          use_halotools_version=False):
+          is_celestial_data=False, use_halotools_version=False):
     """
     wp_rp(data, rands, rpbins, pimax, boxsize=None, nthreads=1)
     
@@ -264,11 +326,12 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
     
     Parameters
     ----------
-    data : array_like, with shape (N,3)
-        Array containing columns x, y, z of data to be measured. Units should be
+    data : np.ndarray
+        Array of shape (N,3) containing columns x, y, z of data positions [Mpc/h]
         
-    rands : array_like, with shape (Nrand,3)
-        Array containing columns x, y, z of random data uniformly selected in the same space as `data`.
+    rands : np.ndarray | None
+        Array of shape (N,3) containing columns x, y, z of uniformly distributed
+        random positions [Mpc/h]. If None, you must pass boxsize of the periodic box
     
     rpbins : array_like, with shape (Nbins+1,)
         Array containing the edges of bins of separation ``rp = sqrt(dx^2 + dy^2)``. Must be increasing in value.
@@ -284,6 +347,9 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
 
     use_halotools_version : bool (default = False)
         Set to True if you don't have Corrfunc installed
+
+    is_celestial_data : bool (default = False)
+        Set to True if passing data/rands as (ra, dec, dist) arrays. Ignored if rands is None.
     
     Returns
     -------
@@ -297,18 +363,17 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
         if util.is_arraylike(boxsize):
             raise ValueError(f"`boxsize` must be a scalar, not {boxsize.__class__}")
         if rpbins[-1]*3 > boxsize:
-            raise ValueError(f"cube side length must be at least 3x the largest rp bin, but"
-                             "`boxsize={boxsize}` and `3*rpbins[-1]={3*rpbins[-1]}`")
+            raise ValueError(f"boxsize must be at least 3x the largest rp bin. "
+                             f"boxsize={boxsize}, but 3*rpbins[-1]={3*rpbins[-1]}")
         if np.any((data > boxsize) | (data < 0)):
             data = data%boxsize
         
         if use_halotools_version or not corrfunc_works:
-            import halotools.mock_observables as mockobs
             if rands is None:
-                return mockobs.wp(data, rpbins, pimax, period=boxsize,
+                return htmo.wp(data, rpbins, pimax, period=boxsize,
                         estimator="Landy-Szalay", num_threads=nthreads)
             else:
-                return mockobs.wp(data, rpbins, pimax, randoms=rands,
+                return htmo.wp(data, rpbins, pimax, randoms=rands,
                         estimator="Landy-Szalay", num_threads=nthreads)
         
         with warnings.catch_warnings():
@@ -316,36 +381,47 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
             warnings.simplefilter("ignore")
             return Corrfunc.theory.wp(boxsize, pimax, nthreads,
                                       rpbins, *data.T)["wp"]
+
+    if is_celestial_data and not corrfunc_works:
+        raise ImportError("Passing celestial coordinates requires the "
+                          "installation of Corrfunc")
+
     n_rpbins = len(rpbins) - 1
 
-    x,y,z = data.T
-    xr,yr,zr = rands.T
+    # x, y, z = data.T
+    # xr, yr, zr = rands.T
 
     N = len(data)
     Nran = len(rands)
-    if N==0 or Nran==0:
+    if N == 0 or Nran == 0:
         return np.array([np.nan]*n_rpbins)
     
     if not corrfunc_works:
-        import halotools.mock_observables as mockobs
-        return mockobs.wp(data, rpbins, pimax, randoms=rands, 
-                          estimator="Landy-Szalay", num_threads=nthreads)
+        return htmo.wp(data, rpbins, pimax, randoms=rands,
+                       estimator="Landy-Szalay", num_threads=nthreads)
     
-    with warnings.catch_warnings():
-      with util.suppress_stdout():
-        warnings.simplefilter("ignore")
-        
-        DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
-        DD = DD['npairs']
-    
-        DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)
-        DR = DR['npairs']
-    
-        RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
-        RR = RR['npairs']
+    # with warnings.catch_warnings():
+    #   with util.suppress_stdout():
+    #     warnings.simplefilter("ignore")
+    #
+    #     DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax,
+    #                                 binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
+    #     DD = DD['npairs']
+    #
+    #     DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax,
+    #                                 binfile=rpbins, X1=x, Y1=y, Z1=z, X2=xr, Y2=yr, Z2=zr, periodic=False)
+    #     DR = DR['npairs']
+    #
+    #     RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax,
+    #                                 binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
+    #     RR = RR['npairs']
 
-    wp = convert_rp_pi_counts_to_wp(N, N, Nran, Nran, DD, DR, DR, RR, n_rpbins, pimax)
+    pc = paircount_rp_pi(data, rands, rpbins, pimax, nthreads,
+                         is_celestial_data=is_celestial_data)
+    wp = counts_to_wp(pc)
+    # wp = convert_rp_pi_counts_to_wp(N, N, Nran, Nran, DD, DR, DR, RR, n_rpbins, pimax)
     return wp
+
 
 # Calculate any of the above three correlation functions, estimating errors via the block jackknife/bootstrap method
 # ==================================================================================================================
@@ -428,10 +504,7 @@ def block_jackknife(data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin
     
     # covar [rp_i, rp_j]
     covar = (N-1)/N * jackknife_bias * np.sum( (answer_l[:,:,None] - jackknife_mean[None,:,None]) * (answer_l[:,None,:] - jackknife_mean[None,None,:]), axis=0)
-    
-    
-    
-    
+
     return mean_answer, covar
 
 
@@ -476,6 +549,7 @@ def block_bootstrap(data, rands, data_to_bin=None, rands_to_bin=None, func='xi_r
     else:
         return func(data, rands, *args, **kwargs)
 
+
 # Helper functions for jackknife / bootstrapping
 # ==============================================
 def _blockbootstrap_subsample(data, rands, Nblock, ind_d, ind_r, nbootstrap, func, args, kwargs, plot_blocks, alpha, seed=None):
@@ -484,9 +558,8 @@ def _blockbootstrap_subsample(data, rands, Nblock, ind_d, ind_r, nbootstrap, fun
         raise NotImplementedError("bootstrapping is deprecated")
     for i in range(nbootstrap):
         # Choose blocks in resample
-        if not seed is None: np.random.seed(seed)
-        blocks_resample = np.random.choice(np.arange(Nblock), Nblock, replace=True)
-        if not seed is None: np.random.seed()
+        with util.temp_seed(seed):
+            blocks_resample = np.random.choice(np.arange(Nblock), Nblock, replace=True)
 
         # Determine indices of data within chosen blocks, including repeats
         if len(blocks_resample)*max([len(ind_d),len(ind_r)]) < 1e7:
@@ -538,7 +611,7 @@ def _blockbootstrap_subsample(data, rands, Nblock, ind_d, ind_r, nbootstrap, fun
     for result in results.T:
         assert(len(result.shape) == 1)
         N_success = np.sum(~np.isnan(result))
-        #print("Mean, std, std_err of:", result)
+        # print("Mean, std, std_err of:", result)
         result = result.copy()[result==result]
         # print('Number of unusable columns:', len(np.where(result!=result)[0]))
         if len(result) >= 1:
@@ -617,6 +690,7 @@ def _setupblockbins(rands, bins):
 
     return bins, nx, ny, nz
 
+
 def _assignblocks(data, rands, bins_info):
     if data is None or rands is None or len(data) == 0 or len(rands) == 0:
         raise ValueError('data_to_bin: %s \nrands_to_bin: %s' %(str(data),str(rands)))
@@ -632,6 +706,7 @@ def _assignblocks(data, rands, bins_info):
     ind_r[(0 > xind_r) | (xind_r >= nx) | (0 > yind_r) | (yind_r >= ny) | (0 > zind_r) | (zind_r >= nz)] = -1
 
     return ind_d, ind_r
+
 
 def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=False):
     if data is None or len(data) == 0 or (rands is not None and len(rands) == 0):
@@ -672,9 +747,8 @@ def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=
             # if nbins[2] < 3:
             #     lower[2] -= 100.
             #     upper[2] += 100.
-            
 
-            xbins,ybins,zbins = [np.linspace(lower[i], upper[i], nbins[i]+1) for i in range(3)]
+            xbins, ybins, zbins = [np.linspace(lower[i], upper[i], nbins[i]+1) for i in range(3)]
             xbins[0] = -np.inf; xbins[-1] = np.inf
             ybins[0] = -np.inf; ybins[-1] = np.inf
             zbins[0] = -np.inf; zbins[-1] = np.inf
@@ -686,8 +760,7 @@ def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=
             ind_i += i*nx*ny*nz
             
             ind[closest_ind] = ind_i
-            
-        
+
         ind_data_rands += ind,
     
     return ind_data_rands[0], ind_data_rands[1]

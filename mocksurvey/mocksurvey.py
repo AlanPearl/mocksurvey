@@ -1410,186 +1410,185 @@ class SeanSpectraConfig(BaseConfig):
 
 
 class UMWgetter:
-    # TODO: These files were moved to Peter's Google Drive
-    url = "http://behroozi.users.hpc.arizona.edu/UniverseMachine/DR1/SFR/"
-    webpage = """[   ] sfr_catalog_0.055623.bin          01-Dec-2019 10:16  11K
-    [   ] sfr_catalog_0.060123.bin          01-Dec-2019 10:16  126K
-    [   ] sfr_catalog_0.062373.bin          01-Dec-2019 10:16  296K
-    [   ] sfr_catalog_0.064623.bin          01-Dec-2019 10:16  632K
-    [   ] sfr_catalog_0.066873.bin          01-Dec-2019 10:16  1.2M
-    [   ] sfr_catalog_0.069123.bin          01-Dec-2019 10:16  2.2M
-    [   ] sfr_catalog_0.071373.bin          01-Dec-2019 10:16  3.7M
-    [   ] sfr_catalog_0.073623.bin          01-Dec-2019 10:16  6.1M
-    [   ] sfr_catalog_0.075873.bin          01-Dec-2019 10:16  9.4M
-    [   ] sfr_catalog_0.078123.bin          01-Dec-2019 10:16  14M
-    [   ] sfr_catalog_0.080373.bin          01-Dec-2019 10:16  20M
-    [   ] sfr_catalog_0.082623.bin          01-Dec-2019 10:16  27M
-    [   ] sfr_catalog_0.085998.bin          01-Dec-2019 10:16  42M
-    [   ] sfr_catalog_0.089373.bin          01-Dec-2019 10:16  62M
-    [   ] sfr_catalog_0.092748.bin          01-Dec-2019 10:16  88M
-    [   ] sfr_catalog_0.096123.bin          01-Dec-2019 10:16  120M
-    [   ] sfr_catalog_0.099498.bin          01-Dec-2019 10:16  159M
-    [   ] sfr_catalog_0.102873.bin          01-Dec-2019 10:16  203M
-    [   ] sfr_catalog_0.106248.bin          01-Dec-2019 10:16  253M
-    [   ] sfr_catalog_0.109623.bin          01-Dec-2019 10:16  308M
-    [   ] sfr_catalog_0.112998.bin          01-Dec-2019 10:16  368M
-    [   ] sfr_catalog_0.116373.bin          01-Dec-2019 10:16  432M
-    [   ] sfr_catalog_0.119748.bin          01-Dec-2019 10:16  498M
-    [   ] sfr_catalog_0.123123.bin          01-Dec-2019 10:17  565M
-    [   ] sfr_catalog_0.126498.bin          01-Dec-2019 10:17  634M
-    [   ] sfr_catalog_0.129873.bin          01-Dec-2019 10:17  705M
-    [   ] sfr_catalog_0.133248.bin          01-Dec-2019 10:17  777M
-    [   ] sfr_catalog_0.136623.bin          01-Dec-2019 10:17  850M
-    [   ] sfr_catalog_0.141685.bin          01-Dec-2019 10:17  957M
-    [   ] sfr_catalog_0.146748.bin          01-Dec-2019 10:18  1.0G
-    [   ] sfr_catalog_0.151810.bin          01-Dec-2019 10:18  1.1G
-    [   ] sfr_catalog_0.156873.bin          01-Dec-2019 10:18  1.3G
-    [   ] sfr_catalog_0.161935.bin          01-Dec-2019 10:18  1.4G
-    [   ] sfr_catalog_0.166998.bin          01-Dec-2019 10:19  1.5G
-    [   ] sfr_catalog_0.172060.bin          01-Dec-2019 10:19  1.5G
-    [   ] sfr_catalog_0.177123.bin          01-Dec-2019 10:20  1.6G
-    [   ] sfr_catalog_0.182185.bin          01-Dec-2019 10:20  1.7G
-    [   ] sfr_catalog_0.187248.bin          01-Dec-2019 10:20  1.8G
-    [   ] sfr_catalog_0.192310.bin          01-Dec-2019 10:21  1.8G
-    [   ] sfr_catalog_0.197373.bin          01-Dec-2019 10:21  1.9G
-    [   ] sfr_catalog_0.202435.bin          01-Dec-2019 10:22  1.9G
-    [   ] sfr_catalog_0.207498.bin          01-Dec-2019 10:22  2.0G
-    [   ] sfr_catalog_0.212560.bin          01-Dec-2019 10:23  2.0G
-    [   ] sfr_catalog_0.217623.bin          01-Dec-2019 10:23  2.1G
-    [   ] sfr_catalog_0.222685.bin          01-Dec-2019 10:24  2.1G
-    [   ] sfr_catalog_0.227748.bin          01-Dec-2019 10:24  2.1G
-    [   ] sfr_catalog_0.232810.bin          01-Dec-2019 10:24  2.1G
-    [   ] sfr_catalog_0.237873.bin          01-Dec-2019 10:25  2.2G
-    [   ] sfr_catalog_0.242935.bin          01-Dec-2019 10:25  2.2G
-    [   ] sfr_catalog_0.247998.bin          01-Dec-2019 10:26  2.2G
-    [   ] sfr_catalog_0.253060.bin          01-Dec-2019 10:27  2.2G
-    [   ] sfr_catalog_0.258123.bin          01-Dec-2019 10:27  2.2G
-    [   ] sfr_catalog_0.263185.bin          01-Dec-2019 10:28  2.2G
-    [   ] sfr_catalog_0.268248.bin          01-Dec-2019 10:28  2.3G
-    [   ] sfr_catalog_0.273310.bin          01-Dec-2019 10:29  2.3G
-    [   ] sfr_catalog_0.278373.bin          01-Dec-2019 10:29  2.3G
-    [   ] sfr_catalog_0.283435.bin          01-Dec-2019 10:30  2.3G
-    [   ] sfr_catalog_0.288498.bin          01-Dec-2019 10:30  2.3G
-    [   ] sfr_catalog_0.293560.bin          01-Dec-2019 10:31  2.3G
-    [   ] sfr_catalog_0.298623.bin          01-Dec-2019 10:32  2.3G
-    [   ] sfr_catalog_0.303685.bin          01-Dec-2019 10:32  2.3G
-    [   ] sfr_catalog_0.308748.bin          01-Dec-2019 10:33  2.3G
-    [   ] sfr_catalog_0.313810.bin          01-Dec-2019 10:33  2.3G
-    [   ] sfr_catalog_0.318873.bin          01-Dec-2019 10:33  2.3G
-    [   ] sfr_catalog_0.323935.bin          01-Dec-2019 10:34  2.3G
-    [   ] sfr_catalog_0.328997.bin          01-Dec-2019 10:34  2.3G
-    [   ] sfr_catalog_0.334060.bin          01-Dec-2019 10:35  2.3G
-    [   ] sfr_catalog_0.339122.bin          01-Dec-2019 10:35  2.3G
-    [   ] sfr_catalog_0.344185.bin          01-Dec-2019 10:35  2.3G
-    [   ] sfr_catalog_0.349247.bin          01-Dec-2019 10:36  2.3G
-    [   ] sfr_catalog_0.354310.bin          01-Dec-2019 10:36  2.3G
-    [   ] sfr_catalog_0.359372.bin          01-Dec-2019 10:37  2.3G
-    [   ] sfr_catalog_0.364435.bin          01-Dec-2019 10:37  2.3G
-    [   ] sfr_catalog_0.369497.bin          01-Dec-2019 10:38  2.3G
-    [   ] sfr_catalog_0.374560.bin          01-Dec-2019 10:39  2.3G
-    [   ] sfr_catalog_0.379622.bin          01-Dec-2019 10:39  2.2G
-    [   ] sfr_catalog_0.384685.bin          01-Dec-2019 10:40  2.2G
-    [   ] sfr_catalog_0.389747.bin          01-Dec-2019 10:40  2.2G
-    [   ] sfr_catalog_0.394810.bin          01-Dec-2019 10:41  2.2G
-    [   ] sfr_catalog_0.399872.bin          01-Dec-2019 10:41  2.2G
-    [   ] sfr_catalog_0.404935.bin          01-Dec-2019 10:42  2.2G
-    [   ] sfr_catalog_0.409997.bin          01-Dec-2019 10:42  2.2G
-    [   ] sfr_catalog_0.415060.bin          01-Dec-2019 10:43  2.2G
-    [   ] sfr_catalog_0.420122.bin          01-Dec-2019 10:43  2.2G
-    [   ] sfr_catalog_0.425185.bin          01-Dec-2019 10:44  2.2G
-    [   ] sfr_catalog_0.430247.bin          01-Dec-2019 10:44  2.2G
-    [   ] sfr_catalog_0.435310.bin          01-Dec-2019 10:45  2.2G
-    [   ] sfr_catalog_0.440372.bin          01-Dec-2019 10:45  2.2G
-    [   ] sfr_catalog_0.445435.bin          01-Dec-2019 10:46  2.1G
-    [   ] sfr_catalog_0.450497.bin          01-Dec-2019 10:47  2.1G
-    [   ] sfr_catalog_0.455560.bin          01-Dec-2019 10:47  2.1G
-    [   ] sfr_catalog_0.460622.bin          01-Dec-2019 10:48  2.1G
-    [   ] sfr_catalog_0.465685.bin          01-Dec-2019 10:48  2.1G
-    [   ] sfr_catalog_0.470747.bin          01-Dec-2019 10:48  2.1G
-    [   ] sfr_catalog_0.475810.bin          01-Dec-2019 10:49  2.1G
-    [   ] sfr_catalog_0.480872.bin          01-Dec-2019 10:49  2.1G
-    [   ] sfr_catalog_0.485935.bin          01-Dec-2019 10:50  2.1G
-    [   ] sfr_catalog_0.490997.bin          01-Dec-2019 10:50  2.1G
-    [   ] sfr_catalog_0.496060.bin          01-Dec-2019 10:51  2.1G
-    [   ] sfr_catalog_0.501122.bin          01-Dec-2019 10:51  2.0G
-    [   ] sfr_catalog_0.506185.bin          01-Dec-2019 10:52  2.0G
-    [   ] sfr_catalog_0.511247.bin          01-Dec-2019 10:52  2.0G
-    [   ] sfr_catalog_0.516310.bin          01-Dec-2019 10:53  2.0G
-    [   ] sfr_catalog_0.521372.bin          01-Dec-2019 10:53  2.0G
-    [   ] sfr_catalog_0.526435.bin          01-Dec-2019 10:53  2.0G
-    [   ] sfr_catalog_0.531497.bin          01-Dec-2019 10:54  2.0G
-    [   ] sfr_catalog_0.536560.bin          01-Dec-2019 10:54  2.0G
-    [   ] sfr_catalog_0.541622.bin          01-Dec-2019 10:55  2.0G
-    [   ] sfr_catalog_0.546685.bin          01-Dec-2019 10:55  2.0G
-    [   ] sfr_catalog_0.551747.bin          01-Dec-2019 10:56  2.0G
-    [   ] sfr_catalog_0.556810.bin          01-Dec-2019 10:57  2.0G
-    [   ] sfr_catalog_0.561872.bin          01-Dec-2019 10:57  1.9G
-    [   ] sfr_catalog_0.566935.bin          01-Dec-2019 10:58  1.9G
-    [   ] sfr_catalog_0.571997.bin          01-Dec-2019 10:58  1.9G
-    [   ] sfr_catalog_0.577060.bin          01-Dec-2019 10:58  1.9G
-    [   ] sfr_catalog_0.582123.bin          01-Dec-2019 10:59  1.9G
-    [   ] sfr_catalog_0.587185.bin          01-Dec-2019 10:59  1.9G
-    [   ] sfr_catalog_0.592248.bin          01-Dec-2019 11:00  1.9G
-    [   ] sfr_catalog_0.597310.bin          01-Dec-2019 11:00  1.9G
-    [   ] sfr_catalog_0.602373.bin          01-Dec-2019 11:01  1.9G
-    [   ] sfr_catalog_0.607435.bin          01-Dec-2019 11:01  1.9G
-    [   ] sfr_catalog_0.612498.bin          01-Dec-2019 11:02  1.9G
-    [   ] sfr_catalog_0.617560.bin          01-Dec-2019 11:02  1.9G
-    [   ] sfr_catalog_0.622623.bin          01-Dec-2019 11:03  1.9G
-    [   ] sfr_catalog_0.627685.bin          01-Dec-2019 11:03  1.9G
-    [   ] sfr_catalog_0.632748.bin          01-Dec-2019 11:04  1.8G
-    [   ] sfr_catalog_0.637810.bin          01-Dec-2019 11:04  1.8G
-    [   ] sfr_catalog_0.642873.bin          01-Dec-2019 11:05  1.8G
-    [   ] sfr_catalog_0.647935.bin          01-Dec-2019 11:05  1.8G
-    [   ] sfr_catalog_0.652998.bin          01-Dec-2019 11:05  1.8G
-    [   ] sfr_catalog_0.658060.bin          01-Dec-2019 11:06  1.8G
-    [   ] sfr_catalog_0.663123.bin          01-Dec-2019 11:06  1.8G
-    [   ] sfr_catalog_0.668185.bin          01-Dec-2019 11:07  1.8G
-    [   ] sfr_catalog_0.673248.bin          01-Dec-2019 11:07  1.8G
-    [   ] sfr_catalog_0.678310.bin          01-Dec-2019 11:07  1.8G
-    [   ] sfr_catalog_0.683373.bin          01-Dec-2019 11:08  1.8G
-    [   ] sfr_catalog_0.690967.bin          01-Dec-2019 11:08  1.8G
-    [   ] sfr_catalog_0.698560.bin          01-Dec-2019 11:09  1.8G
-    [   ] sfr_catalog_0.706154.bin          01-Dec-2019 11:09  1.8G
-    [   ] sfr_catalog_0.713748.bin          01-Dec-2019 11:09  1.8G
-    [   ] sfr_catalog_0.721342.bin          01-Dec-2019 11:10  1.7G
-    [   ] sfr_catalog_0.728935.bin          01-Dec-2019 11:10  1.7G
-    [   ] sfr_catalog_0.736529.bin          01-Dec-2019 11:10  1.7G
-    [   ] sfr_catalog_0.744123.bin          01-Dec-2019 11:11  1.7G
-    [   ] sfr_catalog_0.751717.bin          01-Dec-2019 11:11  1.7G
-    [   ] sfr_catalog_0.759310.bin          01-Dec-2019 11:12  1.7G
-    [   ] sfr_catalog_0.766904.bin          01-Dec-2019 11:12  1.7G
-    [   ] sfr_catalog_0.774498.bin          01-Dec-2019 11:13  1.7G
-    [   ] sfr_catalog_0.782092.bin          01-Dec-2019 11:13  1.7G
-    [   ] sfr_catalog_0.789685.bin          01-Dec-2019 11:13  1.7G
-    [   ] sfr_catalog_0.797279.bin          01-Dec-2019 11:14  1.7G
-    [   ] sfr_catalog_0.804873.bin          01-Dec-2019 11:14  1.7G
-    [   ] sfr_catalog_0.812467.bin          01-Dec-2019 11:14  1.7G
-    [   ] sfr_catalog_0.820060.bin          01-Dec-2019 11:15  1.7G
-    [   ] sfr_catalog_0.827654.bin          01-Dec-2019 11:15  1.7G
-    [   ] sfr_catalog_0.835248.bin          01-Dec-2019 11:16  1.7G
-    [   ] sfr_catalog_0.842842.bin          01-Dec-2019 11:16  1.7G
-    [   ] sfr_catalog_0.850435.bin          01-Dec-2019 11:16  1.6G
-    [   ] sfr_catalog_0.858029.bin          01-Dec-2019 11:17  1.6G
-    [   ] sfr_catalog_0.865623.bin          01-Dec-2019 11:17  1.6G
-    [   ] sfr_catalog_0.873217.bin          01-Dec-2019 11:18  1.6G
-    [   ] sfr_catalog_0.880810.bin          01-Dec-2019 11:18  1.6G
-    [   ] sfr_catalog_0.888404.bin          01-Dec-2019 11:19  1.6G
-    [   ] sfr_catalog_0.895998.bin          01-Dec-2019 11:19  1.6G
-    [   ] sfr_catalog_0.903592.bin          01-Dec-2019 11:20  1.6G
-    [   ] sfr_catalog_0.911185.bin          01-Dec-2019 11:20  1.6G
-    [   ] sfr_catalog_0.918779.bin          01-Dec-2019 11:21  1.6G
-    [   ] sfr_catalog_0.926373.bin          01-Dec-2019 11:21  1.6G
-    [   ] sfr_catalog_0.933967.bin          01-Dec-2019 11:21  1.6G
-    [   ] sfr_catalog_0.941560.bin          01-Dec-2019 11:22  1.6G
-    [   ] sfr_catalog_0.949154.bin          01-Dec-2019 11:22  1.6G
-    [   ] sfr_catalog_0.956748.bin          01-Dec-2019 11:23  1.6G
-    [   ] sfr_catalog_0.964342.bin          01-Dec-2019 11:24  1.6G
-    [   ] sfr_catalog_0.971935.bin          01-Dec-2019 11:25  1.6G
-    [   ] sfr_catalog_0.979529.bin          01-Dec-2019 11:26  1.6G
-    [   ] sfr_catalog_0.987123.bin          01-Dec-2019 11:26  1.6G
-    [   ] sfr_catalog_0.994717.bin          01-Dec-2019 11:26  1.6G
-    [   ] sfr_catalog_1.002310.bin          01-Dec-2019 11:27  1.6G"""
+    fileinfo = [
+        ('sfr_catalog_0.055623.bin', '1ihte0dRizdHLwVAMnUizcj6k1GgCfqj_', '11520'),
+        ('sfr_catalog_0.060123.bin', '18B8QLq4F-ahevN7ZcLVIaky58TlMtILB', '129152'),
+        ('sfr_catalog_0.062373.bin', '180zJis8rFxE7ikkfaAaiwE-wjj8OAELY', '303744'),
+        ('sfr_catalog_0.064623.bin', '1tSiX6eX2xmeKZs1-RPQkk2DybvfDMEgI', '648064'),
+        ('sfr_catalog_0.066873.bin', '1w81UWzLjN7jlmgY8IZ9PUAyFIyyunTP-', '1268608'),
+        ('sfr_catalog_0.069123.bin', '1rurRqceNZ9ztOeTY0m2mbcvSzs_HuQcP', '2271360'),
+        ('sfr_catalog_0.071373.bin', '1cwZB-JuKD8fAoiQAWYwUzk3sgqNIcWx2', '3907200'),
+        ('sfr_catalog_0.073623.bin', '107NgZeroJ5Hyro_4XJKUVw5mHcBtxv6H', '6369152'),
+        ('sfr_catalog_0.075873.bin', '1Td1AIA1Xmem5vgvfNaxqzhxPrm3NU2Oy', '9847040'),
+        ('sfr_catalog_0.078123.bin', '1FsF8ikcTakvQtAT7wtNjJEn2AMvfvUmV', '14684416'),
+        ('sfr_catalog_0.080373.bin', '19s1Mhe2-4fsBO2AYTv8QOvT5311Y4Cj3', '20972800'),
+        ('sfr_catalog_0.082623.bin', '1iAwaAjjGvIIIBngEGrp7SIp91iStd9yT', '28910976'),
+        ('sfr_catalog_0.085998.bin', '1OzAGzwrVcE7r37XM-s1Oh6ap-8OxS-Ic', '44533760'),
+        ('sfr_catalog_0.089373.bin', '1QuYfL7vERnKcKkBRaSQOO2PIkWVlUAkH', '65833344'),
+        ('sfr_catalog_0.092748.bin', '1DBxCFLBVae-1lxgrKDCNitbrJ5f_Zl-e', '93167360'),
+        ('sfr_catalog_0.096123.bin', '1w9UQruwkOteYgqoVFFczQEbe_gK8R3Ih', '126854528'),
+        ('sfr_catalog_0.099498.bin', '1VeY_l7oMmJbfOp9kwT0tWT1MqX1lZ-NZ', '166848384'),
+        ('sfr_catalog_0.102873.bin', '1wnjKL9rYJJ89i06t6z__gPgyF75f3E5i', '213098624'),
+        ('sfr_catalog_0.106248.bin', '13ogOYa0rk-TOQx1D3SGKpiI79Fh03VPN', '265299328'),
+        ('sfr_catalog_0.109623.bin', '1B4E_IgQiIlUeWdZgDJ8PU63q5YH_zDYs', '323147648'),
+        ('sfr_catalog_0.112998.bin', '1LR99j2TqgkPrtaP8XPIbvYcADt8WQYyI', '385980288'),
+        ('sfr_catalog_0.116373.bin', '1R2ULXEtKBl2uNmDEdNTvmKb8Wy2Mj7GH', '453111552'),
+        ('sfr_catalog_0.119748.bin', '1H7Z6DBZ4DeElXj-_nZCw-Pzq_fEt2cq8', '522511232'),
+        ('sfr_catalog_0.123123.bin', '1zkFuCE9k1M9GbjFEmAcgI8jtvJ0Psrja', '593290624'),
+        ('sfr_catalog_0.126498.bin', '1bjSp9nsJ-0t4mwaL1tuqXAnWxEJw3SlZ', '665401984'),
+        ('sfr_catalog_0.129873.bin', '1tOnjJHk5snOaCc-8wtZd5-YQuybxkSfb', '739504128'),
+        ('sfr_catalog_0.133248.bin', '1Ve9SxRqnHxL9adF-_WegJ38nDy_EncJU', '815063040'),
+        ('sfr_catalog_0.136623.bin', '11HA1l6GLZ2Y-nr2zUWp-X3jBZ4Ql15VN', '891738752'),
+        ('sfr_catalog_0.141685.bin', '130C-TXJ1hDHnXZ50UEqpBNTBppiK2Hs0', '1004009600'),
+        ('sfr_catalog_0.146748.bin', '1COnDmp64FQLmMxk9beGQWGaMaYOCKhRK', '1119784064'),
+        ('sfr_catalog_0.151810.bin', '1kNMx894VQpGMq6Wsa_c3bYrvRPnBtfiD', '1234776320'),
+        ('sfr_catalog_0.156873.bin', '1NOFur0Wst9041Aw8vaHQAiyxwO1C2R5Y', '1347031808'),
+        ('sfr_catalog_0.161935.bin', '11OGEtuBllyKSL75zXujD4qlFI5g9H9sd', '1455390464'),
+        ('sfr_catalog_0.166998.bin', '11fYiTDYGjd_q1RzxLjcv0YUBGK3meauR', '1558130304'),
+        ('sfr_catalog_0.172060.bin', '1_dVkNecozgbbPm7EU1rfxTSnQX1sqhgq', '1653746304'),
+        ('sfr_catalog_0.177123.bin', '1yYffh1mu-ZApWeljcCAdA7cuLw-ZYiR7', '1741046912'),
+        ('sfr_catalog_0.182185.bin', '19WhSpbg74nBfBUE7RXv2SEroroGrNlgy', '1820373376'),
+        ('sfr_catalog_0.187248.bin', '1fRVzssRkRUX6K0ptYSIrsefVxAj1JS8c', '1892333312'),
+        ('sfr_catalog_0.192310.bin', '1QUQQdsCnYX4i-ddoI1-waT_WAvhJOnBV', '1958077696'),
+        ('sfr_catalog_0.197373.bin', '1nyFbSHP8O9ZAgQB1a_khDaz-P8R9wzcV', '2018113920'),
+        ('sfr_catalog_0.202435.bin', '1wAK2NyjXBXFvWa7QwQJVc4DASs1Zujjl', '2072783744'),
+        ('sfr_catalog_0.207498.bin', '1o54k3PJre7oJh0Io_HsznT0embWW8ECC', '2122719744'),
+        ('sfr_catalog_0.212560.bin', '1q5AB_J8qkO1DxL6f2Z1qhpNVGLY5zVR9', '2168136320'),
+        ('sfr_catalog_0.217623.bin', '1I5FkjEjdQ9SRHwmcgjTN6XRDH0IVPx67', '2209354112'),
+        ('sfr_catalog_0.222685.bin', '1N3cgu2VEU3Cu_-s5vwJ43mZbA-9FvKg7', '2242939264'),
+        ('sfr_catalog_0.227748.bin', '1GsicrkbEQEzm8k4L2wm6FDFAoOpaBCL8', '2273526912'),
+        ('sfr_catalog_0.232810.bin', '169xFidccPjGsj__HY5Lv5bIxnYdDsu9Y', '2300846976'),
+        ('sfr_catalog_0.237873.bin', '1yrE7RT9UAY4dsYO84hmVw_QhDtpBNaCP', '2325324544'),
+        ('sfr_catalog_0.242935.bin', '1rV7f4rD0U6QACj_kP7OTCTNMQsyRpmyg', '2346807936'),
+        ('sfr_catalog_0.247998.bin', '1A8JQBXSSmnesQpBQHHx0kWgKHgMlOcjd', '2366055040'),
+        ('sfr_catalog_0.253060.bin', '1yN1UKybroed482N_NKTVmLoW5S_CdKpt', '2382968448'),
+        ('sfr_catalog_0.258123.bin', '1xJDoc5mZRrnz8eYOh7h2Gk_u7l0OdjJ0', '2397853184'),
+        ('sfr_catalog_0.263185.bin', '1g0HOIhatOCiotfnOG4ALuEJIldzAheyr', '2411149056'),
+        ('sfr_catalog_0.268248.bin', '1zZ-MV0WQreC986E3pPHvuuyd5PGfZ2B5', '2422394368'),
+        ('sfr_catalog_0.273310.bin', '1PLB-Hpmrj_uZuRIAicBYMz0niXGbMBF9', '2432157696'),
+        ('sfr_catalog_0.278373.bin', '1orNqj5Etk3NBnz5wlNe7MSK3e_rwdoc9', '2440475136'),
+        ('sfr_catalog_0.283435.bin', '160nHxYxfQHLTpxGx15vAww7KT1Dmpc0q', '2447562624'),
+        ('sfr_catalog_0.288498.bin', '14d5V5Hpstr9r6uEp3Aoc7KLpl_BCRN9_', '2453431552'),
+        ('sfr_catalog_0.293560.bin', '1iY-PI6dM75LgXucJJZU1R5ALnCTW7yVl', '2457766016'),
+        ('sfr_catalog_0.298623.bin', '1Cg2IKb3WnvS4-sVUhiVE0AwRdwCmkRlD', '2461185024'),
+        ('sfr_catalog_0.303685.bin', '1WvTI1ZAJViU3N3yOiP-uz9vvsYouifPg', '2463571968'),
+        ('sfr_catalog_0.308748.bin', '1YF7-MMd-tt-RsGvWjlgDleaCimEoVzDD', '2464871936'),
+        ('sfr_catalog_0.313810.bin', '16pI0wjN0saZkx3y44Q-WMelKZjK7oSbS', '2465307392'),
+        ('sfr_catalog_0.318873.bin', '1HVWfSaM9UERQglWnu_ac74FulEO-dMaD', '2464848896'),
+        ('sfr_catalog_0.323935.bin', '1wdlfv8U3XeUiTuM2e6gkAkYJK5DGu3zp', '2463425920'),
+        ('sfr_catalog_0.328997.bin', '1kh0CjJF88nIThBZ1v6NI9hz4CdMEGA4K', '2461498112'),
+        ('sfr_catalog_0.334060.bin', '1Trl2Yv3uqJxKvwWEALqnco85_lwB3JhR', '2458835200'),
+        ('sfr_catalog_0.339122.bin', '1nJ05WylIyiweZ7ao96llc2mVqa9swziG', '2455495168'),
+        ('sfr_catalog_0.344185.bin', '1dGCyL_vLo5k9FeOkKRwcIvwE6sE6pEz1', '2451683712'),
+        ('sfr_catalog_0.349247.bin', '1otnB6qhkyKVlBusb4zkx2yHOQtkqGvxP', '2447107584'),
+        ('sfr_catalog_0.354310.bin', '1LVr2onCg0Hdv2wQH7Bc-qr1V6P2bqveL', '2441963776'),
+        ('sfr_catalog_0.359372.bin', '1pSB7szBNz8j79Ri6_lJPiYqAGW3F3JX4', '2436587776'),
+        ('sfr_catalog_0.364435.bin', '1m8btAuE7jFJ9yEqd0l2LQTz0sLX3lWob', '2430647424'),
+        ('sfr_catalog_0.369497.bin', '1zRsMYajunu9ckllXbbZOdkHz5zAJneLB', '2424360064'),
+        ('sfr_catalog_0.374560.bin', '1xCo_i3DzKeymrsFBrFWiWAxpL26MLt_u', '2417813888'),
+        ('sfr_catalog_0.379622.bin', '1Qln5aSLS0YDntH-qm2rSv3gDJ19AbQnl', '2410729088'),
+        ('sfr_catalog_0.384685.bin', '1e5kg8sIIMvGuSx8pBCxI-BpnUzf-ouy6', '2403384704'),
+        ('sfr_catalog_0.389747.bin', '1KO6QGK_pkNpaWT5jFPWvR1qTQtlJZSc_', '2395852032'),
+        ('sfr_catalog_0.394810.bin', '1jzZbPl3x26WOHeWN8Z496DnBucqJEjYQ', '2388096640'),
+        ('sfr_catalog_0.399872.bin', '1eB25gRZO4mKjnO-SwHi6eDcj0kYehRBb', '2380124032'),
+        ('sfr_catalog_0.404935.bin', '1MM40WDHJGPYob8CS-cUjLWtMk5AG5a8l', '2371951488'),
+        ('sfr_catalog_0.409997.bin', '1xGljruEwRh7zPBJIZeR86iaTfyJaO6ny', '2363472256'),
+        ('sfr_catalog_0.415060.bin', '11g1vIPysgludOLI862FWrwrizPyjCzL7', '2354955008'),
+        ('sfr_catalog_0.420122.bin', '1MxxE5ryX20aP9Vqh_blruVxdQNgQTyaq', '2346307584'),
+        ('sfr_catalog_0.425185.bin', '1GCT324yAtGMbH7CjEwSVZ3kbKM33YQer', '2337428736'),
+        ('sfr_catalog_0.430247.bin', '1z8s3oi6n8rSLcqzT8Dt1Lj2-fJVfobj6', '2328602496'),
+        ('sfr_catalog_0.435310.bin', '1t6s5xgN9kKpTYcVskeZQRNs8vpvlkvG1', '2319652736'),
+        ('sfr_catalog_0.440372.bin', '1vx2z0rgZpGIBUcfzsVYZGJ8utKNdiSAB', '2310772608'),
+        ('sfr_catalog_0.445435.bin', '1gRSMO7VIgSD1gQgK2pPaoj2-FbOFTS-0', '2301655040'),
+        ('sfr_catalog_0.450497.bin', '1t8WVq9CgMkQ2FRzFC8APn5rGVqTKMVmc', '2292370432'),
+        ('sfr_catalog_0.455560.bin', '1Xt06mLxVGj5pxz_FT2FkvpUM1YscDtYT', '2283192832'),
+        ('sfr_catalog_0.460622.bin', '1A2xwicHDAu-POSwZOb9rMAl1NKFUpJCR', '2274065920'),
+        ('sfr_catalog_0.465685.bin', '1g-G3zXT31AwcEDlOYPGE0GGR6JAdW-hg', '2264775424'),
+        ('sfr_catalog_0.470747.bin', '1V_QMBgu5pi9U1yYQfzHYdHIIEuncTOTt', '2255555200'),
+        ('sfr_catalog_0.475810.bin', '1fDhETtzC8CAp6-jt2fGOoAAQONoRc0_T', '2246340352'),
+        ('sfr_catalog_0.480872.bin', '1pyFoHVpomp46tEgMnd2vaIuPx-4eKDC3', '2237198720'),
+        ('sfr_catalog_0.485935.bin', '1o2Qeb2sImGLydF2lwVcBu9YFDoZYoB-m', '2228028288'),
+        ('sfr_catalog_0.490997.bin', '1cmEoPvQ0KK0OIMlq9MKT2xw09NeSvn2k', '2218909824'),
+        ('sfr_catalog_0.496060.bin', '1vjWNuLQUrThQKJU6LBjSm5dQ3938UqYE', '2209855616'),
+        ('sfr_catalog_0.501122.bin', '1cCDG6N639YH_mCyXFynWkIZcARFxcRWj', '2200596992'),
+        ('sfr_catalog_0.506185.bin', '1t5nyZhI4vDXTURx3zvoFN4L0y5O1ZZte', '2191427072'),
+        ('sfr_catalog_0.511247.bin', '1SCpohjoGTYydB6R8r0_Dhbpm46GkAKij', '2182437632'),
+        ('sfr_catalog_0.516310.bin', '1VH8Ro-TYDRc5EIEAuD2h-7mBIizd3-CF', '2173227008'),
+        ('sfr_catalog_0.521372.bin', '1nTV6-w2Uwf4w9lqTw0xKJxacmI3RtVBb', '2164129024'),
+        ('sfr_catalog_0.526435.bin', '1TakmVGvqWGqpDnnTS_BnOcdMBgmpAknb', '2155149568'),
+        ('sfr_catalog_0.531497.bin', '1aZpBC5LS0FA9wDTe_BW63quhxZbK0vyE', '2146158336'),
+        ('sfr_catalog_0.536560.bin', '1DcGgEbiTRCC2StL2sZQWBrqOVEivwTEm', '2137258112'),
+        ('sfr_catalog_0.541622.bin', '1I0OWMxHTyvz8Jmwqz7sZvUDbSPaw2bxl', '2128395904'),
+        ('sfr_catalog_0.546685.bin', '1C10Rl8nm3ngx1hsospgFeB5TMfnu6MWC', '2119597440'),
+        ('sfr_catalog_0.551747.bin', '1qqCrnxYmQYm5-aeT9CONwsIOK-2ARxbM', '2110771840'),
+        ('sfr_catalog_0.556810.bin', '1wqxKJsIRdJqU3Y2Q303s2iTXu0Afi2nO', '2102122496'),
+        ('sfr_catalog_0.561872.bin', '1fsA85m4usqHf1ZGs54XmPsjTmsLdE3lH', '2093604096'),
+        ('sfr_catalog_0.566935.bin', '1Q4T-71s9Fw9pDJFmPDk40YDquVd1xd7o', '2085292928'),
+        ('sfr_catalog_0.571997.bin', '14j6Y71YKXTGyQjZgKGRKZd-2XuuOLeJG', '2077023360'),
+        ('sfr_catalog_0.577060.bin', '1YvOPxtumsc-hT2MfT5NYfLT_AevHyrTN', '2068781056'),
+        ('sfr_catalog_0.582123.bin', '1LJb4ISXIx_F2nIR1llMZ85Vp-OvQDyqY', '2060729216'),
+        ('sfr_catalog_0.587185.bin', '1ubYebDjO_mDOlNQPOlf-nzCFC4Hye4eA', '2052785920'),
+        ('sfr_catalog_0.592248.bin', '1BftzYzg53cD_oBBfQqQx2jGLP2j2JQsV', '2044926592'),
+        ('sfr_catalog_0.597310.bin', '1h9q7P6F5yLuYLfB82GbAVzOxe69P1xpm', '2037111040'),
+        ('sfr_catalog_0.602373.bin', '1LpRmFaNzObIitT4F7FyJJCJCTrw6JKab', '2029506944'),
+        ('sfr_catalog_0.607435.bin', '1bU6I4ymmLERe1pzaERIPyQFB665JTfZ9', '2021951744'),
+        ('sfr_catalog_0.612498.bin', '1reBeUz7J-hyzyBA2NTleU6e3-fk7l4tc', '2014618752'),
+        ('sfr_catalog_0.617560.bin', '1umQSPPwSfY-C9L1b--O4cKfgHk9WD97F', '2007242240'),
+        ('sfr_catalog_0.622623.bin', '1kLnDedwsDdIgv-mK33bP9wVoVxnJk1ha', '2000040192'),
+        ('sfr_catalog_0.627685.bin', '1TkHDmfilm-U33pVzpODw9eVfsAQ6XvpL', '1992956288'),
+        ('sfr_catalog_0.632748.bin', '1QnR9PqJoG0NbI9wyhZwZHb0riAXUwlG4', '1986017920'),
+        ('sfr_catalog_0.637810.bin', '1Fb-IEMGxA7dSZB8S1-2i5OlbabhERzlg', '1979135488'),
+        ('sfr_catalog_0.642873.bin', '1S05uprG1I-aoMf71LTqZQad09BnJJv14', '1972289920'),
+        ('sfr_catalog_0.647935.bin', '1RMzZIE9GHugFiBfLeHPbJDCy7PQwpC04', '1965532800'),
+        ('sfr_catalog_0.652998.bin', '1w7A85Zgl5TE0LT_fVEoLxFrU3Jaboc5-', '1958918528'),
+        ('sfr_catalog_0.658060.bin', '1MmbJY4yDUXHBs90Ik8t-e5sPbaOpI5Z5', '1952307072'),
+        ('sfr_catalog_0.663123.bin', '1EIyVUO0RFVmo870452GteudNeSJJiuvE', '1945823104'),
+        ('sfr_catalog_0.668185.bin', '1Q7KkDdvac39MZxgWGXEhfZKa4rRQcPyB', '1939335552'),
+        ('sfr_catalog_0.673248.bin', '1ZBsyvBClbfrQRyN-sRvi23eDTMTQwAEY', '1933084416'),
+        ('sfr_catalog_0.678310.bin', '1xNqbkxMigeih2KUbKmYvtcyQjLIZRiey', '1926828160'),
+        ('sfr_catalog_0.683373.bin', '1E9ioA5CYV3wtF73q1wHPf3tO3pmTTe7q', '1919994496'),
+        ('sfr_catalog_0.690967.bin', '1x_R9C_lGzU3CRV1_LM4vjyxTecaJi3O0', '1911884800'),
+        ('sfr_catalog_0.698560.bin', '1qpWyZIrND4laZSSy_AKDAwpclXIi54yC', '1903715840'),
+        ('sfr_catalog_0.706154.bin', '1VOgwa8x4RKSiz9sQMvhxcQBwRMldqHci', '1895213440'),
+        ('sfr_catalog_0.713748.bin', '1K-3eI3JHVdqgGe3WyjPfwr6J468tkQSi', '1886784768'),
+        ('sfr_catalog_0.721342.bin', '1ccBrZI1hqvhddF0rPvYX2yDX-H7gXUM9', '1878559616'),
+        ('sfr_catalog_0.728935.bin', '1YJwoAF2k98BZtW4G8N0UVUAkSLMJ_Flj', '1870538880'),
+        ('sfr_catalog_0.736529.bin', '1ti6P57FXEsyqbj3wwtXDNW6ha9ron7PO', '1862676352'),
+        ('sfr_catalog_0.744123.bin', '1HKU7eOflHp0FfEbyY68v0AP5Xd1m2xUl', '1854953728'),
+        ('sfr_catalog_0.751717.bin', '1HdxHPZ0gqcW_bSTamVqq7ERKbaWBDDOt', '1847467008'),
+        ('sfr_catalog_0.759310.bin', '1r4-Z88iEjdrgXLaZ9cEAEDt7lFj7QAQg', '1840179840'),
+        ('sfr_catalog_0.766904.bin', '1V1ESJyo49gAHts19PBA8x9dYMa1ADzjb', '1833125888'),
+        ('sfr_catalog_0.774498.bin', '1t92fQFvos3WnvZan4PXbVuzpbsb1c0DV', '1826234112'),
+        ('sfr_catalog_0.782092.bin', '1-zJ3FCbFsjgUhqxP-FvxTOr2Z1Pqn_nN', '1819556096'),
+        ('sfr_catalog_0.789685.bin', '1Aodc-r219wjHmTU4fyBRE4bi7G8dp1yP', '1813142656'),
+        ('sfr_catalog_0.797279.bin', '1atwryfybRyUs_3JUTgyahKfqR0-4X9gv', '1806948864'),
+        ('sfr_catalog_0.804873.bin', '14uegHX1yU9CShI3dDi3A_oo7fGAHQHn9', '1800892928'),
+        ('sfr_catalog_0.812467.bin', '1TkM0KZfN9OyDpQzPB6mYliVFd-bZC_w-', '1795104000'),
+        ('sfr_catalog_0.820060.bin', '1eS9m5LWDINROrGU4t1nPhuNRXsOOIEcl', '1789536640'),
+        ('sfr_catalog_0.827654.bin', '10byPVqJHBiOlq2e6V7A3F9OwMwjOkvIi', '1784220416'),
+        ('sfr_catalog_0.835248.bin', '1g5lrLk-I528BnR6RwBD3cPLJPk67as13', '1779054720'),
+        ('sfr_catalog_0.842842.bin', '1IckKbdvZGcWZzGI0dBJpt7-J0VnWsfN6', '1774199808'),
+        ('sfr_catalog_0.850435.bin', '1_PWHVk_D-efLuwuln4-sj3QZr0xZ5nCs', '1769582208'),
+        ('sfr_catalog_0.858029.bin', '1OSeEgA6RwYZ8bTuxHlhJoVUzmWjoVLCY', '1765277824'),
+        ('sfr_catalog_0.865623.bin', '1OPgMHmg6a8E6_LdEvPCjA-AYzG9PiCDC', '1761074048'),
+        ('sfr_catalog_0.873217.bin', '1EXGw8o11weygRvOCvHdx5NOA8E89QYoI', '1757196160'),
+        ('sfr_catalog_0.880810.bin', '1INA-tpNUVtCqKPtlahuqWYot3bncYjqf', '1753577472'),
+        ('sfr_catalog_0.888404.bin', '1qKcj6sJ5FhodFAWtqOuF_vPJfcH8Ceg_', '1750379776'),
+        ('sfr_catalog_0.895998.bin', '1DA_yAD5_-hoZuwpMSGe6dQUEODnuc56k', '1747188352'),
+        ('sfr_catalog_0.903592.bin', '17ILuS75OVGGKBh6V4-RfWm7u3RH0Qpjb', '1744409984'),
+        ('sfr_catalog_0.911185.bin', '1FVt1ic6qNkuF_GWspE3dxA4Ijs-FWD_L', '1741892224'),
+        ('sfr_catalog_0.918779.bin', '1LYhXKbM4RnUlrhVrv9SH_mBeSA9vyZ3w', '1739784064'),
+        ('sfr_catalog_0.926373.bin', '17b-iuHUTIjqQuJZ354r5OElGG1DYpB8a', '1737429248'),
+        ('sfr_catalog_0.933967.bin', '14EV3t5iqpaT0INSvyPy8TrUbwKhJJ2XT', '1735129088'),
+        ('sfr_catalog_0.941560.bin', '1swTL112chctM--jXYxbpy8N53p-I3Sfl', '1733504640'),
+        ('sfr_catalog_0.949154.bin', '1Zh6i6Ry0PisadUaEAW0_l6gfkNuaiz2W', '1732513664'),
+        ('sfr_catalog_0.956748.bin', '1_YjeiOYbWK9HvtPFxa2Zsl43rvNred4S', '1730992128'),
+        ('sfr_catalog_0.964342.bin', '1qdSmhB-dJeCZiXYbTWaFOWOjHT9qXs1d', '1728657408'),
+        ('sfr_catalog_0.971935.bin', '1qGVeUq6-isJQuO0J-VfLMWSuCkXQ6tRu', '1723108480'),
+        ('sfr_catalog_0.979529.bin', '1SHK9pcAVYh8bh_zHyLNmCf03DiYdZnx_', '1717693696'),
+        ('sfr_catalog_0.987123.bin', '1R1l7RAUyPKP9VSyiyx6iCNZdCqsbAugr', '1712371328'),
+        ('sfr_catalog_0.994717.bin', '1DqigL6E-XKJwu4ns7lpNBLpg7O8g4HZs', '1706292224'),
+        ('sfr_catalog_1.002310.bin', '1W09Cxh3yd13A75xh0quMUG4KpPVcdbWH', '1698555264')]
 
     def __init__(self):
         """
@@ -1597,18 +1596,19 @@ class UMWgetter:
         from peterbehroozi.com/data
         """
 
-        self.sfr_cats = [i.split()[2] for i in self.webpage.split("\n")]
+        self.sfr_cats = [file[0] for file in self.fileinfo]
         self.scales = np.array([float(i.split("_")[-1][:-4]) for i in self.sfr_cats])
         self.redshifts = 1/self.scales - 1
 
-        unitsize = dict(K=2 ** 10, M=2 ** 20, G=2 ** 30)
-        sizes = [i.split()[-1] for i in self.webpage.split("\n")]
-        self.sizes = [float(i[:-1]) * unitsize[i[-1]] for i in sizes]
+        self.fileids = [file[1] for file in self.fileinfo]
+        self.sizes = [int(file[2]) for file in self.fileinfo]
 
     def download_sfrcat_index(self, i, overwrite=False):
-        file_url = self.url + self.sfr_cats[i]
+        fileid = self.fileids[i]
+        size = self.sizes[i]
         outfile = UMConfig().get_path(self.sfr_cats[i])
-        util.wget_download(file_url, outfile, overwrite=overwrite)
+        util.download_file_from_google_drive(fileid, outfile, size=size,
+                                             overwrite=overwrite)
 
     def download_sfrcat_redshift(self, redshift, overwrite=False):
         zmin, zmax = np.min(redshift), np.max(redshift)
@@ -1627,8 +1627,7 @@ class UVISTAWgetter:
         self.uvista_config = UVISTAConfig()
         self.sean_config = SeanSpectraConfig()
 
-        self.uvista_url = "https://pitt.box.com/shared/static/" \
-                          "rfcmakle4i6xm5s4uuquzerw9a7sjqf1.gz"
+        self.uvista_gfid = "1UpcjWrZ236gS36GkAp9ehlrikjQW3kQy"
         self.sean_url = "https://pitt.box.com/shared/static/" \
                         "tfrah1t7rslp1jsqiccwxcwvfwy7ngw4.gz"
         self.spec_urls = ["https://pitt.box.com/shared/static/"
@@ -1649,6 +1648,13 @@ class UVISTAWgetter:
         tar = tarfile.open(tarf)
         tar.extractall(path=os.path.dirname(tarf))
         os.remove(tarf)
+
+    @staticmethod
+    def download_and_join_chunks(gfids, tarf, overwrite=False):
+        for i, gfid in enumerate(gfids):
+            util.wget_download(gfid, outfile=f"{tarf}.chunk.{i}",
+                               overwrite=overwrite)
+        filechunk.joinchunks(tarf, rmchunks=True)
 
     @staticmethod
     def wget_and_join_chunks(urls, tarf, overwrite=False):
@@ -1676,6 +1682,8 @@ class UVISTAWgetter:
             if self.check_already_downloaded(wget_files, self.uvista_config):
                 return
 
+        util.download_file_from_google_drive(
+            self.uvista_gfid, self.uvista_tarf)
         util.wget_download(self.uvista_url, outfile=self.uvista_tarf,
                            overwrite=overwrite)
         self.decompress_tar(self.uvista_tarf)

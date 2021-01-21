@@ -47,11 +47,16 @@ def make_primary_halocat_from_um(halos, redshift):
     )
 
 
-def get_hostid(halos):
+def get_hostid(halos, get_host_value="", drop_duplicates=True):
     # Construct hostid array with the ID of each halo's primary host
     hostid = np.array(halos["upid"], copy=True)
     primary_ids = np.asarray(halos["id"][hostid == -1])
     hostid[hostid == -1] = primary_ids
+
+    halos = pd.DataFrame(halos, index=halos["id"])
+    # If duplicates are not dropped, they will likely cause an error
+    if drop_duplicates:
+        halos = halos.drop_duplicates(subset=["id"])
     while True:
         is_orphan = np.isin(hostid, np.asarray(halos["id"]), invert=True)
         done = np.isin(hostid, primary_ids) | is_orphan
@@ -60,7 +65,12 @@ def get_hostid(halos):
         else:
             hostid[~done] = halos["upid"].loc[hostid[~done]]
 
-    return hostid
+    if get_host_value:
+        col = np.full(len(hostid), np.nan)
+        col[~is_orphan] = halos[get_host_value].loc[hostid[~is_orphan]]
+        return col
+    else:
+        return hostid
 
 
 def count_sats_and_cens(halos, threshold):
