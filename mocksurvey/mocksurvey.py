@@ -14,6 +14,7 @@ import inspect
 from contextlib import nullcontext
 from typing import Tuple
 
+import tqdm
 import numpy as np
 import pandas as pd
 import astropy.table as astropy_table
@@ -121,7 +122,7 @@ class RealizationLoader:
         lightcone, statfuncs = args
         return [statfunc(lightcone, self) for statfunc in statfuncs]
 
-    def apply(self, statfuncs, take_var=False, nthread=1):
+    def apply(self, statfuncs, take_var=False, nthread=1, progress=False):
         """
         Parameters
         ----------
@@ -137,6 +138,9 @@ class RealizationLoader:
         nthread : int (default=1)
             If greater than 1, this many subprocesses will apply
             the statfunc on each realization in parallel.
+
+        progress : bool (default=False)
+            If True, display a tqdm progress bar
 
         Returns
         -------
@@ -157,9 +161,12 @@ class RealizationLoader:
 
         with pool_cm(*pool_args) as pool:
             mapper = pool.map if nthread > 1 else map
+            iterable = self.generator
+            if progress:
+                iterable = tqdm.tqdm(iterable, total=self.nreal)
             stats = list(mapper(
                 self._mapfunc,
-                ((x, statfuncs) for x in self.generator))
+                ((x, statfuncs) for x in iterable))
             )
         stats = np.moveaxis(np.array(stats), 0, 1)
 
