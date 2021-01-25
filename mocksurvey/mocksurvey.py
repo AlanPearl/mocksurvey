@@ -325,7 +325,7 @@ class LightConeSelector:
             * fieldshape
         distlim = util.comoving_disth([self.z_low, self.z_high], self.cosmo)
 
-        rands = util.rand_rdz(n, *rdlims, distlim, seed=seed)
+        rands = util.rand_rdz(n, *rdlims, distlim, seed=seed).astype(np.float32)
         # This only works perfectly if the fieldshape is a square
         # Cut randoms that fall outside the shape of the field
         # if not self.fieldshape == "square":
