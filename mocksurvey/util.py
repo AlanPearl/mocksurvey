@@ -1003,7 +1003,7 @@ def wget_download(file_url, outfile, overwrite=False):
 
 
 def download_file_from_google_drive(fileid, destination, progress=True,
-                                    overwrite=True, size=None):
+                                    overwrite=True, size=None, html_ok=False):
     """
     Downloads a shared file from Google Drive
     (based on code by turdus-merula on stackoverflow)
@@ -1023,6 +1023,9 @@ def download_file_from_google_drive(fileid, destination, progress=True,
     size : int | None
         Size of download in bytes. This helps the progress bar, since
         the server doesn't always specify the size of the file
+    html_ok : bool
+        Set to true to suppress warning that the downloaded file is
+        and HTML file.
 
     Returns
     -------
@@ -1044,6 +1047,7 @@ def download_file_from_google_drive(fileid, destination, progress=True,
             response = session.get(url, params=params, stream=True)
 
     _save_response_content(response, destination, progress=progress, size=size)
+    _check_for_google_drive_error(destination, html_ok=html_ok)
 
 
 def _get_confirm_token(response):
@@ -1069,6 +1073,38 @@ def _save_response_content(response, destination, progress=True, size=None):
                 prog_bar.update(len(chunk))
                 f.write(chunk)
     prog_bar.close()
+
+
+def _check_for_google_drive_error(filename, html_ok=False):
+    delete_this_file = False
+    html_msg = False
+    with open(filename) as f:
+        try:
+            header = f.read(100)
+        except UnicodeDecodeError:
+            pass
+        else:
+            # Sometimes, the file is completely empty ...
+            msg0 = header == ""
+            # Sometimes, the download quota is exceeded (for a given file?)
+            msg1 = header.startswith("<!DOCTYPE html><html><head><title>"
+                                     "Google Drive - Quota exceeded")
+            # Sometimes, Google thinks I'm a robot
+            msg2 = header.startswith("<html><head><meta http-equiv=\"content-type\" "
+                                     "content=\"text/html; charset=utf-8\"/><title>Sorry...")
+            delete_this_file = msg0 or msg1 or msg2
+
+            html_msg = "<html>" in "header"
+    if delete_this_file:
+        os.remove(filename)
+        if msg0:
+            print("Failed. Nothing downloaded.")
+        if msg1:
+            print("Failed. Google Drive download quota exceeded. Try again in 24 hours.")
+        if msg2:
+            print("Failed. Google Drive flagged you as a robot. Try again in 24 hours.")
+    if html_msg and not html_ok:
+        print("^ This looks like an html file. Download may have failed.")
 
 
 def config_file_directory():
