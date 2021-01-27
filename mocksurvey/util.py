@@ -1025,7 +1025,7 @@ def download_file_from_google_drive(fileid, destination, progress=True,
         the server doesn't always specify the size of the file
     html_ok : bool
         Set to true to suppress warning that the downloaded file is
-        and HTML file.
+        an HTML file.
 
     Returns
     -------
