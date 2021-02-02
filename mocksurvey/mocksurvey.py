@@ -90,11 +90,17 @@ class RealizationLoader:
             return (cat[selector(cat)] for cat in self._all_catalogs)
 
     @property
-    def volume(self):
+    def selector(self):
         if self.secondary_selector is None:
-            return self.initial_selector.volume
+            return self.initial_selector
+        elif self.selector is None:
+            return self.secondary_selector
         else:
-            return self.secondary_selector.volume
+            return self.initial_selector & self.secondary_selector
+
+    @property
+    def volume(self):
+        return self.selector.volume
 
     def get_secondary_selector(self):
         return self._null_selector if self.secondary_selector is None \
@@ -122,7 +128,8 @@ class RealizationLoader:
         lightcone, statfuncs = args
         return [statfunc(lightcone, self) for statfunc in statfuncs]
 
-    def apply(self, statfuncs, take_var=False, nthread=1, progress=False):
+    def apply(self, statfuncs, nthread=1, progress=False,
+              secondary_selector=None):
         """
         Parameters
         ----------
@@ -130,17 +137,16 @@ class RealizationLoader:
             Functions that return the desired statistic. They must take two
             positional arguments: a lightcone and this RealizationLoader
 
-        take_var : bool (default=False)
-            If true, this function will return the variance of
-            the desired statistic instead of an array of values
-            across realizations (which you could then take the variance of)
-
         nthread : int (default=1)
             If greater than 1, this many subprocesses will apply
             the statfunc on each realization in parallel.
 
         progress : bool (default=False)
             If True, display a tqdm progress bar
+
+        secondary_selector : bool (default=None)
+            Another selection function to place in addition to the
+            initial_selector which is applied upon loading each lightcone.
 
         Returns
         -------
@@ -150,6 +156,13 @@ class RealizationLoader:
             If take_var=True, each result = tuple(stat, stat_variance).
             Else, each result is an array of stat realizations
         """
+        if secondary_selector is not None:
+            tmp = self.secondary_selector
+            try:
+                return self.apply(statfuncs, nthread, progress)
+            finally:
+                self.secondary_selector = tmp
+
         is_arraylike = util.is_arraylike(statfuncs)
         if not is_arraylike:
             statfuncs = [statfuncs]
@@ -169,14 +182,10 @@ class RealizationLoader:
                 ((x, statfuncs) for x in iterable))
             )
         stats = np.moveaxis(np.array(stats), 0, 1)
-
         results = np.array(stats)
-        if take_var:
-            results = [(stat.mean(axis=0), stat.std(axis=0, ddof=1) ** 2)
-                       for stat in results]
+
         if not is_arraylike:
             results = results[0]
-
         return results
 
 
@@ -282,10 +291,23 @@ class LightConeSelector:
             if key in self.max_dict and self.max_dict[key] < max_dict[key]:
                 max_dict[key] = self.max_dict[key]
 
+        custom_selector = None
+        if self.custom_selector is None and other.custom_selector is None:
+            pass
+        elif self.custom_selector is None:
+            custom_selector = other.custom_selector
+        elif other.custom_selector is None:
+            custom_selector = self.custom_selector
+        else:
+            def custom_selector(*args, **kwargs):
+                return self.custom_selector(*args, **kwargs) & \
+                       other.custom_selector(*args, **kwargs)
+
         return LightConeSelector(z_low, z_high, sqdeg, fieldshape,
                                  sample_fraction, min_dict, max_dict,
                                  cosmo=self.cosmo, center_radec=center_radec,
-                                 realspace=realspace, deg=self.deg)
+                                 realspace=realspace, deg=self.deg,
+                                 custom_selector=custom_selector)
 
     @property
     def volume(self):
