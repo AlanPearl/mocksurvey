@@ -72,9 +72,11 @@ def explicit_path(path: str,
 
 
 def selector_from_meta(meta: dict):
+    x, y = np.array([meta["x_arcmin"], meta["y_arcmin"]]) / 60 * np.pi / 180
+    omega = 2 * x * np.sin(y / 2.)
     selector = ms.LightConeSelector(
         meta["z_low"], meta["z_high"],
-        meta["x_arcmin"] * meta["y_arcmin"] / 3600,
+        omega * (180 / np.pi) ** 2,
         fieldshape="square", realspace=True)
     for key in meta.keys():
         if key.startswith("selector_"):
