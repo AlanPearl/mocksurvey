@@ -487,7 +487,8 @@ class BaseConfig(dict):
 
         # Don't write the file if this is a temporary config
         if not self.is_temp and not self["data_dir"] is None:
-            json.dump(self, open(self._filepath, "w"), indent=4)
+            with open(self._filepath, "w") as f:
+                json.dump(self, f, indent=4)
 
     def add_file(self, filename):
         """
@@ -567,7 +568,8 @@ class BaseConfig(dict):
                 os.mkdir(dirpath)
 
             if os.path.isfile(filepath):
-                config = json.load(open(filepath))
+                with open(filepath) as f:
+                    config = json.load(f)
                 self.update(config)
 
 
@@ -732,7 +734,8 @@ class UMConfig(BaseConfig):
                 lines.append(line)
         snaps_txt = "\n".join(lines)
         snaps_file = self.get_path("snaps.txt")
-        open(snaps_file, mode="w").write(snaps_txt)
+        with open(snaps_file, mode="w") as f:
+            f.write(snaps_txt)
 
     def setup_lightcone_cfg(self, cosmo=bplcosmo):
         lightcone_txt = f"""#Input/output locations and details
@@ -759,7 +762,8 @@ BLOCKS_PER_NODE = 24    #Parallel tasks per node
 CALC_ICL = 1
 """
         lightcone_file = self.get_path("lightcone.cfg")
-        open(lightcone_file, mode="w").write(lightcone_txt)
+        with open(lightcone_file, mode="w") as f:
+            f.write(lightcone_txt)
         self.set_lightcone_config(lightcone_file)
 
     def auto_add_lightcones(self):
@@ -906,7 +910,8 @@ class LightConeConfig(BaseConfig):
         metafile = util.change_file_extension(datafile, "json")
 
         data = np.load(datafile)
-        meta = json.load(open(metafile))
+        with open(metafile) as f:
+            meta = json.load(f)
         return data, meta
 
     def load_meta(self, index):
@@ -927,7 +932,8 @@ class LightConeConfig(BaseConfig):
 
         datafile = self.get_path(self["files"][index])
         metafile = util.change_file_extension(datafile, "json")
-        return json.load(open(metafile))
+        with open(metafile) as f:
+            return json.load(f)
 
     def load_specprop(self, index):
         """Load neighbor-matched spectroscopic properties catalog"""

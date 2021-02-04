@@ -144,8 +144,9 @@ def lightcone_selection(input_name: Union[str, object],
                                      for key in meta.keys()
                                      if key.startswith("selector_"))])
             np.save(phot_fn, cat_block)
-            json.dump({**meta, f"selector_{selector_num}":
-                       repr(selector)}, open(meta_fn, "w"), indent=4)
+            with open(meta_fn, "w") as f:
+                json.dump({**meta, f"selector_{selector_num}":
+                           repr(selector)}, f, indent=4)
 
     # Print location of the stored files
     ms.LightConeConfig(output_name).auto_add()
@@ -228,7 +229,8 @@ def lightcone_spectra(input_name: str = ".",
                                     specmap_filename=spec_fn,
                                     progress=True)
 
-        json.dump(meta, open(meta_fn, "w"), indent=4)
+        with open(meta_fn, "w") as f:
+            json.dump(meta, f, indent=4)
         np.save(prop_fn, propcat)
         os.rename(prop_fn + ".npy", prop_fn)
 

@@ -21,7 +21,8 @@ def convert_ascii_to_npy_and_json(asciifile, calibration, outfilebase=None,
     if outfilebase is None:
         outfilebase = ".".join(asciifile.split(".")[:-1])
 
-    ascii_data = load_ascii_data(asciifile)
+    ascii_data = load_ascii_data(asciifile, obs_mass_limit=obs_mass_limit,
+                                 true_mass_limit=true_mass_limit)
     data = lightcone_from_ascii(ascii_data, calibration, photbands=photbands,
                                 cosmo=cosmo, nomags=nomags)
     metadict = metadict_from_ascii(asciifile, calibration, photbands=photbands,
@@ -30,7 +31,8 @@ def convert_ascii_to_npy_and_json(asciifile, calibration, outfilebase=None,
                                    nomags=nomags)
 
     np.save(outfilebase + ".npy", data)
-    json.dump(metadict, open(outfilebase + ".json", "w"), indent=4)
+    with open(outfilebase + ".json", "w") as f:
+        json.dump(metadict, f, indent=4)
 
     if remove_ascii_file:
         # Save disk space by deleting the huge ascii file

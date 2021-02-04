@@ -28,7 +28,10 @@ class TestLightCone(unittest.TestCase):
         with ms.util.suppress_stdout():
             data = ms.ummags.util.load_ascii_data(dat_fn, 0, 0)
             test = ms.ummags.util.load_ascii_data(test_dat_fn, 0, 0)
-        j, j_test = json.load(open(json_fn)), json.load(open(test_json_fn))
+        with open(json_fn) as f:
+            j = json.load(f)
+        with open(test_json_fn) as f:
+            j_test = json.load(f)
         n, n_test = np.load(npy_fn), np.load(test_npy_fn)
 
         os.remove(os.path.join(path, "test_lightcone_tmp_0.dat"))
