@@ -1,3 +1,16 @@
+"""
+Instructions:
+=============
+Run directly with `python test_lightcone.py`.
+Running with nosetests command does not work.
+
+Prerequisites:
+==============
+- python -m mocksurvey download-uvista
+- python -m mocksurvey download-um 1
+- python -m mocksurvey config UM set-lightcone-executable FILEPATH
+"""
+
 import unittest
 import os
 import json
@@ -44,6 +57,29 @@ class TestLightCone(unittest.TestCase):
             if key.startswith("m_"):
                 assert n_test[key].min() < n[key].mean() < n_test[key].max(), \
                     f"{key} column not as expected"
+
+
+class TestSelector(unittest.TestCase):
+    def test_fullsky_and_square(self):
+        testdata = ms.util.make_struc_array(["redshift", "ra", "dec"],
+                                            [[0.1, 0.2, 0.3, 0.4],
+                                             [-170.0, 1.0, -1.0, 170.0],
+                                             [1.0, -1.0, 80.0, -80.0]])
+
+        s1 = ms.LightConeSelector(0, 1)
+        s2 = ms.LightConeSelector(0, 1, sqdeg=15.0, fieldshape="square")
+        s3 = s1 & s2
+
+        assert np.all(s1(testdata))
+        assert np.all(s2(testdata) == [0, 1, 0, 0])
+        assert np.all(s3(testdata) == [0, 1, 0, 0])
+
+        assert np.all(np.isclose(s1.field_selector.get_fieldshape(rdz=True),
+                                 [6.2831826, 6.2831826, 1.]))
+        assert np.all(np.isclose(s2.field_selector.get_fieldshape(rdz=True),
+                                 [0.06760275, 0.06760275, 1.]))
+        assert np.all(np.isclose(s3.field_selector.get_fieldshape(rdz=True),
+                                 [0.06760275, 0.06760275, 1.]))
 
 
 if __name__ == "__main__":

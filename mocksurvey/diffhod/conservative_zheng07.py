@@ -210,7 +210,7 @@ def fit_hod_sat(primary_halocat, num_sats, mhalo_edges,
     def cost(params):
         alpha, logm0 = params
         ans = hod_sat(x, alpha, logm0, min_value=1e-5)
-        z = (np.log10(ans.astype(np.float)) - y) / yerr
+        z = (np.log10(ans.astype(np.float64)) - y) / yerr
         return np.sum(z ** 2)
 
     p0 = guess_alpha_logm0
