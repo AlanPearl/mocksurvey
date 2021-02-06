@@ -120,9 +120,9 @@ class RealizationLoader:
     def load(self, index):
         s1, s2 = self.initial_selector, self.get_secondary_selector()
         if self._all_catalogs is None:
-            return (v := self.config.load(index)[0])[s1(v)][s2(v)]
+            return (cat := self.config.load(index)[0])[s1(cat)][s2(cat)]
         else:
-            return (v := self._all_catalogs[index])[s2(v)]
+            return (cat := self._all_catalogs[index])[s2(cat)]
 
     def _mapfunc(self, args):
         lightcone, statfuncs = args
@@ -158,6 +158,7 @@ class RealizationLoader:
         """
         if secondary_selector is not None:
             tmp = self.secondary_selector
+            self.secondary_selector = secondary_selector
             try:
                 return self.apply(statfuncs, nthread, progress)
             finally:
@@ -208,7 +209,7 @@ class LightConeSelector:
             fieldshape = "hexagon"
         else:
             raise ValueError(
-                "fieldshape must be a string and it must"
+                "fieldshape must be a string and it must "
                 "start with one of: 'sq', 'cir', 'hex', or 'full'")
 
         self.z_low, self.z_high = z_low, z_high
@@ -225,7 +226,7 @@ class LightConeSelector:
         simbox = httools.SimBox(redshift=z, empty=True)
         if self.fieldshape.startswith("full"):
             fieldshape = "circle"
-        self.field = simbox.field(empty=True, sqdeg=sqdeg, scheme=fieldshape,
+        self.field = simbox.field(empty=True, sqdeg=self.sqdeg, scheme=fieldshape,
                                   center_rdz=center_radec, delta_z=dz)
         self.field_selector = self.field.field_selector
         self.custom_selector = custom_selector
@@ -350,7 +351,7 @@ class LightConeSelector:
     def make_rands(self, n, rdz=False, seed=None):
         # Calculate limits in ra, dec, and distance
         fieldshape = self.field.get_shape(rdz=True)[:2, None]
-        rdlims = self.field.center_rdz[:2, None] + np.array([[.5, -.5]]) \
+        rdlims = self.field.center_rdz[:2, None] + np.array([[-.5, .5]]) \
             * fieldshape
         distlim = util.comoving_disth([self.z_low, self.z_high], self.cosmo)
 

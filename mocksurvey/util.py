@@ -633,7 +633,10 @@ def rand_rdz(N, ralim, declim, zlim, cosmo=None, seed=None):
     Returns an array of shape (N,3) with columns ra,dec,z (z is treated
     as distance, unless cosmo is specified) within the specified limits such
     that the selected points are chosen randomly over a uniform distribution
+
+    Caution: Limits beyond dec = +/-pi/2 will be trimmed silently
     """
+    declim = [max(min(declim), -np.pi/2), min(max(declim), np.pi/2)]
     with temp_seed(seed):
         N = int(N)
         ans = np.random.random((N, 3))
