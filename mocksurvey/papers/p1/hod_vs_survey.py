@@ -169,7 +169,7 @@ def wpreals(nrand=int(5e5), newrun=True, nreal=None, save=True, mockname="PFS"):
     # ====================================================
     def calc_wp_from_lightcone(lightcone, _loader):
         pos = ms.util.xyz_array(lightcone, ["ra", "dec", "redshift"])
-        rands = _loader.initial_selector.make_rands(nrand, rdz=True)
+        rands = _loader.selector.make_rands(nrand, rdz=True)
         pos[:, 2] = ms.util.comoving_disth(pos[:, 2], cosmo=ms.bplcosmo)
         rands[:, 2] = ms.util.comoving_disth(rands[:, 2], cosmo=ms.bplcosmo)
         return ms.stats.cf.wp_rp(pos, rands, rp_edges, is_celestial_data=True)

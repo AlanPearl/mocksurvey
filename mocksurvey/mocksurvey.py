@@ -93,7 +93,7 @@ class RealizationLoader:
     def selector(self):
         if self.secondary_selector is None:
             return self.initial_selector
-        elif self.selector is None:
+        elif self.initial_selector is None:
             return self.secondary_selector
         else:
             return self.initial_selector & self.secondary_selector
