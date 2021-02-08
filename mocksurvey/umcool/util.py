@@ -9,7 +9,7 @@ import halotools.utils as ht_utils
 import halotools.empirical_models as ht_empirical_models
 import halotools.sim_manager as ht_sim_manager
 
-from . import ummags
+from . import umcool
 from .. import mocksurvey as ms
 from . import kcorrect
 
@@ -99,8 +99,8 @@ def lightcone_from_ascii(ascii_data, calibration, photbands=None,
     distmod_cosmo = 5 * np.log10(dlum_true * 1e5)
 
     # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
-    uvdat = ummags.UVData(calibration, photbands=photbands)
-    umdat = ummags.UMData(ascii_data, uvdat=uvdat)
+    uvdat = umcool.UVData(calibration, photbands=photbands)
+    umdat = umcool.UMData(ascii_data, uvdat=uvdat)
     if nomags:
         sfr_uv = np.full_like(dlum, np.nan)
         magdf = pd.DataFrame({f"m_{k}": sfr_uv for k in uvdat.photbands})
@@ -494,7 +494,7 @@ def fix_specprops_columns(nfinder, um_redshift, specprops, cosmo,
 
     # For calculating mag_vals (apparent magnitudes)
     def get_appmags(integrator, show_progress=True, save_specmap=None):
-        iterator = ms.ummags.util.progress_iterator(show_progress)
+        iterator = progress_iterator(show_progress)
         filternames = integrator.filter_strings
 
         sub_index = nfinder.sublist_indices(len(nbr_id))

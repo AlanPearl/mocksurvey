@@ -21,7 +21,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
               keep_ascii_files=False, start_from_ascii=False):
 
     # Predict/generate filenames
-    fake_id = "_tmp_file_made_by_mocksurvey_lightcone_"
+    fake_id = "_tmp_file_made_by_universemachine_"
     args = [z_low, z_high, x_arcmin, y_arcmin, samples, id_tag, fake_id]
     files, moved_files = util.generate_lightcone_filenames(
         args, outfilepath, outfilebase, start_from_ascii)

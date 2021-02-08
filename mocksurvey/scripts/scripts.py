@@ -99,7 +99,7 @@ class LightCone:
         else:
             raise ValueError("--photbands must receive a comma-separated "
                              "list of bands (e.g., 'g,r,i,z,y,h,j,k,ch1,ch2')")
-        ms.ummags.lightcone(
+        ms.umcool.lightcone(
             a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
             executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
             calibration=a.calibration, photbands=a.photbands, nomags=a.nomags,
@@ -175,7 +175,7 @@ class LightConeSelection:
         selector = ms.LightConeSelector(a.Z_LOW, a.Z_HIGH, a.SQDEG,
                                         a.field_shape, a.sample_fraction,
                                         a.min, a.max)
-        ms.ummags.lightcone_selection(a.INPUT_NAME, a.OUTPUT_NAME, selector,
+        ms.umcool.lightcone_selection(a.INPUT_NAME, a.OUTPUT_NAME, selector,
                                       outfile=a.outfile,
                                       input_realization=a.realization,
                                       nblocks_per_dim=a.nblocks_per_dim)
@@ -217,7 +217,7 @@ class LightConeSpectra:
 
     def __call__(self):
         a = self.parser.parse_args()
-        ms.ummags.lightcone_spectra(a.INPUT_NAME, a.realization,
+        ms.umcool.lightcone_spectra(a.INPUT_NAME, a.realization,
                                     make_specmap=a.make_specmap,
                                     best_of=a.best_of,
                                     photbands=a.photbands)

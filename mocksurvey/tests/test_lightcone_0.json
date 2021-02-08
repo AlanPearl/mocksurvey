@@ -47,5 +47,5 @@
     ],
     "config": "/home/alan/data/UniverseMachine/lightcone.cfg",
     "executable": "/home/alan/local/src/universemachine/lightcone",
-    "cmd": "/home/alan/local/src/universemachine/lightcone /home/alan/data/UniverseMachine/lightcone.cfg 0.8 1.0 5.0 5.0 1 _tmp_file_made_by_mocksurvey_lightcone_ 0 0.0 0.0 0.0 1234567"
+    "cmd": "/home/alan/local/src/universemachine/lightcone /home/alan/data/UniverseMachine/lightcone.cfg 0.8 1.0 5.0 5.0 1 _tmp_file_made_by_universemachine_ 0 0.0 0.0 0.0 1234567"
 }

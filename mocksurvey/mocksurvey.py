@@ -29,7 +29,7 @@ from . import httools
 from . import filechunk
 from . import surveys
 # noinspection PyUnresolvedReferences
-from . import ummags, diffhod
+from . import umcool, diffhod
 # Default cosmology (Bolshoi-Planck)
 from .httools.httools import bplcosmo
 

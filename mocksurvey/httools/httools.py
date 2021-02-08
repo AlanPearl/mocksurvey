@@ -1763,7 +1763,7 @@ GalBox.__doc__ = HaloBox.__doc__ = SimBox.__doc__
 #     @property
 #     @functools.lru_cache(maxsize=None)
 #     def mag_predictor(self, photbands=None):
-#         return ummags.make_predictor_UMmags(self.halos, self.redshift, photbands)
+#         return umcool.make_predictor_UMmags(self.halos, self.redshift, photbands)
 #
 # class UMField:
 #     """
