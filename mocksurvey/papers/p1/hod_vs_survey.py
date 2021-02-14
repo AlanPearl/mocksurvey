@@ -11,6 +11,7 @@ import emcee
 
 # noinspection PyUnresolvedReferences
 import mocksurvey as ms
+from . import config
 
 
 class LnProbHOD:
@@ -35,32 +36,25 @@ class LnProbHOD:
         return self.lnlike(wp) + prior
 
 
-def lnprior(sigma, alpha):
-    if (1e-5 <= sigma <= 5.0) & (0.1 <= alpha <= 3.0):
-        return 0
-    else:
-        return -np.inf
-
-
 def load_wpdata(file_pattern="wpreal_grids"):
     path, pattern = os.path.split(os.path.realpath(file_pattern))
     files = [os.path.join(path, x) for x in os.listdir(path) if x.startswith(pattern)]
-    wp = np.array([np.stack(np.load(fn, allow_pickle=True)[:-1]) for fn in files])
+    data = np.array([np.stack(np.load(fn, allow_pickle=True)) for fn in files])
     if not len(files):
         raise IOError(f"Could not find any files starting with {pattern} in {path}")
 
-    # shape = (num_files, 4, 5, 25+, 6)
-    # indexed by (trial, survey_grid, grid_point, realization, rp_scale
-    imax, jmax, kmax = wp.shape[:3]
-    cov_grid = np.empty(wp.shape[:3], dtype=object)
+    wp = ms.stats.datadict_array_get(data, "wp")
+    # shape = (num_files, 5, 25+, 6)
+    # indexed by (grid, grid_point, realization, rp_scale
+    imax, jmax = wp.shape[:2]
+    cov_grid = np.empty(wp.shape[:2], dtype=object)
     mean_grid = cov_grid.copy()
     for i in range(imax):
         for j in range(jmax):
-            for k in range(kmax):
-                cov_grid[i, j, k] = np.cov(wp[i, j, k], rowvar=False)
-                mean_grid[i, j, k] = np.mean(wp[i, j, k], axis=0)
-    cov_grid = np.mean(np.array(cov_grid.tolist()), axis=0)
-    mean_grid = np.mean(np.array(mean_grid.tolist()), axis=0)
+            cov_grid[i, j] = np.cov(wp[i, j], rowvar=False)
+            mean_grid[i, j] = np.mean(wp[i, j], axis=0)
+    cov_grid = np.array(cov_grid.tolist())
+    mean_grid = np.array(mean_grid.tolist())
     return mean_grid, cov_grid
 
 
@@ -69,7 +63,7 @@ def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
     cenhod = model["cenhod"]
 
     lnlike = stats.multivariate_normal(mean=mean_wp, cov=cov_wp).logpdf
-    lnprob = LnProbHOD(lnlike, lnprior, model, nreals=nreals)
+    lnprob = LnProbHOD(lnlike, config.lnprior, model, nreals=nreals)
 
     guess = [cenhod.param_dict[p] for p in ["sigma_logM", "alpha"]]
     ndim = len(guess)
@@ -164,7 +158,8 @@ def runmcmc(niter=1000, backend_fn="mcmc.h5", newrun=True, which_runs=None,
                          f"grid{i}-{j}", niter=niter, newrun=newrun)
 
 
-def wpreals(nrand=int(5e5), newrun=True, nreal=None, save=True, mockname="PFS"):
+def wpreals(gridname, mockname, save=True, nrand=int(5e5), newrun=True,
+            nreal=None):
     # Function that we apply to each lightcone realization
     # ====================================================
     def calc_wp_from_lightcone(lightcone, _loader):
@@ -172,62 +167,50 @@ def wpreals(nrand=int(5e5), newrun=True, nreal=None, save=True, mockname="PFS"):
         rands = _loader.selector.make_rands(nrand, rdz=True)
         pos[:, 2] = ms.util.comoving_disth(pos[:, 2], cosmo=ms.bplcosmo)
         rands[:, 2] = ms.util.comoving_disth(rands[:, 2], cosmo=ms.bplcosmo)
-        return ms.stats.cf.wp_rp(pos, rands, rp_edges, is_celestial_data=True)
+        wp = ms.stats.cf.wp_rp(pos, rands, rp_edges, is_celestial_data=True)
+        return ms.stats.DataDict({"wp": wp, "N": len(lightcone)})
 
     @functools.lru_cache
     def wp_reals_from_survey_params(completeness, sqdeg):
         print(f"Completeness = {completeness}, sqdeg = {sqdeg}", flush=True)
+        assert 0 <= completeness <= 1, f"Completeness must be between 0 and 1"
+        assert max_sqdeg >= sqdeg, f"Area is too big. Must be <= {max_sqdeg}"
+
         selector2 = ms.LightConeSelector(zlim[0], zlim[1], sqdeg=sqdeg,
                                          sample_fraction=completeness)
         wp_reals = loader.apply(calc_wp_from_lightcone, progress=True,
                                 secondary_selector=selector2)
         return np.array(wp_reals)
 
-    # Model parameters
-    # =======================
-    zlim = [0.9, 1.1]
-    rp_edges = np.geomspace(1, 27, 7)
-    threshold = 10 ** 10.6
+    # Survey and wp(rp) parameters
+    # ============================
+    params = config.SurveyParamGrid(gridname)
+    rp_edges, zlim, threshold = params.rp_edges, params.zlim, params.threshold
     selector = ms.LightConeSelector(zlim[0], zlim[1],
                                     min_dict=dict(obs_sm=threshold))
+
+    # Initialize the realization loader
+    # =================================
     loader = ms.RealizationLoader(mockname, selector=selector, nreal=nreal)
+    max_sqdeg = ms.util.selector_from_meta(loader.meta[0]).sqdeg
     loader.load_all()
 
     # Calculate wp realizations over the following survey parameter grids
     # ===================================================================
-    pfs_completeness_grid = np.array([0.4, 0.55, 0.7, 0.85, 1.0])
-    pfs_sqdeg_grid1 = np.full_like(pfs_completeness_grid, 12.0)
-    pfs_sqdeg_grid2 = 12.0 * (0.7 / pfs_completeness_grid)
-    moons_completeness_grid = np.array([0.475, 0.6, 0.725, 0.85, 0.975])
-    moons_sqdeg_grid1 = np.full_like(moons_completeness_grid, 4.0)
-    moons_sqdeg_grid2 = 4.0 * (0.725 / moons_completeness_grid)
+    completeness_grid = params.completeness_grid
+    sqdeg_grid = params.sqdeg_grid
 
-    pfs_grid1 = np.array([
+    wp_grid = np.array([
         wp_reals_from_survey_params(c, s)
-        for c, s in zip(pfs_completeness_grid, pfs_sqdeg_grid1)])
-    pfs_grid2 = np.array([
-        wp_reals_from_survey_params(c, s)
-        for c, s in zip(pfs_completeness_grid, pfs_sqdeg_grid2)])
-    moons_grid1 = np.array([
-        wp_reals_from_survey_params(c, s)
-        for c, s in zip(moons_completeness_grid, moons_sqdeg_grid1)])
-    moons_grid2 = np.array([
-        wp_reals_from_survey_params(c, s)
-        for c, s in zip(moons_completeness_grid, moons_sqdeg_grid2)])
-    grids = [pfs_grid1, pfs_grid2, moons_grid1, moons_grid2]
+        for c, s in zip(completeness_grid, sqdeg_grid)
+    ])
 
     # Save wp realization grids to file "wpreal_grids.npy"
     # ====================================================
-    fn = save if isinstance(save, str) else "wpreal_grids.npy"
+    fn = save if isinstance(save, str) else f"wpreal_{gridname}.npy"
     save = bool(save)
-    if newrun:
-        shapes = [(*x.shape[:1], 0, *x.shape[2:]) for x in grids]
-        pg1, pg2, mg1, mg2 = [np.empty(shape) for shape in shapes]
-    else:
-        pg1, pg2, mg1, mg2 = np.load(fn, allow_pickle=True)[:-1]
-    pg1 = np.concatenate([pg1, pfs_grid1], axis=1)
-    pg2 = np.concatenate([pg2, pfs_grid2], axis=1)
-    mg1 = np.concatenate([mg1, moons_grid1], axis=1)
-    mg2 = np.concatenate([mg2, moons_grid2], axis=1)
+    if not newrun:
+        saved_grid = np.load(fn, allow_pickle=True)
+        wp_grid = np.concatenate([saved_grid, wp_grid], axis=1)
     if save:
-        np.save(fn, np.array([pg1, pg2, mg1, mg2, None], dtype=object))
+        np.save(fn, wp_grid)

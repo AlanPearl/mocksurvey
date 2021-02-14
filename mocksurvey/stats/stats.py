@@ -1,8 +1,52 @@
 import numpy as np
-import halotools as ht
+import halotools.mock_observables as htmo
 
 from .. import mocksurvey as ms
 from . import cf
+
+
+class DataDict(dict):
+    def __init__(self, data=None):
+        data = dict() if data is None else data
+        dict.__init__(self)
+        self.update(data)
+
+    def _operation(self, other, f):
+        other_is_dict = isinstance(other, dict)
+        if other_is_dict:
+            assert self.keys() == other.keys()
+
+        ans = DataDict()
+        for key in self.keys():
+            if other_is_dict:
+                ans[key] = f(self[key], other[key])
+            else:
+                ans[key] = f(self[key], other)
+        return ans
+
+    def __add__(self, other):
+        return self._operation(other, lambda x, y: x + y)
+
+    def __sub__(self, other):
+        return self._operation(other, lambda x, y: x - y)
+
+    def __mul__(self, other):
+        return self._operation(other, lambda x, y: x * y)
+
+    def __truediv__(self, other):
+        return self._operation(other, lambda x, y: x / y)
+
+
+def datadict_array_get(array, key):
+    shape = np.shape(array)
+    array = np.ravel(array).tolist()
+    vals = [np.array(x[key]) for x in array]
+    shapes = [x.shape for x in vals]
+    for s in shapes:
+        assert s == shapes[0]
+    array = np.reshape(vals, (*shape, *s))
+    return array
+
 
 def wprp_tot_sf_q(data, rands, rpbins=None, ssfr_cut=1e-11, los=0,
                   shuffle_sfr=False):
@@ -28,6 +72,7 @@ def wprp_tot_sf_q(data, rands, rpbins=None, ssfr_cut=1e-11, los=0,
 
     return rpbins, wp_tot, wp_sf, wp_q
 
+
 def qpgf(catalog, rands, search_rad=4.0, search_min=0.3, pimax=None,
          bin_edges=None, primary_mass_lims=None, mass_ratio_lims=None,
          ssfr_cut=1e-11, period=None, primary_search_rad=0.5,
@@ -46,11 +91,13 @@ def qpgf(catalog, rands, search_rad=4.0, search_min=0.3, pimax=None,
             primary_pimax=primary_pimax,
             precomputed_primary_selection=precomputed_primary_selection)
 
+
 def find_primaries(sample1, sample2, search_rad, pimax, m1, m2, period=None):
     n_larger = _nic(sample1, sample2, search_rad, pimax, m1, m2,
                    inclusive_bounds=[False, True],
                    mass_ratio_lims=[1, np.inf], period=period)
     return n_larger == 0
+
 
 def qpgf_vs_cia(pos, mass, sfr, search_rad, search_min, pimax,
                 bin_edges=None, primary_mass_lims=None,
@@ -146,6 +193,7 @@ def qpgf_vs_cia(pos, mass, sfr, search_rad, search_min, pimax,
     # Quenched fraction in each bin
     return bin_edges, hist_r / (hist_b + hist_r)
 
+
 def _nic(sample1, sample2, search_rad, pimax, m1, m2, mass_ratio_lims, period=None, inclusive_bounds=None):
     """
     Neighbors in Cylinders
@@ -166,25 +214,26 @@ def _nic(sample1, sample2, search_rad, pimax, m1, m2, mass_ratio_lims, period=No
     if inclusive_bounds is None:
         inclusive_bounds = [False, False]
 
-    return ht.mock_observables.counts_in_cylinders(
+    return htmo.counts_in_cylinders(
         sample1, sample2, search_rad, pimax, period,
         condition="mass_frac", condition_args=
         (m1, m2, mass_ratio_lims, *inclusive_bounds))
+
 
 class Observable:
     def __init__(self, funcs, names=None, args=None, kwargs=None):
         N = len(funcs)
         self.funcs = funcs
         self.names = range(N) if names is None else names
-        self.funcdic = dict(zip(self.names,self.funcs))
+        self.funcdic = dict(zip(self.names, self.funcs))
         if isinstance(args, dict):
             self.argsdic = args.copy()
         else:
-            self.argsdic = dict(zip(self.names,[()]*N)) if args is None else dict(zip(names,args))
+            self.argsdic = dict(zip(self.names, [()]*N)) if args is None else dict(zip(names,args))
         if isinstance(kwargs, dict):
             self.kwargsdic = kwargs.copy()
         else:
-            self.kwargsdic = dict(zip(self.names,[{}]*N)) if kwargs is None else dict(zip(names,kwargs))
+            self.kwargsdic = dict(zip(self.names, [{}]*N)) if kwargs is None else dict(zip(names,kwargs))
         self.indexdic = {}
         self.lendic = {}
 
@@ -217,11 +266,10 @@ class Observable:
         if mean is None:
             if method is None:
                 raise ValueError("Must calculate the observables first.\n"
-                        "Use <Observable object>.obs_func(data,rands)")
+                                 "Use observable.obs_func(data, rands)")
             else:
                 raise ValueError("Must run this method first.\n"
                     f"Use <Observable object>.{method}(data,rands,...)")
-
 
         if name is None:
             return mean if (method is None) else (mean, covar)
@@ -231,10 +279,12 @@ class Observable:
             s = slice(index0, index1)
             return mean[s] if (method is None) else (mean[s], covar[s,s])
 
-    def jackknife(self, data, rands, centers, fieldshape, nbins=(2,2,1), data_to_bin=None, rands_to_bin=None, **kwargs):
+    def jackknife(self, data, rands, centers, fieldshape, nbins=(2, 2, 1),
+                  data_to_bin=None, rands_to_bin=None, **kwargs):
 
-        self.mean_jack, self.covar_jack = cf.block_jackknife(data, rands, centers, fieldshape, nbins,
-                                                                   data_to_bin, rands_to_bin, self.obs_func, [], {"store": False}, **kwargs)
+        self.mean_jack, self.covar_jack = cf.block_jackknife(
+            data, rands, centers, fieldshape, nbins, data_to_bin, rands_to_bin,
+            self.obs_func, [], {"store": False}, **kwargs)
         return self.mean_jack, self.covar_jack
 
     def realization(self, rands, field, nrealization=25, **get_data_kw):
