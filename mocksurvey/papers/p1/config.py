@@ -47,18 +47,21 @@ class SurveyParamGrid:
             "threshold": 10 ** 11,
             "zlim": [0.5, 0.8],
             "sqdeg": ms.surveys.waves.sqdeg,
+            "completeness": ms.surveys.waves.completeness,
             "completeness_grid": np.linspace(0.8, 1.0, 5)
         },
         "p": {
             "threshold": 10 ** 10.55,
             "zlim": [0.8, 1.2],
             "sqdeg": ms.surveys.pfs_low.sqdeg,
+            "completeness": ms.surveys.pfs_low.completeness,
             "completeness_grid": np.linspace(0.4, 1.0, 5)
         },
         "m": {
             "threshold": 10 ** 10.1,
             "zlim": [1.2, 1.6],
             "sqdeg": ms.surveys.moons_x_mid.sqdeg,
+            "completeness": ms.surveys.moons_x_mid.completeness,
             "completeness_grid": np.linspace(0.475, 0.975, 5)
         },
     }
@@ -79,10 +82,11 @@ class SurveyParamGrid:
         self.completeness_grid = self.params[name[0]]["completeness_grid"]
 
         sqdeg = self.params[name[0]]["sqdeg"]
+        completeness = self.params[name[0]]["completeness"]
         if int(name[-1]) == 1:
             grid = np.full_like(self.completeness_grid, sqdeg)
         elif int(name[-1]) == 2:
-            grid = sqdeg * (self.completeness_grid[2] / self.completeness_grid)
+            grid = sqdeg * (completeness / self.completeness_grid)
         else:
             raise ValueError(f"gridnum={name[-1]} but must be either 1 or 2.")
         self.sqdeg_grid = grid
