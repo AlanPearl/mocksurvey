@@ -33,14 +33,14 @@ class TestLightCone(unittest.TestCase):
         test_npy_fn = os.path.join(path, "test_lightcone_0.npy")
 
         # Might want to suppress stdout here as well
-        ms.umcool.lightcone(0.8, 1.0, 5, 5, rseed=1234567,
+        ms.iamcool.lightcone(0.8, 1.0, 5, 5, rseed=1234567,
                             outfilepath=path, calibration="uvista",
                             outfilebase="test_lightcone_tmp",
                             keep_ascii_files=True)
 
         with ms.util.suppress_stdout():
-            data = ms.umcool.util.load_ascii_data(dat_fn, 0, 0)
-            test = ms.umcool.util.load_ascii_data(test_dat_fn, 0, 0)
+            data = ms.iamcool.util.load_ascii_data(dat_fn, 0, 0)
+            test = ms.iamcool.util.load_ascii_data(test_dat_fn, 0, 0)
         with open(json_fn) as f:
             j = json.load(f)
         with open(test_json_fn) as f:
