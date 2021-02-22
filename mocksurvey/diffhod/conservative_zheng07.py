@@ -11,17 +11,21 @@ class HODZheng07:
         self.model = htem.PrebuiltHodModelFactory(
             "zheng07", redshift=halocat.redshift) if model is None else model
         self.halocat = halocat
+
+        if "sigma" in params:
+            params["sigma_logM"] = params["sigma"]
+            del params["sigma"]
         if not set(params.keys()).issubset(self.model.param_dict.keys()):
             raise KeyError(f"Not all kwargs {list(params)} are allowed "
                            f"model params {list(self.model.param_dict)}")
         self.model.param_dict.update(params)
 
-    def mean_num_cens(self, logMmin=None, sigma_logM=None):
+    def mean_num_cens(self, logMmin=None, sigma=None):
         tmp = htem.PrebuiltHodModelFactory("zheng07")
         logMmin = self.model.param_dict["logMmin"] if logMmin is None else logMmin
-        sigma_logM = self.model.param_dict["sigma_logM"] \
-            if sigma_logM is None else sigma_logM
-        tmp.param_dict.update(logMmin=logMmin, sigma_logM=sigma_logM)
+        sigma = self.model.param_dict["sigma_logM"] \
+            if sigma is None else sigma
+        tmp.param_dict.update(logMmin=logMmin, sigma_logM=sigma)
         mvir = self.halocat.halo_table["halo_mvir"][
             self.halocat.halo_table["halo_upid"] == -1]
         return tmp.mean_occupation_centrals(prim_haloprop=mvir).sum()
@@ -41,31 +45,72 @@ class HODZheng07:
         return self.model.mock.galaxy_table
 
     @staticmethod
-    def cen_occ(logM, logMmin, sigma_logM):
-        return 0.5 * (1 + special.erf((logM - logMmin) / sigma_logM))
+    def cen_occ(logM, logMmin, sigma):
+        return 0.5 * (1 + special.erf((logM - logMmin) / sigma))
 
     @staticmethod
     def sat_occ(logM, alpha, logM1, logM0):
         return ((10 ** logM - 10 ** logM0) / 10 ** logM1) ** alpha
 
 
+class ConservativeHOD:
+    def __init__(self, halocat, threshold):
+        self.cenhod, self.sathod = measure_hod(halocat, threshold=threshold)
+        self.halocat = self.cenhod.hod.halocat
+        assert self.cenhod.param_dict == self.sathod.param_dict
+
+        self.num_cens = self.cenhod.num_gals
+        self.num_sats = self.sathod.num_gals
+        self.num_gals = self.num_cens + self.num_sats
+
+        self.param_dict = {
+            "sigma": self.cenhod.param_dict["sigma"],
+            "alpha": self.sathod.param_dict["alpha"],
+            "fsat": self.num_sats / self.num_gals,
+            "logM0": self.cenhod.param_dict["logM0"]
+        }
+
+    def solve_logMmin(self):
+        self.cenhod.param_dict.update(self.param_dict)
+        self.cenhod.num_gals = (1 - self.param_dict["fsat"]) * self.num_gals
+        return self.cenhod.solve_logMmin()
+
+    def solve_logM1(self):
+        self.sathod.param_dict.update(self.param_dict)
+        self.sathod.num_gals = self.param_dict["fsat"] * self.num_gals
+        return self.sathod.solve_logM1()
+
+    def get_hod_params(self, **params):
+        for key, val in params.items():
+            assert key in self.param_dict, f"Invalid key: {key}"
+            if val is not None:
+                self.param_dict[key] = val
+        logMmin = self.solve_logMmin()
+        logM1 = self.solve_logM1()
+        sigma, alpha, logM0 = [self.param_dict[x] for x in
+                               ["sigma", "alpha", "logM0"]]
+        return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
+                    logM1=logM1, logM0=logM0)
+
+
+# The following classes are used under the hood to make centrals/satellites
 class BaseConservativeHODZheng07:
     def __init__(self, halocat, num_gals, **kwargs):
         # Default HOD parameters
         # ======================
         self.param_dict = dict(
             logMmin=(x := kwargs.get("logMmin", 13.0)),
-            sigma_logM=kwargs.get("sigma_logM", 1.0),
+            sigma=kwargs.get("sigma", 1.0),
             alpha=kwargs.get("alpha", 1.0),
             logM1=kwargs.get("logM1", x + 1.0),
             logM0=kwargs.get("logM0", x - 1.0),
         )
         self.min_dict = dict(
-            logMmin=0, sigma_logM=0.1,
+            logMmin=0, sigma=0.1,
             alpha=0.1, logM1=0, logM0=0
         )
         self.max_dict = dict(
-            logMmin=20, sigma_logM=3.0,
+            logMmin=20, sigma=3.0,
             alpha=3.0, logM1=20, logM0=20
         )
 
@@ -109,8 +154,8 @@ class ConservativeHODZheng07Cen(BaseConservativeHODZheng07):
         guess = (2e18 / 1.1 / np.log(10) / self.num_gals) ** (1 / 1.1)
         return self.solve("logMmin", guess=np.log10(guess))
 
-    def solve_sigma_logM(self):
-        return self.solve("sigma_logM")
+    def solve_sigma(self):
+        return self.solve("sigma")
 
 
 # noinspection PyPep8Naming
@@ -149,11 +194,11 @@ def fit_hod_cen(primary_halocat, num_cens, mhalo_edges, plot=False):
     mhalo_cens = np.sqrt(mhalo_edges[:-1] * mhalo_edges[1:])
     x = np.log10(mhalo_cens)
 
-    def hod_cen(logm, sigma_logm):
+    def hod_cen(logm, sigma):
         logmmin = ConservativeHODZheng07Cen(
             primary_halocat, num_cens.sum(),
-            sigma_logM=sigma_logm).solve_logMmin()
-        return HODZheng07.cen_occ(logm, logmmin, sigma_logm)
+            sigma=sigma).solve_logMmin()
+        return HODZheng07.cen_occ(logm, logmmin, sigma)
 
     def cost(sigma):
         z = (hod_cen(x, sigma) - mean_occupation_cen) / mean_occupation_cen_err
@@ -161,9 +206,9 @@ def fit_hod_cen(primary_halocat, num_cens, mhalo_edges, plot=False):
 
     bracket = [0.1, 1.5]
     result = optimize.minimize_scalar(cost, bracket=bracket, tol=1e-3)
-    sigma_logm_fit = result.x
+    sigma_fit = result.x
     logmmin_fit = ConservativeHODZheng07Cen(
-        primary_halocat, num_cens.sum(), sigma_logM=sigma_logm_fit).solve_logMmin()
+        primary_halocat, num_cens.sum(), sigma=sigma_fit).solve_logMmin()
 
     if plot:
         # noinspection PyPackageRequirements
@@ -175,10 +220,10 @@ def fit_hod_cen(primary_halocat, num_cens, mhalo_edges, plot=False):
 
         plt.fill_between(x, mean_occupation_cen + mean_occupation_cen_err,
                          mean_occupation_cen - mean_occupation_cen_err, color="grey")
-        plt.plot(x, hod_cen(x, sigma_logm_fit), "k--")
+        plt.plot(x, hod_cen(x, sigma_fit), "k--")
 
         label = (f"$\\rm \\log M_{{min}} = {logmmin_fit:.2f}$\n"
-                 f"$\\rm \\sigma_{{\\log M}} = {sigma_logm_fit:.2f}$")
+                 f"$\\rm \\sigma_{{\\log M}} = {sigma_fit:.2f}$")
         plt.plot([], [], "k--", label=label)
         plt.legend(frameon=False, fontsize=16)
 
@@ -186,7 +231,7 @@ def fit_hod_cen(primary_halocat, num_cens, mhalo_edges, plot=False):
         plt.ylabel("$\\rm \\langle N_{cen} \\rangle$", fontsize=14)
         plt.show()
 
-    return sigma_logm_fit, logmmin_fit
+    return sigma_fit, logmmin_fit
 
 
 def fit_hod_sat(primary_halocat, num_sats, mhalo_edges,
@@ -261,14 +306,14 @@ def measure_hod(halos, threshold, plot=False):
 
     # Fit central and satellite HOD parameters to the halo catalog
     mhalo_edges = np.logspace(11.25, 14, 31)
-    sigma_logm, logmmin = fit_hod_cen(halocat, num_cens,
+    sigma, logmmin = fit_hod_cen(halocat, num_cens,
                                       mhalo_edges, plot=plot)
     guess = (1.15, logmmin + 0.1)
     alpha, logm0, logm1 = fit_hod_sat(halocat, num_sats,
                                       mhalo_edges,
                                       guess_alpha_logm0=guess,
                                       plot=plot)
-    params = dict(sigma_logM=sigma_logm, logMmin=logmmin,
+    params = dict(sigma=sigma, logMmin=logmmin,
                   alpha=alpha, logM0=logm0, logM1=logm1)
     return (ConservativeHODZheng07Cen(halocat, num_cens.sum(), **params),
             ConservativeHODZheng07Sat(halocat, num_sats.sum(), **params))

@@ -1,4 +1,3 @@
-import os
 import functools
 
 import numpy as np
@@ -23,49 +22,56 @@ class LnProbHOD:
         self.nreals = nreals
 
     def __call__(self, params):
-        sigma, alpha = params
-        prior = self.lnprior(sigma, alpha)
+        sigma, alpha, fsat = params
+        prior = self.lnprior(sigma, alpha, fsat)
         if not np.isfinite(prior):
             return prior
 
         # Calculate wp(rp) given HOD parameters
-        wp = calc_wp_from_hod(self.model, alpha=alpha, sigma_logM=sigma,
+        wp = calc_wp_from_hod(self.model, alpha=alpha, sigma=sigma,
                               reals=self.nreals)
 
         # Compare model to observation to calculate likelihood
         return self.lnlike(wp) + prior
 
 
-def load_wpdata(file_pattern="wpreal_grids"):
-    path, pattern = os.path.split(os.path.realpath(file_pattern))
-    files = [os.path.join(path, x) for x in os.listdir(path) if x.startswith(pattern)]
-    data = np.array([np.stack(np.load(fn, allow_pickle=True)) for fn in files])
-    if not len(files):
-        raise IOError(f"Could not find any files starting with {pattern} in {path}")
+def load_wpdata(filename, set_all_means_same=True):
+    # path, pattern = os.path.split(os.path.realpath(filename))
+    # files = [os.path.join(path, x) for x in os.listdir(path) if x == pattern]
+    # data = np.array([np.stack(np.load(fn, allow_pickle=True)) for fn in files])
+    data = np.load(filename, allow_pickle=True)
+    # if not len(files):
+    #     raise IOError(f"Could not find any files starting with {pattern} in {path}")
 
     wp = ms.stats.datadict_array_get(data, "wp")
-    # shape = (num_files, 5, 25+, 6)
-    # indexed by (grid, grid_point, realization, rp_scale
-    imax, jmax = wp.shape[:2]
-    cov_grid = np.empty(wp.shape[:2], dtype=object)
+    # shape = (5, 25+, 6)
+    # indexed by (grid_point, realization, rp_scale)
+    imax = wp.shape[0]
+    cov_grid = np.empty(imax, dtype=object)
     mean_grid = cov_grid.copy()
     for i in range(imax):
-        for j in range(jmax):
-            cov_grid[i, j] = np.cov(wp[i, j], rowvar=False)
-            mean_grid[i, j] = np.mean(wp[i, j], axis=0)
+        cov_grid[i] = np.cov(wp[i], rowvar=False, ddof=1)
+        mean_grid[i] = np.mean(wp[i], axis=0)
     cov_grid = np.array(cov_grid.tolist())
     mean_grid = np.array(mean_grid.tolist())
+
+    if set_all_means_same:
+        var_grid = cov_grid[:,
+                            np.arange(cov_grid.shape[1]),
+                            np.arange(cov_grid.shape[2])]
+        mean_of_means = np.average(mean_grid, weights=1/var_grid, axis=0)
+        mean_grid[:, :] = mean_of_means[None, :]
     return mean_grid, cov_grid
 
 
 def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
                      nreals=1, nwalkers=20, niter=500):
-    cenhod = model["cenhod"]
+    hod = model["hod"]
 
     lnlike = stats.multivariate_normal(mean=mean_wp, cov=cov_wp).logpdf
     lnprob = LnProbHOD(lnlike, config.lnprior, model, nreals=nreals)
 
-    guess = [cenhod.param_dict[p] for p in ["sigma_logM", "alpha"]]
+    guess = [hod.param_dict[p] for p in ["sigma", "alpha", "fsat"]]
     ndim = len(guess)
 
     # Initialize the sampler
@@ -87,38 +93,17 @@ def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
     return sampler
 
 
-# Streamline the calculation of wp(rp), varying any HOD parameter
-# (except logMmin and logM1 which are set by number density)
-def get_hod_params(cenhod, sathod, sigma_logM=None, alpha=None, logM0=None):
-    assert cenhod.param_dict == sathod.param_dict
-    halocat = cenhod.hod.halocat
+def calc_wp_from_hod(model, sigma=None, alpha=None, fsat=None, logM0=None,
+                     reals=1, take_mean=True):
+    hodsolver, rp_edges, boxsize, redshift = [
+        model[s] for s in ["hod", "rp_edges", "boxsize", "redshift"]]
+    halocat = hodsolver.halocat
 
-    if sigma_logM is None:
-        sigma_logM = cenhod.param_dict["sigma_logM"]
-    if alpha is None:
-        alpha = sathod.param_dict["alpha"]
-    if logM0 is None:
-        logM0 = sathod.param_dict["logM0"]
-    logMmin = ms.diffhod.ConservativeHODZheng07Cen(
-        halocat, cenhod.num_gals, sigma_logM=sigma_logM
-    ).solve_logMmin()
-    logM1 = ms.diffhod.ConservativeHODZheng07Sat(
-        halocat, sathod.num_gals, alpha=alpha, logM0=logM0
-    ).solve_logM1()
-    return logMmin, logM1, sigma_logM, alpha, logM0
+    params = dict(sigma=sigma, alpha=alpha, fsat=fsat, logM0=logM0)
+    hod_params = hodsolver.get_hod_params(**params)
 
-
-def calc_wp_from_hod(model, sigma_logM=None, alpha=None, logM0=None,
-                     reals=5, take_mean=True):
-    cenhod, sathod, rp_edges, boxsize, redshift = [
-        model[s] for s in ["cenhod", "sathod", "rp_edges", "boxsize", "redshift"]]
-    halocat = cenhod.hod.halocat
-
-    logMmin, logM1, sigma_logM, alpha, logM0 = get_hod_params(
-        cenhod, sathod, sigma_logM, alpha, logM0)
     hod = ms.diffhod.HODZheng07(
-        halocat, logMmin=logMmin, sigma_logM=sigma_logM,
-        alpha=alpha, logM0=logM0, logM1=logM1)
+        halocat, **hod_params)
     ans = []
     for _ in range(reals):
         data = hod.populate_mock()
@@ -131,31 +116,36 @@ def calc_wp_from_hod(model, sigma_logM=None, alpha=None, logM0=None,
     return np.mean(ans, axis=0) if take_mean else ans
 
 
-def runmcmc(niter=1000, backend_fn="mcmc.h5", newrun=True, which_runs=None,
-            wpdata_file_pattern="wpreal_grids.npy"):
+def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
+            which_runs=None, wpdata_file="wpreal_grids.npy"):
     # Load data we already computed
-    mean_grid, cov_grid = load_wpdata(file_pattern=wpdata_file_pattern)
+    mean_grid, cov_grid = load_wpdata(filename=wpdata_file)
+    params = config.ModelConfig(gridname)
 
-    rp_edges = np.geomspace(1, 27, 7)
-    boxsize = 250.0
-    redshift = 1.0
-    threshold = 10 ** 10.6
-    cenhod, sathod = ms.diffhod.measure_hod(
-        ms.UMConfig().load(redshift)[0], threshold=threshold)
+    rp_edges = params.rp_edges
+    boxsize = params.boxsize
+    redshift = params.redshift
+    threshold = params.threshold
 
-    model = dict(cenhod=cenhod, sathod=sathod, redshift=redshift,
+    halocat, closest_redshift = ms.UMConfig().load(redshift)
+    hod = ms.diffhod.ConservativeHOD(halocat, threshold=threshold)
+    print(f"Closest snapshot to z={redshift} is z={closest_redshift}")
+    print({"ndensity [h/Mpc]^3": hod.num_gals / boxsize**3,
+           **hod.param_dict, **hod.get_hod_params()})
+
+    model = dict(hod=hod, redshift=redshift,
                  boxsize=boxsize, rp_edges=rp_edges)
 
     if which_runs is None:
-        imax, jmax = mean_grid.shape[:2]  # = (4, 5)
-        which_runs = [(i, j) for i in range(imax) for j in range(jmax)]
+        imax = mean_grid.shape[0]  # = 5
+        which_runs = list(range(imax))
     num_runs = len(which_runs)
     run_num = 0
-    for i, j in which_runs:
+    for i in which_runs:
         run_num += 1
         print(f"Beginning run {run_num}/{num_runs}.", flush=True)
-        mcmc_from_wpdata(model, mean_grid[i, j], cov_grid[i, j], backend_fn,
-                         f"grid{i}-{j}", niter=niter, newrun=newrun)
+        mcmc_from_wpdata(model, mean_grid[i], cov_grid[i], backend_fn,
+                         f"{gridname}.{i}", niter=niter, newrun=newrun)
 
 
 def wpreals(gridname, mockname, save=True, nrand=int(5e5), newrun=True,
