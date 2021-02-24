@@ -50,7 +50,7 @@ class SurveyParamGrid:
             "zlim": [0.5, 0.8],
             "sqdeg": ms.surveys.waves.sqdeg,
             "completeness": ms.surveys.waves.completeness,
-            "completeness_grid": np.linspace(0.8, 1.0, 5)
+            "completeness_grid": np.array([0.6, 0.75, 0.875, 0.95, 1.0])
         },
         "p": {
             "threshold": 10 ** 10.5,
