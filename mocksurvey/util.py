@@ -1051,8 +1051,12 @@ def download_file_from_google_drive(fileid, destination, progress=True,
             params = {"id": fileid, "confirm": token}
             response = session.get(url, params=params, stream=True)
 
-    _save_response_content(response, destination, progress=progress, size=size)
-    _check_for_google_drive_error(destination, html_ok=html_ok)
+    try:
+        _save_response_content(response, destination, progress=progress, size=size)
+        _check_for_google_drive_error(destination, html_ok=html_ok)
+    except:
+        os.remove(destination)
+        raise
 
 
 def _get_confirm_token(response):

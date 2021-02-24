@@ -76,8 +76,8 @@ class SurveyParamGrid:
         Parameters
         ----------
         name : str
-            First character specifies survey w = WAVES, p = PFS, m = MOONS
-            Last character specifies grid number (1 = const area or 2 = const N)
+            First character specifies survey (w = WAVES, p = PFS, m = MOONS)
+            Last character specifies grid number (1 = const area, 2 = const N)
         """
         self.zlim = self.params[name[0]]["zlim"]
         self.threshold = self.params[name[0]]["threshold"]
