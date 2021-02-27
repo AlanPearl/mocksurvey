@@ -1,14 +1,11 @@
 import functools
 
 import numpy as np
-# noinspection PyUnresolvedReferences
 import halotools.mock_observables as htmo
-# noinspection PyUnresolvedReferences
 from scipy import stats
-# noinspection PyUnresolvedReferences
 import emcee
+import tqdm
 
-# noinspection PyUnresolvedReferences
 import mocksurvey as ms
 from . import config
 
@@ -28,7 +25,7 @@ class LnProbHOD:
             return prior
 
         # Calculate wp(rp) given HOD parameters
-        wp = calc_wp_from_hod(self.model, alpha=alpha, sigma=sigma,
+        wp = calc_wp_from_hod(self.model, alpha=alpha, sigma=sigma, fsat=fsat,
                               reals=self.nreals)
 
         # Compare model to observation to calculate likelihood
@@ -148,27 +145,77 @@ def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
                          f"{gridname}.{i}", niter=niter, newrun=newrun)
 
 
-def wpreals(gridname, mockname, save=True, nrand=int(5e5), newrun=True,
-            nreal=None):
-    # Function that we apply to each lightcone realization
-    # ====================================================
-    def calc_wp_from_lightcone(lightcone, _loader):
+class LightConeWpCalculator:
+    def __init__(self, nrand, rp_edges, recycle_rands=True,
+                 rands=None, rr=None):
+        self.nrand = nrand
+        self.rp_edges = rp_edges
+        self.recycle_rands = recycle_rands
+
+        self.rands, self.RR = rands, rr
+
+    def __call__(self, lightcone, loader):
         pos = ms.util.xyz_array(lightcone, ["ra", "dec", "redshift"])
-        rands = _loader.selector.make_rands(nrand, rdz=True)
         pos[:, 2] = ms.util.comoving_disth(pos[:, 2], cosmo=ms.bplcosmo)
-        rands[:, 2] = ms.util.comoving_disth(rands[:, 2], cosmo=ms.bplcosmo)
-        wp = ms.stats.cf.wp_rp(pos, rands, rp_edges, is_celestial_data=True)
+
+        if self.rands is not None:
+            rands = self.rands
+        else:
+            rands = loader.selector.make_rands(self.nrand, rdz=True)
+            rands[:, 2] = ms.util.comoving_disth(rands[:, 2], cosmo=ms.bplcosmo)
+            if self.recycle_rands:
+                self.rands = rands
+
+        paircounts = ms.stats.cf.paircount_rp_pi(
+            pos, rands, self.rp_edges, is_celestial_data=True,
+            precomputed=(None, None, self.RR))
+        if self.recycle_rands:
+            self.RR = paircounts.RR
+
+        wp = ms.stats.cf.counts_to_wp(paircounts)
         return ms.stats.DataDict({"wp": wp, "N": len(lightcone)})
 
-    @functools.lru_cache
-    def wp_reals_from_survey_params(completeness, sqdeg):
-        print(f"Completeness = {completeness}, sqdeg = {sqdeg}", flush=True)
+    def get_rands_and_rr(self, selector):
+        if self.rands is not None:
+            rands = self.rands
+        else:
+            rands = selector.make_rands(self.nrand, rdz=True)
+            rands[:, 2] = ms.util.comoving_disth(rands[:, 2], cosmo=ms.bplcosmo)
+            if self.recycle_rands:
+                self.rands = rands
+
+        rr = ms.stats.cf.paircount_rp_pi(
+            np.zeros((0, 3)), rands, self.rp_edges, is_celestial_data=True,
+            precomputed=(None, None, self.RR)).RR
+
+        return rands, rr
+
+
+def wpreals(gridname, mockname, save=True, nrand=int(5e5), newrun=True,
+            nreal=None, recycle_rands=True, randfile="", just_make_rands=False):
+    # Function that we apply to each lightcone realization
+    # ====================================================
+    # def calc_wp_from_lightcone(lightcone, _loader):
+    #     pos = ms.util.xyz_array(lightcone, ["ra", "dec", "redshift"])
+    #     rands = _loader.selector.make_rands(nrand, rdz=True)
+    #     pos[:, 2] = ms.util.comoving_disth(pos[:, 2], cosmo=ms.bplcosmo)
+    #     rands[:, 2] = ms.util.comoving_disth(rands[:, 2], cosmo=ms.bplcosmo)
+    #     wp = ms.stats.cf.wp_rp(pos, rands, rp_edges, is_celestial_data=True)
+    #     return ms.stats.DataDict({"wp": wp, "N": len(lightcone)})
+
+    def wp_reals_from_survey_params(completeness, sqdeg, rands=None, rr=None):
         assert 0 <= completeness <= 1, f"Completeness must be between 0 and 1"
         assert max_sqdeg >= sqdeg, f"Area is too big. Must be <= {max_sqdeg}"
 
         selector2 = ms.LightConeSelector(zlim[0], zlim[1], sqdeg=sqdeg,
                                          sample_fraction=completeness)
-        wp_reals = loader.apply(calc_wp_from_lightcone, progress=True,
+        calc = LightConeWpCalculator(nrand=nrand, rp_edges=rp_edges,
+                                     recycle_rands=recycle_rands,
+                                     rands=rands, rr=rr)
+        if just_make_rands:
+            return calc.get_rands_and_rr(selector2)
+
+        wp_reals = loader.apply(calc, progress=True,
                                 secondary_selector=selector2)
         return np.array(wp_reals)
 
@@ -185,14 +232,34 @@ def wpreals(gridname, mockname, save=True, nrand=int(5e5), newrun=True,
     max_sqdeg = ms.util.selector_from_meta(loader.meta[0]).sqdeg
     loader.load_all()
 
-    # Calculate wp realizations over the following survey parameter grids
-    # ===================================================================
+    # Get survey parameter grids
+    # ==========================
     completeness_grid = params.completeness_grid
     sqdeg_grid = params.sqdeg_grid
+    print(f"{gridname}: {completeness_grid}", flush=True)
 
+    if just_make_rands:
+        assert randfile, "Must provide filename for randoms/RR array"
+        randrr = np.array([
+            wp_reals_from_survey_params(c, s)
+            for c, s in tqdm.tqdm(list(zip(
+                completeness_grid, sqdeg_grid)), desc=gridname)
+        ], dtype=object)
+        np.save(randfile, randrr)
+        return
+
+    if randfile:
+        randrr = np.load(randfile, allow_pickle=True)
+    else:
+        n = len(completeness_grid) + len(sqdeg_grid)
+        randrr = np.full((n, 2), None)
+
+    # Calculate wp realizations
+    # =========================
     wp_grid = np.array([
-        wp_reals_from_survey_params(c, s)
-        for c, s in zip(completeness_grid, sqdeg_grid)
+        wp_reals_from_survey_params(c, s, *r)
+        for c, s, r in tqdm.tqdm(list(zip(
+            completeness_grid, sqdeg_grid, randrr)), desc=gridname)
     ])
 
     # Save wp realization grids to file "wpreal_grids.npy"
