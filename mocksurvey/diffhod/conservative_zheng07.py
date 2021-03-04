@@ -40,7 +40,8 @@ class HODZheng07:
             self.halocat.halo_table["halo_upid"] == -1]
         return tmp.mean_occupation_satellites(prim_haloprop=mvir).sum()
 
-    def populate_mock(self):
+    def populate_mock(self, **params):
+        self.model.param_dict.update(params)
         self.model.populate_mock(self.halocat)
         return self.model.mock.galaxy_table
 

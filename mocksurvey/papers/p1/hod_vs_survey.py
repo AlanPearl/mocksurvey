@@ -13,20 +13,22 @@ from . import config
 class LnProbHOD:
     def __init__(self, lnlike, lnprior, model,
                  nreals=1):
+        self.hod = ms.diffhod.HODZheng07(
+            model["hod"].halocat, **model["hod"].cenhod.hod.model.param_dict)
         self.lnlike = lnlike
         self.model = model
         self.lnprior = lnprior
         self.nreals = nreals
 
     def __call__(self, params):
-        sigma, alpha, fsat = params
-        prior = self.lnprior(sigma, alpha, fsat)
+        # sigma, alpha, fsat = params
+        param_dict = dict(zip(["sigma", "alpha", "fsat"], params))
+        prior = self.lnprior(**param_dict)
         if not np.isfinite(prior):
             return prior
 
         # Calculate wp(rp) given HOD parameters
-        wp = calc_wp_from_hod(self.model, alpha=alpha, sigma=sigma, fsat=fsat,
-                              reals=self.nreals)
+        wp = calc_wp_from_hod(self.hod, self.model, **param_dict)
 
         # Compare model to observation to calculate likelihood
         return self.lnlike(wp) + prior
@@ -62,14 +64,17 @@ def load_wpdata(filename, set_all_means_same=True):
 
 
 def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
-                     nreals=1, nwalkers=20, niter=500):
+                     nwalkers=20, niter=1000, use_fsat=False):
+    param_names = ["sigma", "alpha"]
+    if use_fsat:
+        param_names.append("fsat")
+
     hod = model["hod"]
+    guess = [hod.param_dict[p] for p in param_names]
+    ndim = len(guess)
 
     lnlike = stats.multivariate_normal(mean=mean_wp, cov=cov_wp).logpdf
-    lnprob = LnProbHOD(lnlike, config.lnprior, model, nreals=nreals)
-
-    guess = [hod.param_dict[p] for p in ["sigma", "alpha", "fsat"]]
-    ndim = len(guess)
+    lnprob = LnProbHOD(lnlike, config.lnprior, model)
 
     # Initialize the sampler
     if newrun:
@@ -90,31 +95,27 @@ def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
     return sampler
 
 
-def calc_wp_from_hod(model, sigma=None, alpha=None, fsat=None, logM0=None,
-                     reals=1, take_mean=True):
-    hodsolver, rp_edges, boxsize, redshift = [
-        model[s] for s in ["hod", "rp_edges", "boxsize", "redshift"]]
-    halocat = hodsolver.halocat
-
+def populate_mock(hod, model, sigma=None, alpha=None, fsat=None, logM0=None):
     params = dict(sigma=sigma, alpha=alpha, fsat=fsat, logM0=logM0)
-    hod_params = hodsolver.get_hod_params(**params)
+    hod_params = model["hod"].get_hod_params(**params)
 
-    hod = ms.diffhod.HODZheng07(
-        halocat, **hod_params)
-    ans = []
-    for _ in range(reals):
-        data = hod.populate_mock()
-        pos = htmo.return_xyz_formatted_array(
-            *ms.util.xyz_array(data).T, boxsize, ms.bplcosmo, redshift,
-            velocity=data["vz"], velocity_distortion_dimension="z")
+    return hod.populate_mock(**hod_params)
 
-        ans.append(ms.stats.cf.wp_rp(
-            pos, None, rp_edges, boxsize=boxsize))
-    return np.mean(ans, axis=0) if take_mean else ans
+
+def calc_wp_from_hod(hod, model, **params):
+    rp_edges, boxsize, redshift = [
+        model[s] for s in ["rp_edges", "boxsize", "redshift"]]
+
+    data = populate_mock(hod, model, **params)
+    pos = htmo.return_xyz_formatted_array(
+        *ms.util.xyz_array(data).T, boxsize, ms.bplcosmo, redshift,
+        velocity=data["vz"], velocity_distortion_dimension="z")
+
+    return ms.stats.cf.wp_rp(pos, None, rp_edges, boxsize=boxsize)
 
 
 def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
-            which_runs=None, wpdata_file="wpreal_grids.npy"):
+            which_runs=None, wpdata_file="wpreal_grids.npy", use_fsat=False):
     # Load data we already computed
     mean_grid, cov_grid = load_wpdata(filename=wpdata_file)
     params = config.ModelConfig(gridname)
@@ -142,7 +143,8 @@ def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
         run_num += 1
         print(f"Beginning run {run_num}/{num_runs}.", flush=True)
         mcmc_from_wpdata(model, mean_grid[i], cov_grid[i], backend_fn,
-                         f"{gridname}.{i}", niter=niter, newrun=newrun)
+                         f"{gridname}.{i}", niter=niter, newrun=newrun,
+                         use_fsat=use_fsat)
 
 
 class LightConeWpCalculator:
@@ -236,14 +238,14 @@ def wpreals(gridname, mockname, save=True, nrand=int(5e5), newrun=True,
     # ==========================
     completeness_grid = params.completeness_grid
     sqdeg_grid = params.sqdeg_grid
-    print(f"{gridname}: {completeness_grid}", flush=True)
+    print(f"{gridname} completeness = {completeness_grid}", flush=True)
 
     if just_make_rands:
         assert randfile, "Must provide filename for randoms/RR array"
         randrr = np.array([
             wp_reals_from_survey_params(c, s)
             for c, s in tqdm.tqdm(list(zip(
-                completeness_grid, sqdeg_grid)), desc=gridname)
+                completeness_grid, sqdeg_grid)), desc=f"{gridname} ({mockname})")
         ], dtype=object)
         np.save(randfile, randrr)
         return
