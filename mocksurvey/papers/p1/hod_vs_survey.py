@@ -20,18 +20,20 @@ class LnProbHOD:
         self.lnprior = lnprior
         self.nreals = nreals
 
+        self._nanwp = np.array([np.nan] * 6)
+
     def __call__(self, params):
         # sigma, alpha, fsat = params
         param_dict = dict(zip(["sigma", "alpha", "fsat"], params))
         prior = self.lnprior(**param_dict)
         if not np.isfinite(prior):
-            return prior
+            return prior, self._nanwp, -99
 
         # Calculate wp(rp) given HOD parameters
-        wp = calc_wp_from_hod(self.hod, self.model, **param_dict)
+        wp, n = calc_wp_and_n_from_hod(self.hod, self.model, **param_dict)
 
         # Compare model to observation to calculate likelihood
-        return self.lnlike(wp) + prior
+        return self.lnlike(wp) + prior, wp, n
 
 
 def load_wpdata(filename, set_all_means_same=True):
@@ -87,8 +89,9 @@ def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
     if newrun:
         backend.reset(nwalkers, ndim)
 
+    blobtype = [("wp", float, 6), ("N", int)]
     sampler = emcee.EnsembleSampler(
-        nwalkers, ndim, lnprob, backend=backend)
+        nwalkers, ndim, lnprob, backend=backend, blobs_dtype=blobtype)
 
     sampler.run_mcmc(initial, niter, progress=True)
 
@@ -102,7 +105,7 @@ def populate_mock(hod, model, sigma=None, alpha=None, fsat=None, logM0=None):
     return hod.populate_mock(**hod_params)
 
 
-def calc_wp_from_hod(hod, model, **params):
+def calc_wp_and_n_from_hod(hod, model, **params):
     rp_edges, boxsize, redshift = [
         model[s] for s in ["rp_edges", "boxsize", "redshift"]]
 
@@ -111,7 +114,7 @@ def calc_wp_from_hod(hod, model, **params):
         *ms.util.xyz_array(data).T, boxsize, ms.bplcosmo, redshift,
         velocity=data["vz"], velocity_distortion_dimension="z")
 
-    return ms.stats.cf.wp_rp(pos, None, rp_edges, boxsize=boxsize)
+    return ms.stats.cf.wp_rp(pos, None, rp_edges, boxsize=boxsize), len(data)
 
 
 def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
