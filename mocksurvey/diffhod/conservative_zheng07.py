@@ -2,7 +2,64 @@ import numpy as np
 from scipy import optimize, special
 import halotools.empirical_models as htem
 
+import mocksurvey as ms
 from . import halocat as hc
+
+
+class ConservativeHOD:
+    def __init__(self, halocat, threshold):
+        self.cenhod, self.sathod = measure_hod(halocat, threshold=threshold)
+        self.halocat = self.cenhod.hod.halocat
+        assert self.cenhod.param_dict == self.sathod.param_dict
+
+        num_cens = self.cenhod.num_gals
+        num_sats = self.sathod.num_gals
+        self.num_gals = num_cens + num_sats
+
+        self.param_dict = {
+            "sigma": self.cenhod.param_dict["sigma"],
+            "alpha": self.sathod.param_dict["alpha"],
+            "fsat": num_sats / self.num_gals,
+            "logM0": self.cenhod.param_dict["logM0"]
+        }
+
+    @property
+    def num_cens(self):
+        return (1 - self.param_dict["fsat"]) * self.num_gals
+
+    @property
+    def num_sats(self):
+        return self.param_dict["fsat"] * self.num_gals
+
+    def solve_logMmin(self):
+        for key in self.param_dict:
+            if key in self.cenhod.param_dict:
+                self.cenhod.param_dict[key] = self.param_dict[key]
+        self.cenhod.num_gals = self.num_cens
+        return self.cenhod.solve_logMmin()
+
+    def solve_logM1(self):
+        for key in self.param_dict:
+            if key in self.sathod.param_dict:
+                self.sathod.param_dict[key] = self.param_dict[key]
+        self.sathod.num_gals = self.num_sats
+        return self.sathod.solve_logM1()
+
+    def get_hod_params(self, **params):
+        for key, val in params.items():
+            assert key in self.param_dict, f"Invalid key: {key}"
+            if val is not None:
+                self.param_dict[key] = val
+        logMmin = self.solve_logMmin()
+        logM1 = self.solve_logM1()
+        sigma, alpha, logM0 = [self.param_dict[x] for x in
+                               ["sigma", "alpha", "logM0"]]
+        return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
+                    logM1=logM1, logM0=logM0)
+
+    def populate_mock(self, **params):
+        hod_params = self.get_hod_params(**params)
+        return self.cenhod.hod.populate_mock(**hod_params)
 
 
 # noinspection PyPep8Naming
@@ -21,24 +78,19 @@ class HODZheng07:
         self.model.param_dict.update(params)
 
     def mean_num_cens(self, logMmin=None, sigma=None):
-        tmp = htem.PrebuiltHodModelFactory("zheng07")
         logMmin = self.model.param_dict["logMmin"] if logMmin is None else logMmin
-        sigma = self.model.param_dict["sigma_logM"] \
-            if sigma is None else sigma
-        tmp.param_dict.update(logMmin=logMmin, sigma_logM=sigma)
+        sigma = self.model.param_dict["sigma_logM"] if sigma is None else sigma
         mvir = self.halocat.halo_table["halo_mvir"][
             self.halocat.halo_table["halo_upid"] == -1]
-        return tmp.mean_occupation_centrals(prim_haloprop=mvir).sum()
+        return self.cen_occ(np.log10(mvir), logMmin, sigma).sum()
 
     def mean_num_sats(self, alpha=None, logM1=None, logM0=None):
-        tmp = htem.PrebuiltHodModelFactory("zheng07")
         alpha = self.model.param_dict["alpha"] if alpha is None else alpha
         logM1 = self.model.param_dict["logM1"] if logM1 is None else logM1
         logM0 = self.model.param_dict["logM0"] if logM0 is None else logM0
-        tmp.param_dict.update(alpha=alpha, logM1=logM1, logM0=logM0)
         mvir = self.halocat.halo_table["halo_mvir"][
             self.halocat.halo_table["halo_upid"] == -1]
-        return tmp.mean_occupation_satellites(prim_haloprop=mvir).sum()
+        return self.sat_occ(np.log10(mvir), alpha, logM1, logM0).sum()
 
     def populate_mock(self, **params):
         self.model.param_dict.update(params)
@@ -51,47 +103,18 @@ class HODZheng07:
 
     @staticmethod
     def sat_occ(logM, alpha, logM1, logM0):
-        return ((10 ** logM - 10 ** logM0) / 10 ** logM1) ** alpha
+        is_positive = logM > logM0
+        M, M1, M0 = 10 ** logM, 10 ** logM1, 10 ** logM0
 
-
-class ConservativeHOD:
-    def __init__(self, halocat, threshold):
-        self.cenhod, self.sathod = measure_hod(halocat, threshold=threshold)
-        self.halocat = self.cenhod.hod.halocat
-        assert self.cenhod.param_dict == self.sathod.param_dict
-
-        self.num_cens = self.cenhod.num_gals
-        self.num_sats = self.sathod.num_gals
-        self.num_gals = self.num_cens + self.num_sats
-
-        self.param_dict = {
-            "sigma": self.cenhod.param_dict["sigma"],
-            "alpha": self.sathod.param_dict["alpha"],
-            "fsat": self.num_sats / self.num_gals,
-            "logM0": self.cenhod.param_dict["logM0"]
-        }
-
-    def solve_logMmin(self):
-        self.cenhod.param_dict.update(self.param_dict)
-        self.cenhod.num_gals = (1 - self.param_dict["fsat"]) * self.num_gals
-        return self.cenhod.solve_logMmin()
-
-    def solve_logM1(self):
-        self.sathod.param_dict.update(self.param_dict)
-        self.sathod.num_gals = self.param_dict["fsat"] * self.num_gals
-        return self.sathod.solve_logM1()
-
-    def get_hod_params(self, **params):
-        for key, val in params.items():
-            assert key in self.param_dict, f"Invalid key: {key}"
-            if val is not None:
-                self.param_dict[key] = val
-        logMmin = self.solve_logMmin()
-        logM1 = self.solve_logM1()
-        sigma, alpha, logM0 = [self.param_dict[x] for x in
-                               ["sigma", "alpha", "logM0"]]
-        return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
-                    logM1=logM1, logM0=logM0)
+        if ms.util.is_arraylike(logM):
+            ans = np.zeros_like(logM)
+            ans[is_positive] = ((M[is_positive] - M0) / M1) ** alpha
+            return ans
+        else:
+            if is_positive:
+                return ((M - M0) / M1) ** alpha
+            else:
+                return 0.0
 
 
 # The following classes are used under the hood to make centrals/satellites
@@ -146,6 +169,7 @@ class BaseConservativeHODZheng07:
 # noinspection PyPep8Naming
 class ConservativeHODZheng07Cen(BaseConservativeHODZheng07):
     def mean_num_gals(self, **kwargs):
+        self.hod.model.param_dict.update(self.param_dict)
         return self.hod.mean_num_cens(**kwargs)
 
     def solve_logMmin(self):
@@ -162,16 +186,17 @@ class ConservativeHODZheng07Cen(BaseConservativeHODZheng07):
 # noinspection PyPep8Naming
 class ConservativeHODZheng07Sat(BaseConservativeHODZheng07):
     def mean_num_gals(self, **kwargs):
+        self.hod.model.param_dict.update(self.param_dict)
         return self.hod.mean_num_sats(**kwargs)
 
     def solve_alpha(self):
         return self.solve("alpha")
 
-    def solve_logM1(self, guess=True):
+    def solve_logM1(self):
         # This guess assumes that between M0 and Mhigh=4e13,
         # the halo mass function dn/dlogM = 2e18*M^-1.1
         alpha = self.param_dict["alpha"]
-        if guess and alpha < 2:
+        if alpha < 2:
             Mhigh = 4e13
             logM0 = self.param_dict["logM0"]
             M0 = 10 ** logM0

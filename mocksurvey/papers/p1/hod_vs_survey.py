@@ -1,5 +1,3 @@
-import functools
-
 import numpy as np
 import halotools.mock_observables as htmo
 from scipy import stats
@@ -13,8 +11,7 @@ from . import config
 class LnProbHOD:
     def __init__(self, lnlike, lnprior, model,
                  nreals=1):
-        self.hod = ms.diffhod.HODZheng07(
-            model["hod"].halocat, **model["hod"].cenhod.hod.model.param_dict)
+        self.hod = model["hod"]
         self.lnlike = lnlike
         self.model = model
         self.lnprior = lnprior
@@ -30,19 +27,14 @@ class LnProbHOD:
             return prior, self._nanwp, -99
 
         # Calculate wp(rp) given HOD parameters
-        wp, n = calc_wp_and_n_from_hod(self.hod, self.model, **param_dict)
+        wp, n = calc_wp_and_n_from_hod(self.model, **param_dict)
 
         # Compare model to observation to calculate likelihood
         return self.lnlike(wp) + prior, wp, n
 
 
 def load_wpdata(filename, set_all_means_same=True):
-    # path, pattern = os.path.split(os.path.realpath(filename))
-    # files = [os.path.join(path, x) for x in os.listdir(path) if x == pattern]
-    # data = np.array([np.stack(np.load(fn, allow_pickle=True)) for fn in files])
     data = np.load(filename, allow_pickle=True)
-    # if not len(files):
-    #     raise IOError(f"Could not find any files starting with {pattern} in {path}")
 
     wp = ms.stats.datadict_array_get(data, "wp")
     # shape = (5, 25+, 6)
@@ -98,18 +90,11 @@ def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
     return sampler
 
 
-def populate_mock(hod, model, sigma=None, alpha=None, fsat=None, logM0=None):
-    params = dict(sigma=sigma, alpha=alpha, fsat=fsat, logM0=logM0)
-    hod_params = model["hod"].get_hod_params(**params)
+def calc_wp_and_n_from_hod(model, **params):
+    hod, rp_edges, boxsize, redshift = [
+        model[s] for s in ["hod", "rp_edges", "boxsize", "redshift"]]
 
-    return hod.populate_mock(**hod_params)
-
-
-def calc_wp_and_n_from_hod(hod, model, **params):
-    rp_edges, boxsize, redshift = [
-        model[s] for s in ["rp_edges", "boxsize", "redshift"]]
-
-    data = populate_mock(hod, model, **params)
+    data = hod.populate_mock(**params)
     pos = htmo.return_xyz_formatted_array(
         *ms.util.xyz_array(data).T, boxsize, ms.bplcosmo, redshift,
         velocity=data["vz"], velocity_distortion_dimension="z")
@@ -198,16 +183,6 @@ class LightConeWpCalculator:
 
 def wpreals(gridname, mockname, save=True, nrand=int(5e5), newrun=True,
             nreal=None, recycle_rands=True, randfile="", just_make_rands=False):
-    # Function that we apply to each lightcone realization
-    # ====================================================
-    # def calc_wp_from_lightcone(lightcone, _loader):
-    #     pos = ms.util.xyz_array(lightcone, ["ra", "dec", "redshift"])
-    #     rands = _loader.selector.make_rands(nrand, rdz=True)
-    #     pos[:, 2] = ms.util.comoving_disth(pos[:, 2], cosmo=ms.bplcosmo)
-    #     rands[:, 2] = ms.util.comoving_disth(rands[:, 2], cosmo=ms.bplcosmo)
-    #     wp = ms.stats.cf.wp_rp(pos, rands, rp_edges, is_celestial_data=True)
-    #     return ms.stats.DataDict({"wp": wp, "N": len(lightcone)})
-
     def wp_reals_from_survey_params(completeness, sqdeg, rands=None, rr=None):
         assert 0 <= completeness <= 1, f"Completeness must be between 0 and 1"
         assert max_sqdeg >= sqdeg, f"Area is too big. Must be <= {max_sqdeg}"
