@@ -68,7 +68,10 @@ class HODZheng07:
         self.model = htem.PrebuiltHodModelFactory(
             "zheng07", redshift=halocat.redshift) if model is None else model
         self.halocat = halocat
+        self.update_params(params)
 
+    def update_params(self, params):
+        params = params.copy()
         if "sigma" in params:
             params["sigma_logM"] = params["sigma"]
             del params["sigma"]
@@ -93,7 +96,7 @@ class HODZheng07:
         return self.sat_occ(np.log10(mvir), alpha, logM1, logM0).sum()
 
     def populate_mock(self, **params):
-        self.model.param_dict.update(params)
+        self.update_params(params)
         self.model.populate_mock(self.halocat)
         return self.model.mock.galaxy_table
 
@@ -169,7 +172,7 @@ class BaseConservativeHODZheng07:
 # noinspection PyPep8Naming
 class ConservativeHODZheng07Cen(BaseConservativeHODZheng07):
     def mean_num_gals(self, **kwargs):
-        self.hod.model.param_dict.update(self.param_dict)
+        self.hod.update_params(self.param_dict)
         return self.hod.mean_num_cens(**kwargs)
 
     def solve_logMmin(self):
@@ -186,7 +189,7 @@ class ConservativeHODZheng07Cen(BaseConservativeHODZheng07):
 # noinspection PyPep8Naming
 class ConservativeHODZheng07Sat(BaseConservativeHODZheng07):
     def mean_num_gals(self, **kwargs):
-        self.hod.model.param_dict.update(self.param_dict)
+        self.hod.update_params(self.param_dict)
         return self.hod.mean_num_sats(**kwargs)
 
     def solve_alpha(self):
