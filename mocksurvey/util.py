@@ -516,18 +516,24 @@ def comoving_disth(redshifts, cosmo):
 
 
 def distance2redshift(dist, cosmo, vr=None, zprec=1e-3, h_scaled=True):
+    c_km_s = c.to('km/s').value
+    dist_units = units.Mpc / cosmo.h if h_scaled else units.Mpc
+
+    def d2z(d):
+        return cosmology.z_at_value(
+            cosmo.comoving_distance, d * dist_units, -0.99)
+
+    if not is_arraylike(dist):
+        return d2z(dist)
     if len(dist) == 0:
         return np.array([])
 
-    c_km_s = c.to('km/s').value
-    dist_units = units.Mpc / cosmo.h if h_scaled else units.Mpc
-    zmin, zmax = [cosmology.z_at_value(cosmo.comoving_distance,
-                                       f(dist) * dist_units) for f in [min, max]]
+    zmin, zmax = [d2z(f(dist)) for f in [min, max]]
     zmin = (zmin + 1) * .99 - 1
     zmax = (zmax + 1) * 1.01 - 1
 
     # compute cosmological redshift + doppler shift
-    num_points = int((zmax - zmin) / zprec) + 1
+    num_points = int((zmax - zmin) / zprec) + 2
     yy = np.linspace(zmin, zmax, num_points, dtype=np.float32)
     xx = cosmo.comoving_distance(yy).value.astype(np.float32)
     if h_scaled:

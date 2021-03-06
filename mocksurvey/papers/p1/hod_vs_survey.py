@@ -115,6 +115,7 @@ def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
 
     halocat, closest_redshift = ms.UMConfig().load(redshift)
     hod = ms.diffhod.ConservativeHOD(halocat, threshold=threshold)
+    print(f"{'All' if which_runs is None else which_runs} of {gridname} MCMC")
     print(f"Closest snapshot to z={redshift} is z={closest_redshift}")
     print({"ndensity [h/Mpc]^3": hod.num_gals / boxsize**3,
            **hod.param_dict, **hod.get_hod_params()})
