@@ -6,6 +6,70 @@ import mocksurvey as ms
 from . import halocat as hc
 
 
+# noinspection PyPep8Naming
+class CFCMRHOD:
+    # CFCMRHOD = Conservative + Fixed Characteristic Mass Ratio HOD
+    def __init__(self, halocat, threshold):
+        self.cenhod, self.sathod = measure_hod(halocat, threshold=threshold)
+        self.halocat = self.cenhod.hod.halocat
+        assert self.cenhod.param_dict == self.sathod.param_dict
+
+        num_cens = self.cenhod.num_gals
+        num_sats = self.sathod.num_gals
+        self.init_logM1 = self.cenhod.param_dict["logM1"]
+
+        # Conserved quantities: Galaxy number, [Characteristic mass ratio]
+        self.num_gals = num_cens + num_sats
+
+        self.param_dict = {
+            "sigma": self.cenhod.param_dict["sigma"],
+            "alpha": self.sathod.param_dict["alpha"],
+            "cmr": self.init_logM1 - self.cenhod.param_dict["logMmin"],
+            "logM0": self.cenhod.param_dict["logM0"]
+        }
+
+    @property
+    def num_cens(self):
+        return self.cenhod.mean_num_gals(**self.get_hod_params())
+
+    @property
+    def num_sats(self):
+        return self.sathod.mean_num_gals(**self.get_hod_params())
+
+    def solve_logM1(self):
+        sigma, alpha, cmr, logM0 = [self.param_dict[x] for x in
+                                    ["sigma", "alpha", "cmr", "logM0"]]
+
+        def zero(x):
+            logMmin = x - cmr
+            num_cens = self.cenhod.mean_num_gals(sigma=sigma,
+                                                 logMmin=logMmin)
+            num_sats = self.sathod.mean_num_gals(alpha=alpha,
+                                                 logM1=x,
+                                                 logM0=logM0)
+            num_gals = num_cens + num_sats
+            return num_gals - self.num_gals
+
+        return optimize.newton(zero, self.init_logM1, tol=1e-3)
+
+    def get_hod_params(self, **params):
+        for key, val in params.items():
+            assert key in self.param_dict, f"Invalid key: {key}"
+            if val is not None:
+                self.param_dict[key] = val
+        logM1 = self.solve_logM1()
+        logMmin = logM1 - self.param_dict["cmr"]
+        sigma, alpha, logM0 = [self.param_dict[x] for x in
+                               ["sigma", "alpha", "logM0"]]
+        return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
+                    logM1=logM1, logM0=logM0)
+
+    def populate_mock(self, **params):
+        hod_params = self.get_hod_params(**params)
+        return self.cenhod.hod.populate_mock(**hod_params)
+
+
+# noinspection PyPep8Naming
 class ConservativeHOD:
     def __init__(self, halocat, threshold):
         self.cenhod, self.sathod = measure_hod(halocat, threshold=threshold)
@@ -14,6 +78,8 @@ class ConservativeHOD:
 
         num_cens = self.cenhod.num_gals
         num_sats = self.sathod.num_gals
+
+        # Conserved quantity: Galaxy number, [Satellite fraction]
         self.num_gals = num_cens + num_sats
 
         self.param_dict = {
@@ -336,7 +402,7 @@ def measure_hod(halos, threshold, plot=False):
     # Fit central and satellite HOD parameters to the halo catalog
     mhalo_edges = np.logspace(11.25, 14, 31)
     sigma, logmmin = fit_hod_cen(halocat, num_cens,
-                                      mhalo_edges, plot=plot)
+                                 mhalo_edges, plot=plot)
     guess = (1.15, logmmin + 0.1)
     alpha, logm0, logm1 = fit_hod_sat(halocat, num_sats,
                                       mhalo_edges,

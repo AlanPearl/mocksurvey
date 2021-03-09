@@ -103,7 +103,8 @@ def calc_wp_and_n_from_hod(model, **params):
 
 
 def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
-            which_runs=None, wpdata_file="wpreal_grids.npy", use_fsat=False):
+            which_runs=None, wpdata_file="wpreal_grids.npy",
+            use_fsat=False, use_cfcmr=False):
     # Load data we already computed
     mean_grid, cov_grid = load_wpdata(filename=wpdata_file)
     params = config.ModelConfig(gridname)
@@ -114,7 +115,11 @@ def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
     threshold = params.threshold
 
     halocat, closest_redshift = ms.UMConfig().load(redshift)
-    hod = ms.diffhod.ConservativeHOD(halocat, threshold=threshold)
+    if use_cfcmr:
+        assert not use_fsat, "fsat parameter not allowed in the CFCMR HOD"
+        hod = ms.diffhod.CFCMRHOD(halocat, threshold=threshold)
+    else:
+        hod = ms.diffhod.ConservativeHOD(halocat, threshold=threshold)
     print(f"{'All' if which_runs is None else which_runs} of {gridname} MCMC")
     print(f"Closest snapshot to z={redshift} is z={closest_redshift}")
     print({"ndensity [h/Mpc]^3": hod.num_gals / boxsize**3,
