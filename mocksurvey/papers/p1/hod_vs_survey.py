@@ -33,8 +33,12 @@ class LnProbHOD:
         return self.lnlike(wp) + prior, wp, n
 
 
-def load_wpdata(filename, set_all_means_same=True):
+def load_wpdata(filename, get_random_real=False, set_all_means_same=True):
     data = np.load(filename, allow_pickle=True)
+    if get_random_real and isinstance(get_random_real, bool):
+        random_real = np.random.randint(data.shape[1])
+    elif get_random_real:
+        random_real = get_random_real
 
     wp = ms.stats.datadict_array_get(data, "wp")
     # shape = (5, 25+, 6)
@@ -44,11 +48,14 @@ def load_wpdata(filename, set_all_means_same=True):
     mean_grid = cov_grid.copy()
     for i in range(imax):
         cov_grid[i] = np.cov(wp[i], rowvar=False, ddof=1)
-        mean_grid[i] = np.mean(wp[i], axis=0)
+        if get_random_real:
+            mean_grid[i] = wp[i][random_real]
+        else:
+            mean_grid[i] = np.mean(wp[i], axis=0)
     cov_grid = np.array(cov_grid.tolist())
     mean_grid = np.array(mean_grid.tolist())
 
-    if set_all_means_same:
+    if set_all_means_same and not get_random_real:
         var_grid = cov_grid[:,
                             np.arange(cov_grid.shape[1]),
                             np.arange(cov_grid.shape[2])]
@@ -104,9 +111,15 @@ def calc_wp_and_n_from_hod(model, **params):
 
 def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
             which_runs=None, wpdata_file="wpreal_grids.npy",
-            use_fsat=False, use_cfcmr=False):
+            use_fsat=False, use_cfcmr=False, random_real=False,
+            set_all_means_same=True):
     # Load data we already computed
-    mean_grid, cov_grid = load_wpdata(filename=wpdata_file)
+    if random_real and isinstance(random_real, bool):
+        length = np.load(wpdata_file, allow_pickle=True).shape[1]
+        random_real = np.random.randint(length)
+    mean_grid, cov_grid = load_wpdata(filename=wpdata_file,
+                                      get_random_real=random_real,
+                                      set_all_means_same=set_all_means_same)
     params = config.ModelConfig(gridname)
 
     rp_edges = params.rp_edges
@@ -134,10 +147,13 @@ def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
     num_runs = len(which_runs)
     run_num = 0
     for i in which_runs:
+        name = f"{gridname}.{i}"
+        if not isinstance(random_real, bool):
+            name += f".real{random_real}"
         run_num += 1
         print(f"Beginning run {run_num}/{num_runs}.", flush=True)
         mcmc_from_wpdata(model, mean_grid[i], cov_grid[i], backend_fn,
-                         f"{gridname}.{i}", niter=niter, newrun=newrun,
+                         name, niter=niter, newrun=newrun,
                          use_fsat=use_fsat)
 
 
