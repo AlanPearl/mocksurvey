@@ -95,6 +95,163 @@ class ThreePointCalculator:
         return ms.util.make_struc_array(names, vals)
 
 
+class SimBoxThreePointCalculator:
+    def __init__(self, boxsize, rands, r_edges,
+                 maxpole=10, periodic=True, numrand=None,
+                 force_rrr_from_rands=False):
+        """
+        Instantiate a callable object which can calculate
+        multipoles of the 3PCF, by utilizing `nbodykit` and
+        following Slepian et al. (2015). Besides using this
+        object as a function, it stores useful attributes
+        rrr and numrand and method count_triplets().
+
+        Parameters
+        ----------
+        boxsize : float
+            Side length of simulation cube.
+        rands : np.ndarray
+            Structured array with columns "x", "y", and "z"
+            containing the positions of the random catalog.
+        r_edges : Sequence[float]
+            Radial bin edges (the same are used for r1 and r2)
+        maxpole : int (default = 10)
+            Maximum multipole to calculate.
+        periodic : bool (default = True)
+            Use periodic boundary conditions. This allows
+            RRR to be calculated analytically.
+        numrand : int (default = None)
+            If supplied, select this many randoms out of `rands`
+            to calculate RRR (if random catalog is used for RRR).
+        force_rrr_from_rands : bool (default = False)
+            Force RRR to be calculated from `rands` catalog
+            (instead of analytically using periodic conditions).
+        """
+        self.boxsize = boxsize
+        self.rands = rands
+        self.numrand = numrand
+        self.periodic = periodic
+        self.r_edges = r_edges
+        self.maxpole = maxpole
+
+        self.r_cens = np.sqrt(self.r_edges[:-1] * self.r_edges[1:])
+        self.volume_weights = np.diff(self.r_edges ** 3)
+
+        if not self.periodic or force_rrr_from_rands:
+            if self.numrand is None:
+                self.numrand = len(self.rands)
+            r = self._posw_array(self.rands, choice=self.numrand)
+            self.rrr = self._count_triplets(r)
+        else:
+            # Calculate RRR analytically using periodic boundary conditions
+            # For some reason, the periodic box code drops the factor of 8pi^2
+            assert self.numrand is None, "Cannot modify `numrand` for RRR_theory"
+            self.numrand = 100_000 if self.rands is None else len(self.rands)
+            vtot = self.boxsize ** 3
+            self.rrr = np.diff(self.r_edges ** 3)[:, None] * \
+                np.diff(self.r_edges ** 3)[None, :]
+            self.rrr *= self.numrand * (self.numrand - 1) * \
+                (self.numrand - 2) / vtot ** 2 / 9
+            self.rrr = self.rrr[None, :, :] * \
+                np.array([1, *[0] * self.maxpole])[:, None, None]
+
+        if not np.all(self.rrr[0]):
+            import warnings
+            warnings.warn("Bins exist with zero randoms",
+                          category=RuntimeWarning)
+
+    def __call__(self, data, numrand=None, estimate_without_rands=False):
+        """
+        Compute the 3PCF (Slepian & Eisenstein 2015) of given data
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Structured array containing "x", "y", and "z" in Mpc/h.
+        numrand : int (default=None)
+            If supplied, select a subsample of randoms of this
+            size to compute (D-R)(D-R)(D-R). Ignored if boxsize
+            was specified on instantiation.
+        estimate_without_rands : bool
+            If true, use NNN = DDD - (3x2PCF - 1) * RRR_theory, but
+            be aware that 3x2PCF was not calculated properly. It
+            seems to do okay for the monopole but not much else.
+
+        Returns
+        -------
+        xi : np.ndarray
+            Multipole expansion of the three-point correlation function
+            with shape (M,N,N) where M is the number of poles and N is
+            the number of bins in r1 (and r2).
+        """
+        nnn = self.count_triplets(
+            data, numrand=numrand,
+            estimate_without_rands=estimate_without_rands)
+        rrr = self.rrr * (len(data) / self.numrand) ** 3
+        return triplet_counts_to_3pcf(nnn, rrr)
+
+    def calculate_3pcf(self, *args, **kwargs):
+        return self(*args, **kwargs)
+
+    calculate_3pcf.__doc__ = __call__.__doc__
+
+    def count_triplets(self, data, numrand=None, estimate_without_rands=False):
+        """
+        Either return the multipole expansion of (D-R)(D-R)(D-R) or
+        DDD - (3x2PCF + 1) * RRR_theory. RRR_theory is only known if
+        this object was not instantiated with rands.
+        """
+        data = self._posw_array(data)
+        weight = -len(data) / self.get_numrand(numrand)
+        if estimate_without_rands:
+            # Return DDD - (3x2PCF + 1) * RRR_theory
+            assert numrand is None, "Cannot modify `numrand` for RRR_theory"
+            xi = ms.cf.xi_r(data["Position"], None,
+                            self.r_edges, boxsize=self.boxsize)
+            ddd = self._count_triplets(data)
+
+            xi1, xi2 = np.broadcast_arrays(xi[None, :, None], xi[None, None, :])
+            correct_part = ddd + (xi1 + xi2 + 1) * self.rrr * weight ** 3
+
+            xi3 = np.min([xi1, xi2], axis=0)
+            incorrect_part = xi3 * self.rrr[:1] * weight ** 3
+
+            return correct_part + incorrect_part
+        else:
+            # Return NNN = (D-R)(D-R)(D-R)
+            rands = self._posw_array(self.rands, weight=weight, choice=numrand)
+            data = np.concatenate([data, rands])
+            return self._count_triplets(data)
+
+    def poles(self):
+        return list(range(self.maxpole + 1))
+
+    def get_numrand(self, numrand=None):
+        return self.numrand if numrand is None else numrand
+
+    def _count_triplets(self, data):
+        result = nbk.SimulationBox3PCF(nbk.ArrayCatalog(data),
+                                       poles=self.poles(),
+                                       edges=self.r_edges,
+                                       BoxSize=self.boxsize,
+                                       periodic=self.periodic,
+                                       weight="weight")
+        # Indexed by (pole,  r1, r2)
+        return np.array([result.poles[f"corr_{i}"]
+                         for i in self.poles()])
+
+    @staticmethod
+    def _posw_array(array, weight=1.0, choice=None):
+        if choice is not None:
+            array = np.random.choice(array, choice, replace=False)
+
+        names = ["Position", "weight"]
+        subshapes = [(3,), ()]
+        vals = [ms.util.xyz_array(array, keys=["x", "y", "z"]),
+                np.broadcast_arrays(array["x"], weight)[1]]
+        return ms.util.make_struc_array(names, vals, subshapes=subshapes)
+
+
 def slepian_matrix_eq7(rrr):
     """
     Returns the A matrix from Equation 7 of Slepian+ 2017
