@@ -48,9 +48,17 @@ python -m mocksurvey download-um 0 inf
 ```
 python -m mocksurvey download-uvista
 ```
-#### Download raw synthetic spectra to assign to mock galaxies (~30 GB)
+#### [Optional] Download raw synthetic spectra to assign to mock galaxies (~30 GB)
 ```
 python -m mocksurvey download-uvista-mock-spectra
+```
+#### Get started by building a mock survey
+```
+python -m mocksurvey lightcone [--help]
+```
+#### View all commands
+```
+python -m mocksurvey --help
 ```
 
 <!-- Deprecated -->
