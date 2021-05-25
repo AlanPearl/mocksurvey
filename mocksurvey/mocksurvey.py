@@ -403,6 +403,7 @@ class CompletenessTester:
         gals = self.lightcone[no_selection]
         column = column[no_selection]
 
+        # Might need to argsort(-column) for maxval=True?...
         order = np.argsort(column)
         # gals, column = gals[order], column[order]
         # This is 3x faster for some reason...
@@ -411,7 +412,7 @@ class CompletenessTester:
         column = column if max_val else column[::-1]
 
         selection = self.selector.dict_selection(gals)
-        frac = np.cumsum(selection) / (np.arange(1, len(gals)+1))
+        frac = np.cumsum(selection) / np.arange(1, len(gals)+1)
 
         mass = column[::-1]
         completeness = frac[::-1]

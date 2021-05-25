@@ -11,6 +11,42 @@ class DataDict(dict):
         dict.__init__(self)
         self.update(data)
 
+    def _ufunc(self, f, *args, **kwargs):
+        ans = DataDict()
+        for key in self.keys():
+            ans[key] = f(self[key], *args, **kwargs)
+        return ans
+
+    def exp(self, *args, **kwargs):
+        return self._ufunc(np.exp, *args, **kwargs)
+
+    def log(self, *args, **kwargs):
+        return self._ufunc(np.log, *args, **kwargs)
+
+    def log10(self, *args, **kwargs):
+        return self._ufunc(np.log10, *args, **kwargs)
+
+    def log2(self, *args, **kwargs):
+        return self._ufunc(np.log2, *args, **kwargs)
+
+    def sin(self, *args, **kwargs):
+        return self._ufunc(np.sin, *args, **kwargs)
+
+    def cos(self, *args, **kwargs):
+        return self._ufunc(np.cos, *args, **kwargs)
+
+    def tan(self, *args, **kwargs):
+        return self._ufunc(np.tan, *args, **kwargs)
+
+    def arcsin(self, *args, **kwargs):
+        return self._ufunc(np.arcsin, *args, **kwargs)
+
+    def arccos(self, *args, **kwargs):
+        return self._ufunc(np.arccos, *args, **kwargs)
+
+    def arctan(self, *args, **kwargs):
+        return self._ufunc(np.arctan, *args, **kwargs)
+
     def _operation(self, other, f):
         other_is_dict = isinstance(other, dict)
         if other_is_dict:
