@@ -29,8 +29,8 @@ class LnProbHOD:
         # Calculate wp(rp) given HOD parameters
         wp, n = calc_wp_and_n_from_hod(self.model, **param_dict)
 
-        logmmin = self.model["hod"].cenhod["logMmin"]
-        logm1 = self.model["hod"].sathod["logM1"]
+        logmmin = self.model["hod"].cenhod.param_dict["logMmin"]
+        logm1 = self.model["hod"].sathod.param_dict["logM1"]
         numcen = self.model["hod"].num_cens
         numsat = self.model["hod"].num_sats
         # Compare model to observation to calculate likelihood
