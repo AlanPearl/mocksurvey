@@ -239,6 +239,13 @@ class BaseConservativeHODZheng07:
 class ConservativeHODZheng07Cen(BaseConservativeHODZheng07):
     def mean_num_gals(self, **kwargs):
         self.hod.update_params(self.param_dict)
+
+        if "alpha" in kwargs:
+            del kwargs["alpha"]
+        if "logM1" in kwargs:
+            del kwargs["logM1"]
+        if "logM0" in kwargs:
+            del kwargs["logM0"]
         return self.hod.mean_num_cens(**kwargs)
 
     def solve_logMmin(self):
@@ -256,6 +263,11 @@ class ConservativeHODZheng07Cen(BaseConservativeHODZheng07):
 class ConservativeHODZheng07Sat(BaseConservativeHODZheng07):
     def mean_num_gals(self, **kwargs):
         self.hod.update_params(self.param_dict)
+
+        if "sigma" in kwargs:
+            del kwargs["sigma"]
+        if "logMmin" in kwargs:
+            del kwargs["logMmin"]
         return self.hod.mean_num_sats(**kwargs)
 
     def solve_alpha(self):
