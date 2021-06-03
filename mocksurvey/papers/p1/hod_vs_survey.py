@@ -29,8 +29,12 @@ class LnProbHOD:
         # Calculate wp(rp) given HOD parameters
         wp, n = calc_wp_and_n_from_hod(self.model, **param_dict)
 
+        logmmin = self.model["hod"].cenhod["logMmin"]
+        logm1 = self.model["hod"].sathod["logM1"]
+        numcen = self.model["hod"].num_cens
+        numsat = self.model["hod"].num_sats
         # Compare model to observation to calculate likelihood
-        return self.lnlike(wp) + prior, wp, n
+        return self.lnlike(wp) + prior, wp, n, logmmin, logm1, numcen, numsat
 
 
 def load_wpdata(filename, get_random_real=False, set_all_means_same=True):
@@ -88,7 +92,9 @@ def mcmc_from_wpdata(model, mean_wp, cov_wp, backend_fn, name, newrun=True,
     if newrun:
         backend.reset(nwalkers, ndim)
 
-    blobtype = [("wp", float, 6), ("N", int)]
+    blobtype = [("wp", float, 6), ("N", int),
+                ("logMmin", float), ("logM1", float),
+                ("numcen", float), ("numsat", float)]
     sampler = emcee.EnsembleSampler(
         nwalkers, ndim, lnprob, backend=backend, blobs_dtype=blobtype)
 

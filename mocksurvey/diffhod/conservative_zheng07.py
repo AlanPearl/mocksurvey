@@ -24,7 +24,7 @@ class CFCMRHOD:
         self.param_dict = {
             "sigma": self.cenhod.param_dict["sigma"],
             "alpha": self.sathod.param_dict["alpha"],
-            "cmr": self.init_logM1 - self.cenhod.param_dict["logMmin"],
+            "logcmr": self.init_logM1 - self.cenhod.param_dict["logMmin"],
             "logM0": self.cenhod.param_dict["logM0"]
         }
 
@@ -37,11 +37,11 @@ class CFCMRHOD:
         return self.sathod.mean_num_gals(**self.get_hod_params())
 
     def solve_logM1(self):
-        sigma, alpha, cmr, logM0 = [self.param_dict[x] for x in
-                                    ["sigma", "alpha", "cmr", "logM0"]]
+        sigma, alpha, logcmr, logM0 = [self.param_dict[x] for x in
+                                    ["sigma", "alpha", "logcmr", "logM0"]]
 
         def zero(x):
-            logMmin = x - cmr
+            logMmin = x - logcmr
             num_cens = self.cenhod.mean_num_gals(sigma=sigma,
                                                  logMmin=logMmin)
             num_sats = self.sathod.mean_num_gals(alpha=alpha,
@@ -57,8 +57,11 @@ class CFCMRHOD:
             assert key in self.param_dict, f"Invalid key: {key}"
             if val is not None:
                 self.param_dict[key] = val
-        logM1 = self.solve_logM1()
-        logMmin = logM1 - self.param_dict["cmr"]
+        if params:
+            logM1 = self.solve_logM1()
+        else:
+            logM1 = self.cenhod.param_dict["logM1"]
+        logMmin = logM1 - self.param_dict["logcmr"]
         sigma, alpha, logM0 = [self.param_dict[x] for x in
                                ["sigma", "alpha", "logM0"]]
         return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
@@ -116,8 +119,12 @@ class ConservativeHOD:
             assert key in self.param_dict, f"Invalid key: {key}"
             if val is not None:
                 self.param_dict[key] = val
-        logMmin = self.solve_logMmin()
-        logM1 = self.solve_logM1()
+        if params:
+            logMmin = self.solve_logMmin()
+            logM1 = self.solve_logM1()
+        else:
+            logMmin = self.cenhod.param_dict["logMmin"]
+            logM1 = self.sathod.param_dict["logM1"]
         sigma, alpha, logM0 = [self.param_dict[x] for x in
                                ["sigma", "alpha", "logM0"]]
         return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
