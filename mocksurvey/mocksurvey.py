@@ -631,11 +631,11 @@ class UMConfig(BaseConfig):
         redshift : float (default = 0)
             Desired redshift of the snapshot
 
-        thresh : callable, None, or "none" (optional)
+        thresh : callable | None (optional)
             Callable which takes a halo catalog as input and returns a boolean
             array to select the halos on before loading them into memory.
-            By default, ``thresh = lambda cat: cat["obs_sm"] > 3e9``.
-            "none" loads the entire table and is equivalent to
+            For example, ``thresh = lambda cat: cat["obs_sm"] > 1e10``.
+            None (default) loads the entire table and is equivalent to
             ``thresh = lambda cat: slice(None)``
 
         ztol : float (default = 0.005)
@@ -646,9 +646,6 @@ class UMConfig(BaseConfig):
         halos : np.ndarray
             Structured array of the requested halo catalog
         """
-        if thresh is None:
-            def thresh(cat):
-                return cat["obs_sm"] > 3e9
         dtype = np.dtype([('id', 'i8'), ('descid', 'i8'), ('upid', 'i8'),
                           ('flags', 'i4'), ('uparent_dist', 'f4'),
                           ('pos', 'f4', 6), ('vmp', 'f4'), ('lvmp', 'f4'),
@@ -663,7 +660,7 @@ class UMConfig(BaseConfig):
             redshift, ztol)
         fullpath = self.get_path(filename)
 
-        if isinstance(thresh, str) and thresh.lower() == "none":
+        if thresh is None:
             # all 12 million halos
             return np.fromfile(fullpath, dtype=dtype), true_z
         else:
