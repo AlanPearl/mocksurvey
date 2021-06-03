@@ -127,7 +127,9 @@ def runmcmc(gridname, niter=1000, backend_fn="mcmc.h5", newrun=True,
     redshift = params.redshift
     threshold = params.threshold
 
-    halocat, closest_redshift = ms.UMConfig().load(redshift)
+    # Selecting M_halo > 1e10 removes ~70% of the halos which is a big speedup
+    halocat, closest_redshift = ms.UMConfig().load(
+        redshift, thresh=lambda cat: cat["m"] > 1e10)
     if use_cfcmr:
         assert not use_fsat, "fsat parameter not allowed in the CFCMR HOD"
         hod = ms.diffhod.CFCMRHOD(halocat, threshold=threshold)
