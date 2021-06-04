@@ -55,8 +55,10 @@ class CFCMRHOD:
     def get_hod_params(self, **params):
         for key, val in params.items():
             assert key in self.param_dict, f"Invalid key: {key}"
-            if val is not None:
+            if val is not None and val != self.param_dict[key]:
                 self.param_dict[key] = val
+            else:
+                del params[key]
         if params:
             logM1 = self.solve_logM1()
         else:
@@ -64,8 +66,11 @@ class CFCMRHOD:
         logMmin = logM1 - self.param_dict["logcmr"]
         sigma, alpha, logM0 = [self.param_dict[x] for x in
                                ["sigma", "alpha", "logM0"]]
-        return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
-                    logM1=logM1, logM0=logM0)
+        params = dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
+                      logM1=logM1, logM0=logM0)
+        self.cenhod.param_dict.update(params)
+        self.sathod.param_dict.update(params)
+        return params
 
     def populate_mock(self, **params):
         hod_params = self.get_hod_params(**params)
@@ -117,8 +122,10 @@ class ConservativeHOD:
     def get_hod_params(self, **params):
         for key, val in params.items():
             assert key in self.param_dict, f"Invalid key: {key}"
-            if val is not None:
+            if val is not None and val != self.param_dict[key]:
                 self.param_dict[key] = val
+            else:
+                del params[key]
         if params:
             logMmin = self.solve_logMmin()
             logM1 = self.solve_logM1()
@@ -127,8 +134,11 @@ class ConservativeHOD:
             logM1 = self.sathod.param_dict["logM1"]
         sigma, alpha, logM0 = [self.param_dict[x] for x in
                                ["sigma", "alpha", "logM0"]]
-        return dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
-                    logM1=logM1, logM0=logM0)
+        params = dict(logMmin=logMmin, sigma=sigma, alpha=alpha,
+                      logM1=logM1, logM0=logM0)
+        self.cenhod.param_dict.update(params)
+        self.sathod.param_dict.update(params)
+        return params
 
     def populate_mock(self, **params):
         hod_params = self.get_hod_params(**params)
