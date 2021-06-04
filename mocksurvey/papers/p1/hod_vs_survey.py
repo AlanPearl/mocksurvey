@@ -24,7 +24,7 @@ class LnProbHOD:
         param_dict = dict(zip(["sigma", "alpha", "fsat"], params))
         prior = self.lnprior(**param_dict)
         if not np.isfinite(prior):
-            return prior, self._nanwp, -99
+            return prior, self._nanwp, -99, np.nan, np.nan, np.nan, np.nan
 
         # Calculate wp(rp) given HOD parameters
         wp, n = calc_wp_and_n_from_hod(self.model, **param_dict)
