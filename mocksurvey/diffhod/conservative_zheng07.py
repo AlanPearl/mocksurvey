@@ -53,7 +53,7 @@ class CFCMRHOD:
         return optimize.newton(zero, self.init_logM1, tol=1e-3)
 
     def get_hod_params(self, **params):
-        for key, val in params.items():
+        for key, val in list(params.items()):
             assert key in self.param_dict, f"Invalid key: {key}"
             if val is not None and val != self.param_dict[key]:
                 self.param_dict[key] = val
@@ -120,7 +120,7 @@ class ConservativeHOD:
         return self.sathod.solve_logM1()
 
     def get_hod_params(self, **params):
-        for key, val in params.items():
+        for key, val in list(params.items()):
             assert key in self.param_dict, f"Invalid key: {key}"
             if val is not None and val != self.param_dict[key]:
                 self.param_dict[key] = val
