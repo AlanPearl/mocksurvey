@@ -7,13 +7,13 @@ class BOSSLOWZSurvey:
         import numpy as np
 
         # Info from http://www.sdss3.org/dr9/algorithms/boss_galaxy_ts.php
-        g, r, i = data["m_g"], data["m_r"], data["m_i"]
+        g, r, i, cr = data["m_g"], data["m_r"], data["m_i"], data["m_cmod_r"]
         cpar = 0.7 * (g - r) + 1.2 * ((r - i) - 0.18)
         cperp = (r - i) - (g - r) / 4.0 - 0.18
 
         cut1 = np.abs(cperp) < 0.2
-        cut2 = r < 13.5 + cpar / 0.3
-        cut3 = (16.0 < r) & (r < 19.6)
+        cut2 = cr < 13.5 + cpar / 0.3
+        cut3 = (16.0 < cr) & (cr < 19.6)
         # Cuts we cannot perform
         # ======================
         # cut4 = r_psf - r_cmod > 0.3

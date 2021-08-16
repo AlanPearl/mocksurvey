@@ -1270,7 +1270,9 @@ class SDSSConfig(BaseDataConfig):
     }
 
     PHOTBANDS = {
-        "u": "U", "g": "G", "r": "R", "i": "I", "z": "Z"
+        "u": "U", "g": "G", "r": "R", "i": "I", "z": "Z",
+        "cmod_r": "R", "cmod_i": "I", "cmod_z": "Z",
+        "fib_i": "I", "fib2_i": "I"
     }
 
     @staticmethod
@@ -1338,7 +1340,10 @@ class SDSSConfig(BaseDataConfig):
         d_lum = cosmo.luminosity_distance(z).value * cosmo.h
 
         relative_mags = {
-            key: data[f"MODELMAG_{val}"]
+            key: data[f"CMODELMAG_{val}"] if key.startswith("cmod_")
+            else data[f"FIBERMAG_{val}"] if key.startswith("fib_")
+            else data[f"FIBER2MAG_{val}"] if key.startswith("fib2_")
+            else data[f"MODELMAG_{val}"]
             for (key, val) in self.PHOTBANDS.items()
         }
         distmod = 5 * np.log10(d_lum * 1e5)
