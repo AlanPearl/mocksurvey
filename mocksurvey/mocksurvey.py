@@ -29,7 +29,7 @@ from . import httools
 from . import filechunk
 from . import surveys
 # noinspection PyUnresolvedReferences
-from . import iamcool, diffhod
+from . import climber, diffhod
 # Default cosmology (Bolshoi-Planck)
 from .httools.httools import bplcosmo
 
@@ -1278,7 +1278,8 @@ class SDSSConfig(BaseDataConfig):
     @staticmethod
     def get_photbands(photbands, default=None):
         if default is None:
-            default = ["u", "g", "r", "i", "z"]
+            default = ["u", "g", "r", "i", "z", "cmod_r", "cmod_i",
+                       "cmod_z", "fib_i", "fib2_i"]
         if photbands is None:
             photbands = [s.lower() for s in default if s]
         else:
