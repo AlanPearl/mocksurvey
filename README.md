@@ -1,6 +1,6 @@
 # mocksurvey
 
-Module containing tools for easily constructing mock galaxy surveys, using halotools. See `Tutorial.ipynb` for a brief overview of the utility of this package. This repository is constantly being developed and updated.
+Some useful tools for conducting mock surveys of galaxies from the UniverseMachine empirical model.
 
 # Author
 ___

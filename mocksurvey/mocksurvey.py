@@ -1272,7 +1272,7 @@ class SDSSConfig(BaseDataConfig):
     PHOTBANDS = {
         "u": "U", "g": "G", "r": "R", "i": "I", "z": "Z",
         "cmod_r": "R", "cmod_i": "I", "cmod_z": "Z",
-        "fib_i": "I", "fib2_i": "I"
+        "fib_i": "I",  # "fib2_i": "I" <-- 97% of data has fib2_i = -99
     }
 
     @staticmethod
