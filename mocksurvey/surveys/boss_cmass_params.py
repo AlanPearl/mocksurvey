@@ -8,7 +8,8 @@ class BOSSCMASSSurvey:
 
         # Info from http://www.sdss3.org/dr9/algorithms/boss_galaxy_ts.php
         g, r, i = data["m_g"], data["m_r"], data["m_i"]
-        cr, ci, fib2i = data["m_cmod_r"], data["m_cmod_i"], data["m_fib2_i"]
+        cr, ci, fib2i = data["m_cmod_r"], data["m_cmod_i"], data["m_fib_i"] + 0.56633
+        # (empirical conversion from fib to fib2)
         dperp = (r - i) - (g - r) / 8.0
 
         cut1 = dperp > 0.55

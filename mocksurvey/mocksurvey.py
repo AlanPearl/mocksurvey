@@ -1279,7 +1279,8 @@ class SDSSConfig(BaseDataConfig):
     def get_photbands(photbands, default=None):
         if default is None:
             default = ["u", "g", "r", "i", "z", "cmod_r", "cmod_i",
-                       "cmod_z", "fib_i", "fib2_i"]
+                       "cmod_z", "fib_i",  # "fib2_i" <-- too many -99s
+                      ]
         if photbands is None:
             photbands = [s.lower() for s in default if s]
         else:
@@ -1343,7 +1344,7 @@ class SDSSConfig(BaseDataConfig):
         relative_mags = {
             key: data[f"CMODELMAG_{val}"] if key.startswith("cmod_")
             else data[f"FIBERMAG_{val}"] if key.startswith("fib_")
-            else data[f"FIBER2MAG_{val}"] if key.startswith("fib2_")
+            # else data[f"FIBER2MAG_{val}"] if key.startswith("fib2_")
             else data[f"MODELMAG_{val}"]
             for (key, val) in self.PHOTBANDS.items()
         }
