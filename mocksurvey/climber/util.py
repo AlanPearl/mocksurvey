@@ -393,12 +393,18 @@ def generate_lightcone_filenames(args, outfilepath=None,
                              "a UMConfig directory to store the files.")
 
         outfilepath = os.path.join(outfilepath, "lightcones", id_tag)
-        if pathlib.Path(outfilepath).is_dir() != start_from_ascii:
-            outfilepath = None
-            raise IsADirectoryError(
-                f"Lightcone with id-tag={id_tag} already exists at "
-                f"{outfilepath}. Delete this directory or use a "
-                f"different id-tag")
+        if start_from_ascii:
+            if not pathlib.Path(outfilepath).is_dir():
+                raise IsADirectoryError(
+                    f"Lightcone with id-tag={id_tag} does not exist. "
+                    f"There is no directory at {outfilepath}.")
+        else:
+            if pathlib.Path(outfilepath).is_dir():
+                raise IsADirectoryError(
+                    f"Lightcone with id-tag={id_tag} already exists at "
+                    f"{outfilepath}. Delete this directory or use a "
+                    f"different id-tag")
+
 
     # If id_tag is NOT provided, then make sure outfilepath is valid
     else:
