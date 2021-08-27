@@ -41,6 +41,10 @@ class LightCone:
             help="Comma-separated bands to calculate apparent "
                  "magnitudes by CLIMBER matching to UltraVISTA (or SDSS).")
         parser.add_argument(
+            "--fit-with-mass", action="store_true",
+            help="Additionally use stellar mass as a predictor for M/L"
+        )
+        parser.add_argument(
                 "--nomags", action="store_true",
                 help="Don't calculate sfr_uv or absolute magnitudes"
         )
@@ -99,16 +103,13 @@ class LightCone:
         else:
             raise ValueError("--photbands must receive a comma-separated "
                              "list of bands (e.g., 'g,r,i,z,y,h,j,k,ch1,ch2')")
-        ms.climber.lightcone(
-            a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN,
-            executable=a.executable, umcfg=a.umcfg, samples=a.NUM_SAMPLES,
-            calibration=a.calibration, photbands=a.photbands, nomags=a.nomags,
-            obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
-            outfilepath=a.outfilepath, id_tag=a.NAME,
-            do_collision_test=a.do_collision_test, ra=a.ra_center,
-            dec=a.dec_center, theta=a.theta_center, rseed=a.rseed,
-            keep_ascii_files=a.keep_ascii_files,
-            start_from_ascii=a.start_from_ascii)
+        ms.climber.lightcone(a.Z_LOW, a.Z_HIGH, a.X_ARCMIN, a.Y_ARCMIN, executable=a.executable, umcfg=a.umcfg,
+                             samples=a.NUM_SAMPLES, calibration=a.calibration, photbands=a.photbands,
+                             fit_with_mass=a.fit_with_mass, nomags=a.nomags,
+                             obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
+                             outfilepath=a.outfilepath, id_tag=a.NAME, do_collision_test=a.do_collision_test,
+                             ra=a.ra_center, dec=a.dec_center, theta=a.theta_center, rseed=a.rseed,
+                             keep_ascii_files=a.keep_ascii_files, start_from_ascii=a.start_from_ascii)
 
 
 class LightConeSelection:

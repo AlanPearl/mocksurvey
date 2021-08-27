@@ -33,10 +33,8 @@ class TestLightCone(unittest.TestCase):
         test_npy_fn = os.path.join(path, "test_lightcone_0.npy")
 
         # Might want to suppress stdout here as well
-        ms.climber.lightcone(0.8, 1.0, 5, 5, rseed=1234567,
-                            outfilepath=path, calibration="uvista",
-                            outfilebase="test_lightcone_tmp",
-                            keep_ascii_files=True)
+        ms.climber.lightcone(0.8, 1.0, 5, 5, calibration="uvista", outfilepath=path, outfilebase="test_lightcone_tmp",
+                             rseed=1234567, keep_ascii_files=True)
 
         with ms.util.suppress_stdout():
             data = ms.climber.util.load_ascii_data(dat_fn, 0, 0)

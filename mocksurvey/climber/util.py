@@ -15,7 +15,7 @@ from . import kcorrect
 
 
 def convert_ascii_to_npy_and_json(asciifile, calibration, outfilebase=None,
-                                  remove_ascii_file=False,
+                                  remove_ascii_file=False, fit_with_mass=False,
                                   obs_mass_limit=8e8, true_mass_limit=0,
                                   photbands=None, cosmo=None, nomags=False):
     if outfilebase is None:
@@ -24,7 +24,8 @@ def convert_ascii_to_npy_and_json(asciifile, calibration, outfilebase=None,
     ascii_data = load_ascii_data(asciifile, obs_mass_limit=obs_mass_limit,
                                  true_mass_limit=true_mass_limit)
     data = lightcone_from_ascii(ascii_data, calibration, photbands=photbands,
-                                cosmo=cosmo, nomags=nomags)
+                                cosmo=cosmo, nomags=nomags,
+                                fit_with_mass=fit_with_mass)
     metadict = metadict_from_ascii(asciifile, calibration, photbands=photbands,
                                    obs_mass_limit=obs_mass_limit,
                                    true_mass_limit=true_mass_limit,
@@ -65,7 +66,7 @@ def load_ascii_data(filename, obs_mass_limit=8e8, true_mass_limit=0):
 
 
 def lightcone_from_ascii(ascii_data, calibration, photbands=None,
-                         cosmo=None, nomags=False):
+                         cosmo=None, nomags=False, fit_with_mass=False):
     """
     Takes the ascii output given by UniverseMachine's `lightcone` code,
     and returns it as a numpy structured array, removing entries with
@@ -100,7 +101,8 @@ def lightcone_from_ascii(ascii_data, calibration, photbands=None,
 
     # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
     uvdat = climber.UVData(calibration, photbands=photbands)
-    umdat = climber.UMData(ascii_data, uvdat=uvdat)
+    umdat = climber.UMData(ascii_data, uvdat=uvdat,
+                           fit_with_mass=fit_with_mass)
     if nomags:
         sfr_uv = np.full_like(dlum, np.nan)
         magdf = pd.DataFrame({f"m_{k}": sfr_uv for k in uvdat.photbands})

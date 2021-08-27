@@ -13,7 +13,8 @@ from .. import mocksurvey as ms
 
 def lightcone(z_low, z_high, x_arcmin, y_arcmin,
               executable=None, umcfg=None, samples=1,
-              calibration="uvista", photbands=None, nomags=False,
+              calibration="uvista", photbands=None,
+              fit_with_mass=False, nomags=False,
               obs_mass_limit=8e8, true_mass_limit=0,
               outfilepath=None, outfilebase=None, id_tag=None,
               do_collision_test=False, ra=0.,
@@ -59,7 +60,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     # Convert the enormous ascii file into a binary table + meta data
     for filename in moved_files:
         util.convert_ascii_to_npy_and_json(
-            filename, calibration, nomags=nomags,
+            filename, calibration, nomags=nomags, fit_with_mass=fit_with_mass,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
             obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
 
@@ -271,7 +272,7 @@ class UVData:
 
 class UMData:
     def __init__(self, umhalos, uvdat=None, snapshot_redshift=None,
-                 nwin=501, dz=0.05, seed=None):
+                 nwin=501, dz=0.05, seed=None, fit_with_mass=False):
         """
         This is just a namespace of UniverseMachine observables
         used in the mass-to-light ratio fitting process.
@@ -293,6 +294,7 @@ class UMData:
         self.snapshot_redshift = snapshot_redshift
         self.nwin = nwin
         self.dz = dz
+        self.fit_with_mass = fit_with_mass
         if self.uvdat is None:
             print("Warning: Defaulting to UltraVISTA calibration")
             self.uvdat = UVData("uvista")
@@ -358,16 +360,21 @@ class UMData:
     def fit_mass_to_light(self):
         from sklearn import ensemble
 
-        x = np.array([self.uvdat.logssfr_uv,
-                      self.uvdat.z]).T
+        x = [self.uvdat.logssfr_uv, self.uvdat.z]
+        if self.fit_with_mass:
+            x.append(self.uvdat.logm)
+        x = np.array(x).T
         y = self.uvdat.m2l
-        s = np.isfinite(self.uvdat.logssfr_uv) & np.isfinite(y).all(axis=1)
+        s = np.isfinite(x).all(axis=1) & np.isfinite(y).all(axis=1)
 
         regressor = ensemble.RandomForestRegressor(n_estimators=10)
         regressor.fit(x[s], y[s])
 
         s = np.isfinite(self.logssfr_uv)
-        x = np.array([self.logssfr_uv, self.z]).T
+        x = [self.logssfr_uv, self.z]
+        if self.fit_with_mass:
+            x.append(self.logm)
+        x = np.array(x).T
         y = regressor.predict(x[s])
 
         abs_mag = np.full((x.shape[0], y.shape[1]), np.nan, np.float32)
