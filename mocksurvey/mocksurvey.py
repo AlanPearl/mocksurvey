@@ -1725,8 +1725,6 @@ class UVISTAWgetter:
 
         util.download_file_from_google_drive(
             self.uvista_gfid, self.uvista_tarf)
-        util.wget_download(self.uvista_url, outfile=self.uvista_tarf,
-                           overwrite=overwrite)
         self.decompress_tar(self.uvista_tarf)
         UVISTAConfig().auto_add()
 
