@@ -19,7 +19,8 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
               outfilepath=None, outfilebase=None, id_tag=None,
               do_collision_test=False, ra=0.,
               dec=0., theta=0., rseed=None,
-              keep_ascii_files=False, start_from_ascii=False):
+              keep_ascii_files=False, start_from_ascii=False,
+              rf_params="best", n_estimators=None):
 
     # Predict/generate filenames
     fake_id = "_tmp_file_made_by_universemachine_"
@@ -62,10 +63,105 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
         util.convert_ascii_to_npy_and_json(
             filename, calibration, nomags=nomags, fit_with_mass=fit_with_mass,
             remove_ascii_file=not keep_ascii_files, photbands=photbands,
-            obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit)
+            obs_mass_limit=obs_mass_limit, true_mass_limit=true_mass_limit,
+            rf_params=rf_params, n_estimators=n_estimators)
 
     # Print location of the stored files
     ms.LightConeConfig(data_dir).auto_add()
+
+
+def recalibrate_lightcone(input_name: Union[str, object],
+                          output_name: str,
+                          calibration: str = "uvista",
+                          outfile: Optional[str] = None,
+                          rf_params: str = "best",
+                          n_estimators: Optional[int] = None,
+                          keep_old: bool = False,
+                          input_realization: Union[
+                              str, int, Sequence[int]] = "all") -> None:
+    """
+    Take an input lightcone and perform a selection and optionally
+    break it up into sky regions. The resulting lightcone is saved
+    in a new directory.
+    Parameters
+    ----------
+    input_name : str | LightConeConfig
+        Directory of the input lightcone
+    output_name : str
+        Directory name to save the new lightcone. This directory goes
+        into the default lightcone storage location, unless the path
+        is explicit (starts with '.', '..', or '/') and already exists
+    calibration : str (default = "uvista")
+        Specifies the calibration dataset to perform CLIMBER with
+    outfile : str (default = None)
+        Base of output file names. By default, use the same naming
+        convention as the input lightcone
+    rf_params : str (default = "best")
+        Random Forest hyperparameters. Options: "best" | "original"
+    n_estimators : int (default = None)
+        Hyperparameter for random forest that controls number of trees.
+        The default for "best" and "original" both uses 10 estimators
+    keep_old : bool (default = False)
+        If true, the old photometry columns ("m_{band}") will be kept, but
+        will be renamed to "old_m_{band}". By default, they are overwritten.
+    input_realization : int | str | array-like (default="all")
+        Specify realization index(es) from the input to create
+        the selected lightcone(s). All realizations used by default
+
+    Returns
+    -------
+    None (files are written)
+    """
+    if isinstance(input_name, ms.LightConeConfig):
+        config = input_name
+    else:
+        config = ms.LightConeConfig(input_name, is_temp=True)
+    with ms.util.suppress_stdout():
+        config.auto_add()
+
+    if input_realization is None or input_realization == "all":
+        input_realization = range(len(config["files"]))
+    input_realization = np.ravel(input_realization)
+
+    assert ms.util.is_int(input_realization), "Integer realizations required"
+    if not ms.util.explicit_path(output_name, assert_dir=True):
+        output_name = ms.UMConfig().get_path("lightcones", output_name)
+        pathlib.Path(output_name).mkdir(parents=True)
+
+    for index in input_realization:
+        num = f"_{index}" if len(input_realization) > 1 else ""
+        base_fn = f"{config['files'][index]}"[:-4] \
+            if outfile is None else f"{outfile}{num}"
+        base_fn = os.path.join(output_name, base_fn)
+
+        cat, meta = config.load(index)
+
+        old_names = [x for x in cat.dtype.names if x.startswith("m_")]
+        remove_names = ["x", "y", "z", "sfr_uv", "distmod", "distmod_cosmo",
+                        *old_names]
+
+        keep_names = [x for x in cat.dtype.names if x not in remove_names]
+        old_names = [f"{x}_old" for x in old_names] if keep_old else []
+
+        cols = [cat[x] for x in keep_names]
+        cols += [cat[x[4:]] for x in old_names]
+        names = keep_names + old_names
+        dtypes = [x.dtype for x in cols]
+
+        cat = ms.util.make_struc_array(names, cols, dtypes)
+        recalibrated_cat = ms.climber.util.lightcone_from_ascii(
+            cat, calibration=calibration, rf_params=rf_params,
+            n_estimators=n_estimators)
+
+        phot_fn = f"{base_fn}.npy"
+        meta_fn = f"{base_fn}.json"
+        meta["header"] = ms.climber.util.metadict_header(calibration)
+        np.save(phot_fn, recalibrated_cat)
+        with open(meta_fn, "w") as f:
+            json.dump(meta, f, indent=4)
+
+    # Print location of the stored files
+    ms.LightConeConfig(output_name).auto_add()
 
 
 def lightcone_selection(input_name: Union[str, object],
@@ -272,7 +368,8 @@ class UVData:
 
 class UMData:
     def __init__(self, umhalos, uvdat=None, snapshot_redshift=None,
-                 nwin=501, dz=0.05, seed=None, fit_with_mass=False):
+                 nwin=501, dz=0.05, seed=None, fit_with_mass=False,
+                 rf_params="best", n_estimators=None):
         """
         This is just a namespace of UniverseMachine observables
         used in the mass-to-light ratio fitting process.
@@ -295,6 +392,8 @@ class UMData:
         self.nwin = nwin
         self.dz = dz
         self.fit_with_mass = fit_with_mass
+        self.rf_params = rf_params
+        self.n_estimators = n_estimators
         if self.uvdat is None:
             print("Warning: Defaulting to UltraVISTA calibration")
             self.uvdat = UVData("uvista")
@@ -354,11 +453,22 @@ class UMData:
     def abs_mag(self):
         if self._abs_mag is None:
             with ms.util.temp_seed(self.seed):
-                self._abs_mag = self.fit_mass_to_light()
+                self._abs_mag = self.fit_mass_to_light(
+                    rf_params=self.rf_params, n_estimators=self.n_estimators)
         return self._abs_mag
 
-    def fit_mass_to_light(self):
+    def fit_mass_to_light(self, rf_params="best", n_estimators=None):
         from sklearn import ensemble
+        n_estimators = 10 if n_estimators is None else n_estimators
+        if rf_params == "best":
+            rf_params = dict(n_estimators=n_estimators, bootstrap=True,
+                             max_depth=10, max_features="auto",
+                             min_samples_leaf=2, min_samples_split=9)
+        elif rf_params == "original":
+            rf_params = dict(n_estimators=n_estimators)
+        else:
+            assert isinstance(rf_params, dict), ("rf_params must be 'best', "
+                                                 "'original', or a dict")
 
         x = [self.uvdat.logssfr_uv, self.uvdat.z]
         if self.fit_with_mass:
@@ -367,7 +477,7 @@ class UMData:
         y = self.uvdat.m2l
         s = np.isfinite(x).all(axis=1) & np.isfinite(y).all(axis=1)
 
-        regressor = ensemble.RandomForestRegressor(n_estimators=10)
+        regressor = ensemble.RandomForestRegressor(**rf_params)
         regressor.fit(x[s], y[s])
 
         s = np.isfinite(self.logssfr_uv)
@@ -454,6 +564,8 @@ class SeanSpecStacker:
 class NeighborSeanSpecFinder:
     def __init__(self, umhalos, photbands=None, calibration="uvista",
                  snapshot_redshift=None, nwin=501, dz=0.05, seed=None):
+        assert calibration == "uvista", ("Sean's spectra can only be matched " 
+                                         "with UltraVISTA photometry")
         self.uvdat = UVData(calibration, photbands=photbands)
         self.umdat = UMData(umhalos, uvdat=self.uvdat,
                             snapshot_redshift=snapshot_redshift,

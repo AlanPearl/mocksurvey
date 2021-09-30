@@ -17,14 +17,16 @@ from . import kcorrect
 def convert_ascii_to_npy_and_json(asciifile, calibration, outfilebase=None,
                                   remove_ascii_file=False, fit_with_mass=False,
                                   obs_mass_limit=8e8, true_mass_limit=0,
-                                  photbands=None, cosmo=None, nomags=False):
+                                  photbands=None, cosmo=None, nomags=False,
+                                  rf_params="best", n_estimators=None):
     if outfilebase is None:
         outfilebase = ".".join(asciifile.split(".")[:-1])
 
     ascii_data = load_ascii_data(asciifile, obs_mass_limit=obs_mass_limit,
                                  true_mass_limit=true_mass_limit)
     data = lightcone_from_ascii(ascii_data, calibration, photbands=photbands,
-                                cosmo=cosmo, nomags=nomags,
+                                cosmo=cosmo, nomags=nomags, rf_params=rf_params,
+                                n_estimators=n_estimators,
                                 fit_with_mass=fit_with_mass)
     metadict = metadict_from_ascii(asciifile, calibration, photbands=photbands,
                                    obs_mass_limit=obs_mass_limit,
@@ -66,7 +68,8 @@ def load_ascii_data(filename, obs_mass_limit=8e8, true_mass_limit=0):
 
 
 def lightcone_from_ascii(ascii_data, calibration, photbands=None,
-                         cosmo=None, nomags=False, fit_with_mass=False):
+                         cosmo=None, nomags=False, fit_with_mass=False,
+                         rf_params="best", n_estimators=None):
     """
     Takes the ascii output given by UniverseMachine's `lightcone` code,
     and returns it as a numpy structured array, removing entries with
@@ -101,7 +104,8 @@ def lightcone_from_ascii(ascii_data, calibration, photbands=None,
 
     # Calculate apparent magnitudes (column = "m_g", "m_r", etc.)
     uvdat = climber.UVData(calibration, photbands=photbands)
-    umdat = climber.UMData(ascii_data, uvdat=uvdat,
+    umdat = climber.UMData(ascii_data, uvdat=uvdat, rf_params=rf_params,
+                           n_estimators=n_estimators,
                            fit_with_mass=fit_with_mass)
     if nomags:
         sfr_uv = np.full_like(dlum, np.nan)
@@ -135,11 +139,49 @@ def lightcone_from_ascii(ascii_data, calibration, photbands=None,
     return final_lightcone_array
 
 
+def metadict_header(calibration, nomags=False):
+    dataname = calibration.upper()
+    nomags_msg = (' *Note*: This was run with nomags=True, so m_{{*}}'
+                  ' and sfr_uv columns are missing or NaN.\n#')
+
+    header = f"""# Structured array of mock galaxy/halo properties
+    # Load via 
+    # >>> data = np.load("filename.npy")
+    # Cosmology: FlatLambdaCDM(H0=67.8, Om0=0.307, Ob0=0.048)
+    #{nomags_msg if nomags else ''}
+    # Column descriptions:
+    # (Note: Observer at origin, and x-axis is approximately line-of-sight)
+    # ====================
+    # x_real, y_real, z_real - true comoving position in Mpc/h
+    # x,y,z - velocity-distorted comoving position in Mpc/h
+    # vx, vy, vz - Velocity in km/s
+    # ra,dec - celestial coords in degrees: range [-180,180) and [-90,90]
+    # redshift[_cosmo] - distorted [and cosmological] redshift
+    # m_{{u,b,v,g,r,i,z,y,j,ch1,ch2}} - app. magnitudes calibrated to {dataname}
+    # obs_sm - "observed" stellar mass from UniverseMachine in Msun
+    # obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
+    # true_{{sm,sfr}} - same, but UniverseMachine "truth" (not recommended to use)
+    # sfr_uv - ultraviolet SFR (abundance-matched to {dataname})
+    # obs_uv - AB absolute magnitude at 1500 Angstroms (unreliable for z < 4)
+    # distmod[_cosmo] - distorted [and cosmological] dist. modulus = m - M + 5logh
+    # Host halo information:
+    # =====================
+    # id - ID of host halo
+    # upid - ID of the central, or -1 if central
+    # halo_mvir[_peak] - mass in Msun [and the peak value over all time]
+    # halo_vmax[_peak] - maximum circular velocity in km/s [and peak value]
+    # halo_rvir - virial radius in comoving kpc/h
+    # halo_delta_vmax_rank - z-score of a proxy for halo accretion rate --> sSFR
+    # scale_snapshot - the scale-factor of the snapshot this halo was taken from
+    """
+    return header
+
+
 def metadict_from_ascii(filename, calibration, photbands=None, obs_mass_limit=8e8,
                         true_mass_limit=0, nomags=False):
     data_config = ms.available_calibrations[calibration]()
     photbands = data_config.get_photbands(photbands)
-    dataname = calibration.upper()
+    header = metadict_header(calibration, nomags=nomags)
 
     with open(filename) as f:
         [f.readline() for _ in range(1)]
@@ -152,39 +194,7 @@ def metadict_from_ascii(filename, calibration, photbands=None, obs_mass_limit=8e
 
     (executable, config, z_low, z_high,
      x_arcmin, y_arcmin, samples) = cmd.split()[:7]
-    nomags_msg = (' *Note*: This was run with nomags=True, so m_{{*}}'
-                  ' and sfr_uv columns are missing or NaN.\n')
 
-    header = f"""# Structured array of mock galaxy/halo properties
-# Load via 
-# >>> data = np.load("filename.npy")
-# Cosmology: FlatLambdaCDM(H0=67.8, Om0=0.307, Ob0=0.048)
-#{nomags_msg if nomags else ''}
-# Column descriptions:
-# (Note: Observer at origin, and x-axis is approximately line-of-sight)
-# ====================
-# x_real, y_real, z_real - true comoving position in Mpc/h
-# x,y,z - velocity-distorted comoving position in Mpc/h
-# vx, vy, vz - Velocity in km/s
-# ra,dec - celestial coords in degrees: range [-180,180) and [-90,90]
-# redshift[_cosmo] - distorted [and cosmological] redshift
-# m_{{u,b,v,g,r,i,z,y,j,ch1,ch2}} - app. magnitudes calibrated to {dataname}
-# obs_sm - "observed" stellar mass from UniverseMachine in Msun
-# obs_sfr - "observed" SFR from UniverseMachine in Msun/yr
-# true_{{sm,sfr}} - same, but UniverseMachine "truth" (not recommended to use)
-# sfr_uv - ultraviolet SFR (abundance-matched to {dataname})
-# obs_uv - AB absolute magnitude at 1500 Angstroms (unreliable for z < 4)
-# distmod[_cosmo] - distorted [and cosmological] dist. modulus = m - M + 5logh
-# Host halo information:
-# =====================
-# id - ID of host halo
-# upid - ID of the central, or -1 if central
-# halo_mvir[_peak] - mass in Msun [and the peak value over all time]
-# halo_vmax[_peak] - maximum circular velocity in km/s [and peak value]
-# halo_rvir - virial radius in comoving kpc/h
-# halo_delta_vmax_rank - z-score of a proxy for halo accretion rate --> sSFR
-# scale_snapshot - the scale-factor of the snapshot this halo was taken from
-"""
     return dict(header=header, z_low=float(z_low), z_high=float(z_high),
                 x_arcmin=float(x_arcmin), y_arcmin=float(y_arcmin),
                 samples=int(samples), photbands=photbands,
@@ -404,7 +414,6 @@ def generate_lightcone_filenames(args, outfilepath=None,
                     f"Lightcone with id-tag={id_tag} already exists at "
                     f"{outfilepath}. Delete this directory or use a "
                     f"different id-tag")
-
 
     # If id_tag is NOT provided, then make sure outfilepath is valid
     else:

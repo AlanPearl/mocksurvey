@@ -73,6 +73,16 @@ class LightCone:
         parser.add_argument("--rseed", type=int, metavar="SEED",
                             help="Random seed for this realization")
 
+        # Options for the random forest calibration
+        parser.add_argument(
+            "--rf-params", type=str, metavar="OPTION", default="best",
+            help="Random forest hyperparameters. Options: best | original"
+        )
+        parser.add_argument(
+            "--n-estimators", type=int, metavar="N", default=None,
+            help="Number of trees in the random forest"
+        )
+
         # Options with not much use
         parser.add_argument(
                     "--ra-center", type=float, default=0, metavar="X",
@@ -109,7 +119,8 @@ class LightCone:
                              obs_mass_limit=a.obs_mass_limit, true_mass_limit=a.true_mass_limit,
                              outfilepath=a.outfilepath, id_tag=a.NAME, do_collision_test=a.do_collision_test,
                              ra=a.ra_center, dec=a.dec_center, theta=a.theta_center, rseed=a.rseed,
-                             keep_ascii_files=a.keep_ascii_files, start_from_ascii=a.start_from_ascii)
+                             keep_ascii_files=a.keep_ascii_files, start_from_ascii=a.start_from_ascii,
+                             rf_params=a.rf_params, n_estimators=a.n_estimators)
 
 
 class LightConeSelection:
@@ -177,9 +188,65 @@ class LightConeSelection:
                                         a.field_shape, a.sample_fraction,
                                         a.min, a.max)
         ms.climber.lightcone_selection(a.INPUT_NAME, a.OUTPUT_NAME, selector,
-                                      outfile=a.outfile,
-                                      input_realization=a.realization,
-                                      nblocks_per_dim=a.nblocks_per_dim)
+                                       outfile=a.outfile,
+                                       input_realization=a.realization,
+                                       nblocks_per_dim=a.nblocks_per_dim)
+
+
+class RecalibrateLightCone:
+    desc = "Create a new lightcone from an existing one, " \
+           "but replacing photometry columns with recalibrated ones"
+
+    def __init__(self, parser):
+        self.parser = parser
+        parser.description = self.desc
+        parser.formatter_class = argparse.ArgumentDefaultsHelpFormatter
+
+        # Mandatory positional arguments
+        parser.add_argument(
+            "INPUT_NAME", type=str, help="Name of the input lightcone")
+        parser.add_argument(
+            "OUTPUT_NAME", type=str, help="Name of the output lightcone")
+
+        # Calibration options
+        parser.add_argument(
+            "--calibration", type=str, metavar="NAME", default="uvista",
+            help="String identifier for the dataset with which to "
+                 "calibrate photometry into UniverseMachine"
+        )
+        parser.add_argument(
+            "--keep-old", action="store_true",
+            help="Don't delete the old photometry columns. Rename them m_*_old"
+        )
+        parser.add_argument(
+            "--rf-params", type=str, metavar="OPTION", default="best",
+            help="Random forest hyperparameters. Options: best | original"
+        )
+        parser.add_argument(
+            "--n-estimators", type=int, metavar="N", default=None,
+            help="Number of trees in the random forest"
+        )
+
+        # Option to specify input lightcones
+        parser.add_argument(
+            "--realization", metavar="I,J,K,...",
+            type=lambda x: [int(i) for i in x.split(",")],
+            help="Comma-separated indices of realizations of input lightcone. "
+                 "Perform selection on all realizations by default")
+
+        # Option to specify output lightcone
+        parser.add_argument(
+            "--outfile", type=str, metavar="NAME",
+            help="Base of the filename of the new lightcone")
+
+    def __call__(self):
+        a = self.parser.parse_args()
+        ms.climber.recalibrate_lightcone(a.INPUT_NAME, a.OUTPUT_NAME,
+                                         calibration=a.calibration,
+                                         rf_params=a.rf_params,
+                                         n_estimators=a.n_estimators,
+                                         outfile=a.outfile, keep_old=a.keep_old,
+                                         input_realization=a.realization)
 
 
 class LightConeSpectra:
@@ -219,9 +286,9 @@ class LightConeSpectra:
     def __call__(self):
         a = self.parser.parse_args()
         ms.climber.lightcone_spectra(a.INPUT_NAME, a.realization,
-                                    make_specmap=a.make_specmap,
-                                    best_of=a.best_of,
-                                    photbands=a.photbands)
+                                     make_specmap=a.make_specmap,
+                                     best_of=a.best_of,
+                                     photbands=a.photbands)
 
 
 class SetDataPath:
@@ -351,7 +418,7 @@ class DownloadUVISTAMockSpectra:
         wgetter.download_sean_specmap(overwrite=a.overwrite)
 
 
-class Config:  # TODO: write list-all-configs delete-directory command
+class Config:  # TODO: write list-all-configs and delete-directory command
     desc = "Configure data storage used by mocksurvey"
 
     def __init__(self, parser):

@@ -78,6 +78,7 @@ class RealizationLoader:
         # noinspection PyUnusedLocal
         def _null_selector(*args, **kwargs):
             return slice(None)
+
         self._null_selector = _null_selector
         self._all_catalogs = None
 
@@ -221,7 +222,7 @@ class LightConeSelector:
         self.realspace = realspace
         self.cosmo, self.deg = cosmo, deg
 
-        z, dz = (z_high+z_low)/2., z_high - z_low
+        z, dz = (z_high + z_low) / 2., z_high - z_low
 
         simbox = httools.SimBox(redshift=z, empty=True)
         if self.fieldshape.startswith("full"):
@@ -352,7 +353,7 @@ class LightConeSelector:
         # Calculate limits in ra, dec, and distance
         fieldshape = self.field.get_shape(rdz=True)[:2, None]
         rdlims = self.field.center_rdz[:2, None] + np.array([[-.5, .5]]) \
-            * fieldshape
+                 * fieldshape
         distlim = util.comoving_disth([self.z_low, self.z_high], self.cosmo)
 
         rands = util.rand_rdz(n, *rdlims, distlim, seed=seed).astype(np.float32)
@@ -412,7 +413,7 @@ class CompletenessTester:
         column = column if max_val else column[::-1]
 
         selection = self.selector.dict_selection(gals)
-        frac = np.cumsum(selection) / np.arange(1, len(gals)+1)
+        frac = np.cumsum(selection) / np.arange(1, len(gals) + 1)
 
         mass = column[::-1]
         completeness = frac[::-1]
@@ -424,6 +425,7 @@ class BaseConfig(dict):
     """
     Abstract template class. Do not instantiate.
     """
+
     def __init__(self, config_file, data_dir=None, is_temp=False):
         dict.__init__(self)
         self.is_temp = is_temp
@@ -603,7 +605,7 @@ class UMConfig(BaseConfig):
         self.clear_keys(["files", "z"])
 
     def set_lightcone_config(self, filepath):
-        assert(os.path.isfile(filepath)), f"file does not exist: {filepath}"
+        assert (os.path.isfile(filepath)), f"file does not exist: {filepath}"
         self["lightcone_config"] = os.path.abspath(filepath)
 
     def set_lightcone_executable(self, filepath):
@@ -677,6 +679,7 @@ class UMConfig(BaseConfig):
         self.setup_lightcone_cfg()
         BaseConfig.auto_add(self)
         self.setup_snaps_txt()
+
     auto_add.__doc__ += "\n" + BaseConfig.auto_add.__doc__
 
     def add_file(self, filename, redshift=None):
@@ -747,7 +750,7 @@ BOX_SIZE = {250: <16} #In Mpc/h
 Om = {cosmo.Om0: <22} #Omega_matter
 Ol = {cosmo.Ode0: <22} #Omega_lambda
 h0 = {cosmo.h: <22} #h0 = H0 / (100 km/s/Mpc)
-fb = {cosmo.Ob0/cosmo.Om0: <22} #cosmic baryon fraction
+fb = {cosmo.Ob0 / cosmo.Om0: <22} #cosmic baryon fraction
 
 #Parallel node setup
 NUM_NODES = 48           #Total number of nodes used
@@ -834,6 +837,7 @@ class LightConeConfig(BaseConfig):
         The path to the directory where you plan on saving all of the binary files.
         If the directory is moved, then you must provide this argument again.
     """
+
     def __init__(self, data_dir=None, is_temp=False):
         self.is_temp = is_temp
         if data_dir is None:
@@ -847,7 +851,7 @@ class LightConeConfig(BaseConfig):
         # Otherwise, name is a folder in standard data path
         else:
             data_dir = UMConfig().get_path("lightcones", data_dir)
-            assert(os.path.isdir(data_dir)), f"{data_dir} does not exist"
+            assert (os.path.isdir(data_dir)), f"{data_dir} does not exist"
 
         config_file = self._path_to_filename(data_dir)
         BaseConfig.__init__(self, config_file, data_dir, is_temp)
@@ -878,7 +882,7 @@ class LightConeConfig(BaseConfig):
     def _check_load_index(self, index, check_ext=None):
         n = len(self["files"])
         assert util.is_int(index), "index must be an integer"
-        assert (0 <= index <= n-1), f"index={index} but -1 < index < {n}"
+        assert (0 <= index <= n - 1), f"index={index} but -1 < index < {n}"
         if check_ext is not None:
             filename = util.change_file_extension(
                 self.get_path(self["files"][index]), check_ext)
@@ -1013,6 +1017,7 @@ class BaseDataConfig(BaseConfig):
     @staticmethod
     def get_photbands(photbands, default=None):
         raise NotImplementedError("get_photbands() must be defined in subclass")
+
     # ================================================
 
     is_temp = False
@@ -1232,8 +1237,8 @@ class UVISTAConfig(BaseDataConfig):
         selection = np.all([
             *(np.isfinite(x) for x in list(absolute_mags.values())),
             np.isfinite(logm), z > 1.1e-2, kmag < 23.4,
-            dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
-            dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
+                               dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
+                               dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
             axis=0)
 
         # rel_keys, rel_vals = zip(*relative_mags.items())
@@ -1280,7 +1285,7 @@ class SDSSConfig(BaseDataConfig):
         if default is None:
             default = ["u", "g", "r", "i", "z", "cmod_r", "cmod_i",
                        "cmod_z", "fib_i",  # "fib2_i" <-- too many -99s
-                      ]
+                       ]
         if photbands is None:
             photbands = [s.lower() for s in default if s]
         else:
@@ -1403,6 +1408,7 @@ class SeanSpectraConfig(BaseConfig):
         """
         filename = self.SEANFILES[index]
         return BaseConfig.get_path(self, filename)
+
     get_filepath.__doc__ += "\n" + repr(SEANFILES)
 
     def add_file(self, filename):
@@ -1639,7 +1645,7 @@ class UMWgetter:
 
         self.sfr_cats = [file[0] for file in self.fileinfo]
         self.scales = np.array([float(i.split("_")[-1][:-4]) for i in self.sfr_cats])
-        self.redshifts = 1/self.scales - 1
+        self.redshifts = 1 / self.scales - 1
 
         self.fileids = [file[1] for file in self.fileinfo]
         self.sizes = [int(file[2]) for file in self.fileinfo]
@@ -1655,7 +1661,7 @@ class UMWgetter:
         zmin, zmax = np.min(redshift), np.max(redshift)
         imin = util.choose_close_index(zmax, self.redshifts, "none")
         imax = util.choose_close_index(zmin, self.redshifts, "none")
-        for i in range(imin, imax+1):
+        for i in range(imin, imax + 1):
             self.download_sfrcat_index(i, overwrite=overwrite)
         UMConfig().auto_add()
 

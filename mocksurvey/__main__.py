@@ -6,6 +6,7 @@ available_scripts = {
     "lightcone": scripts.LightCone,
     "lightcone-selection": scripts.LightConeSelection,
     "lightcone-spectra": scripts.LightConeSpectra,
+    "recalibrate-lightcone": scripts.RecalibrateLightCone,
     "set-data-path": scripts.SetDataPath,
     "download-um": scripts.DownloadUM,
     "download-uvista": scripts.DownloadUVISTA,
