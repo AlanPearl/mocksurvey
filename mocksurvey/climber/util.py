@@ -95,6 +95,11 @@ def lightcone_from_ascii(ascii_data, calibration, photbands=None,
     rdz = ms.util.ra_dec_z(xyz_real, vel, cosmo=cosmo)
     xyz = ms.util.rdz2xyz(rdz, cosmo=cosmo)
 
+    # UniverseMachine calculated the velocity-distorted redshift, but they
+    # used some approximations, such as ignoring y- and z-component velocity.
+    # Let's explicitly replace the redshift with something more exact
+    ascii_data["redshift"] = rdz[:, 2]
+
     # Calculate distance modulus (column = "distmod")
     dlum = cosmo.luminosity_distance(ascii_data["redshift"]).value * cosmo.h
     distmod = 5 * np.log10(dlum * 1e5)
