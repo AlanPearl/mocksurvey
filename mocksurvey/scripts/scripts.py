@@ -75,8 +75,8 @@ class LightCone:
 
         # Options for the random forest calibration
         parser.add_argument(
-            "--rf-params", type=str, metavar="OPTION", default="best",
-            help="Random forest hyperparameters. Options: best | original"
+            "--rf-params", type=str, metavar="OPTION", default="original",
+            help="Random forest hyperparameters. Options: optimized | original"
         )
         parser.add_argument(
             "--n-estimators", type=int, metavar="N", default=None,
@@ -219,8 +219,8 @@ class RecalibrateLightCone:
             help="Don't delete the old photometry columns. Rename them m_*_old"
         )
         parser.add_argument(
-            "--rf-params", type=str, metavar="OPTION", default="best",
-            help="Random forest hyperparameters. Options: best | original"
+            "--rf-params", type=str, metavar="OPTION", default="original",
+            help="Random forest hyperparameters. Options: optimized | original"
         )
         parser.add_argument(
             "--n-estimators", type=int, metavar="N", default=None,

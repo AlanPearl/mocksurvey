@@ -20,7 +20,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
               do_collision_test=False, ra=0.,
               dec=0., theta=0., rseed=None,
               keep_ascii_files=False, start_from_ascii=False,
-              rf_params="best", n_estimators=None):
+              rf_params="original", n_estimators=None):
 
     # Predict/generate filenames
     fake_id = "_tmp_file_made_by_universemachine_"
@@ -74,7 +74,7 @@ def recalibrate_lightcone(input_name: Union[str, object],
                           output_name: str,
                           calibration: str = "uvista",
                           outfile: Optional[str] = None,
-                          rf_params: str = "best",
+                          rf_params: str = "original",
                           n_estimators: Optional[int] = None,
                           keep_old: bool = False,
                           input_realization: Union[
@@ -96,8 +96,8 @@ def recalibrate_lightcone(input_name: Union[str, object],
     outfile : str (default = None)
         Base of output file names. By default, use the same naming
         convention as the input lightcone
-    rf_params : str (default = "best")
-        Random Forest hyperparameters. Options: "best" | "original"
+    rf_params : str (default = "original")
+        Random Forest hyperparameters. Options: "optimized" | "original"
     n_estimators : int (default = None)
         Hyperparameter for random forest that controls number of trees.
         The default for "best" and "original" both uses 10 estimators
@@ -369,7 +369,7 @@ class UVData:
 class UMData:
     def __init__(self, umhalos, uvdat=None, snapshot_redshift=None,
                  nwin=501, dz=0.05, seed=None, fit_with_mass=False,
-                 rf_params="best", n_estimators=None):
+                 rf_params="original", n_estimators=None):
         """
         This is just a namespace of UniverseMachine observables
         used in the mass-to-light ratio fitting process.
@@ -457,18 +457,29 @@ class UMData:
                     rf_params=self.rf_params, n_estimators=self.n_estimators)
         return self._abs_mag
 
-    def fit_mass_to_light(self, rf_params="best", n_estimators=None):
+    def fit_mass_to_light(self, rf_params="original", n_estimators=None):
         from sklearn import ensemble
-        n_estimators = 10 if n_estimators is None else n_estimators
-        if rf_params == "best":
+
+        if rf_params == "optimized":
+            # These parameters were optimized to minimize the cross-validated
+            # NMAD of individual G-R, R-Y, Y-J, and J-H colors. However,
+            # the *distributions* of these colors still do not match as well as
+            # those obtained from "original" hyperparameters. Use with caution.
+            n_estimators = 20 if n_estimators is None else n_estimators
             rf_params = dict(n_estimators=n_estimators, bootstrap=True,
-                             max_depth=10, max_features="auto",
-                             min_samples_leaf=2, min_samples_split=9)
+                             max_depth=12, max_features="sqrt",
+                             min_samples_leaf=8, min_samples_split=7)
         elif rf_params == "original":
-            rf_params = dict(n_estimators=n_estimators)
+            # The default hyperparameters in scikit-learn, except with
+            # n_estimators = 10 instead of 100 to reduce runtime with
+            # negligible loss in performance
+            n_estimators = 10 if n_estimators is None else n_estimators
+            rf_params = dict(n_estimators=n_estimators, bootstrap=True,
+                             max_depth=None, max_features="auto",
+                             min_samples_leaf=1, min_samples_split=2)
         else:
-            assert isinstance(rf_params, dict), ("rf_params must be 'best', "
-                                                 "'original', or a dict")
+            assert isinstance(rf_params, dict), ("rf_params must be 'optimized'"
+                                                 ", 'original', or a dict")
 
         x = [self.uvdat.logssfr_uv, self.uvdat.z]
         if self.fit_with_mass:

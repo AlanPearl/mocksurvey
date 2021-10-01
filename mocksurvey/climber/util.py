@@ -18,7 +18,7 @@ def convert_ascii_to_npy_and_json(asciifile, calibration, outfilebase=None,
                                   remove_ascii_file=False, fit_with_mass=False,
                                   obs_mass_limit=8e8, true_mass_limit=0,
                                   photbands=None, cosmo=None, nomags=False,
-                                  rf_params="best", n_estimators=None):
+                                  rf_params="original", n_estimators=None):
     if outfilebase is None:
         outfilebase = ".".join(asciifile.split(".")[:-1])
 
@@ -69,7 +69,7 @@ def load_ascii_data(filename, obs_mass_limit=8e8, true_mass_limit=0):
 
 def lightcone_from_ascii(ascii_data, calibration, photbands=None,
                          cosmo=None, nomags=False, fit_with_mass=False,
-                         rf_params="best", n_estimators=None):
+                         rf_params="original", n_estimators=None):
     """
     Takes the ascii output given by UniverseMachine's `lightcone` code,
     and returns it as a numpy structured array, removing entries with
