@@ -232,7 +232,7 @@ class LightConeSelector:
         self.field_selector = self.field.field_selector
         self.custom_selector = custom_selector
 
-    def __call__(self, lightcone, seed=None):
+    def __call__(self, lightcone, seed=None, no_random_selection=False):
         conditions = [self.field_selection(lightcone),
                       self.redshift_selection(lightcone),
                       self.rand_selection(lightcone, seed=seed),
@@ -240,6 +240,8 @@ class LightConeSelector:
         if self.custom_selector is not None:
             conditions.append(self.custom_selector(lightcone))
 
+        if no_random_selection:
+            del conditions[2]
         return np.all(conditions, axis=0)
 
     def __repr__(self):
@@ -372,13 +374,27 @@ class LightConeSelector:
         return rands
 
     def block_digitize(self, lightcone, nbins=(2, 2, 1)):
-        data = util.xyz_array(lightcone, ["ra", "dec", "redshift"])
+        """
+        Bin lightcone into `np.product(nbins)` different blocks
+        
+        Returns an array of bin numbers specifying the index of the bin
+        each object in the lightcone has been placed into. Objects that
+        are outside of the selection function are given the index -1.
+        """
+        selection = self(lightcone, no_random_selection=True)
+        data = util.xyz_array(lightcone[selection], ["ra", "dec", "redshift"])
         fieldshape = self.field.get_shape(rdz=True, deg=self.deg)
         center = self.field.center_rdz
 
         # noinspection PyProtectedMember
-        return cf._assign_block_indices(data, None, center,
-                                        fieldshape, nbins)[0]
+        ans = cf._assign_block_indices(data, None, center,
+                                       fieldshape, nbins)[0]
+        if np.all(selection):
+            return ans
+        else:
+            full_ans = np.full(len(lightcone), -1)
+            full_ans[selection] = ans
+            return full_ans
 
 
 class CompletenessTester:
