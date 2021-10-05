@@ -1,6 +1,7 @@
 import sys
 import os
 import shutil
+import inspect
 import collections
 import warnings
 from contextlib import contextmanager
@@ -69,6 +70,100 @@ def explicit_path(path: str,
         raise FileNotFoundError(f"Explicit path {path} must "
                                 f"already exist as a file.")
     return ans
+
+
+def block_jackknife(mock, func, selector, blocks_per_dim,
+                    make_rands_kwargs=None):
+    """
+    Estimate uncertainty via jackknife sampling in block bins
+
+    Parameters
+    ----------
+    mock : structured array
+        Light cone data. This is the first argument of `func`
+    func : callable
+        Function which takes argument `mock` (and, optionally,
+        `selector` and/or `rands` keywords) and returns a `value`
+    selector : LightConeSelector
+        This object is required to break the light cone into
+        distinct blocks for jackknife sampling
+    blocks_per_dim : int
+        Number of blocks per dimension in the light cone. In total,
+        the mock is binned into `blocks_per_dim ** 2` blocks
+    make_rands_kwargs : Optional[dict]
+        This is required iff `func` takes the argument `rands`. If
+        so, this is given to the selector.make_rands function, which
+        requires a value for the `n` parameter at least.
+
+    Returns
+    -------
+    value : float | array
+        This is just `func(mock, **func_kw)`
+    cov : float | array
+        The estimated variance of `value`, or covariance matrix of
+        `np.ravel(value)` if `value` is an array
+    """
+    func_args = inspect.getfullargspec(func)[0]
+    func_kw = {}
+
+    rands = None
+    if "rands" in func_args:
+        assert make_rands_kwargs is not None
+        rands = selector.make_rands(**make_rands_kwargs)
+        func_kw["rands"] = rands.copy()
+    if "selector" in func_args:
+        func_kw["selector"] = selector
+    assert isinstance(blocks_per_dim, int), \
+        f"`blocks_per_dim` must be int, not {type(int)}"
+
+    mock = mock[selector(mock)]
+    return_val = mean = func(mock, **func_kw)
+    must_add_dim = np.ndim(mean) == 0
+    must_ravel = np.ndim(mean) > 1
+    if must_add_dim:
+        mean = np.array([mean])
+
+    num_variables = len(mean)
+    nbins = (blocks_per_dim,) * 2
+    num_jackknife = blocks_per_dim ** 2
+
+    # Calculate the jackknife samples
+    block_bins, block_bins_rands = selector.block_digitize(
+        mock, nbins=nbins, rands_rdz=rands)
+    vals = []
+    for i in range(num_jackknife):
+        if rands is not None:
+            func_kw["rands"] = rands[block_bins_rands != i]
+        sample = mock[block_bins != i]
+        vals.append(func(sample, **func_kw))
+
+    vals = np.array(vals)
+    if must_add_dim:
+        vals = vals[:, None]
+    if must_ravel:
+        mean = np.ravel(mean)
+        vals = np.reshape(vals, (vals.shape[0], -1))
+
+    assert (mean.ndim == 1 and vals.ndim == 2), \
+        f"mean.ndim, vals.ndim = {(mean.ndim, vals.ndim)}"
+
+    jackknife_mean = np.mean(vals, axis=0)
+    jackknife_corr = mean / jackknife_mean
+    if np.any(jackknife_corr < 1 / 1.5) or np.any(jackknife_corr > 1.5):
+        print("Warning: Jackknife values are significantly biased.\n"
+              "True value / jackknife mean =", jackknife_corr)
+
+    # Calculate the covariance matrix from the jackknife samples
+    cov = np.full((num_variables,) * 2, np.nan)
+    for i in range(num_variables):
+        for j in range(i, num_variables):
+            cov[i, j] = cov[j, i] = np.sum((vals[:, i] - jackknife_mean[i]) *
+                                           (vals[:, j] - jackknife_mean[j]))
+    cov *= jackknife_corr * (num_jackknife - 1) / num_jackknife
+    if must_add_dim:
+        cov = cov[0, 0]
+
+    return return_val, cov
 
 
 def selector_from_meta(meta: dict):
@@ -143,12 +238,12 @@ def apply_over_window(func, a, window, axis=-1, edge_case=None, **kwargs):
     `func` must be a numpy-friendly function which accepts
     an array as a positional argument and utilizes
     an `axis` keyword argument
-    
+
     This function is just a wrapper for rolling_window,
     and is essentially implemented by the following code:
-    
+
     >>> return func(rolling_window(a, window, axis=axis), axis=-1)
-    
+
     See rolling_window docstring for more info
     """
     return func(rolling_window(a, window, axis=axis, edge_case=edge_case),
@@ -160,44 +255,43 @@ def rolling_window(a, window, axis=-1, edge_case=None):
     Append a new axis of length `window` on `a` over which to roll over
     the specified `axis` of `a`. The new window axis is always the LAST
     axis in the returned array.
-    
+
     WARNING: Memory usage for this function is O(a.size * window)
-    
+
     Parameters
     ----------
-    
     a : array-like
         Input array over which to add a new axis containing windows
-    
     window : int
         Number of elements in each window
-    
     axis : int (default = -1)
         The specified axis with which windows are drawn from
-    
     edge_case : str (default = "replace")
         We need to choose a scheme of how to deal with the ``window - 1``
         windows which contain entries beyond the edge of our specified axis.
         The following options are supported:
-        
-        edge_case = None | "replace"
+        edge_case = "replace" (default)
             Windows containing entries beyond the edges will still exist, but
             those entries will be replaced with the edge entry. The nth axis
             element will be positioned in the ``window//2``th element of the 
             nth window
-
         edge_case = "wrap"
             Windows containing entries beyond the edges will still exist, and
             those entries will wrap around the axis. The nth axis element will
             be positioned in the ``window//2``th element of the nth window
-
         edge_case = "contract"
             Windows containing entries beyond the edges will be removed 
             entirely (e.g., if ``a.shape = (10, 10, 10)``, ``window = 4``,
             and ``axis = 1`` then the output array will have shape 
-            ``(10, 7, 10, 4)`` because the specified axis will be reduced by
+            ``(10, 7, 10, 4)`` because the `axis`th axis will be reduced by
             a length of ``window-1``). The nth axis element will be positioned
             in the 0th element of the nth window.
+
+    Returns
+    -------
+    rolled_a : np.ndarray
+        Similar to `a`, but a new axis has been added at the end of length
+        `window`, which rolls over the `axis`th axis
     """
     # Input sanitization
     a = np.asarray(a)
@@ -797,19 +891,14 @@ def logggnfw(x, x0, y0, m1, m2, alpha):
     ----------
     x : float | array of floatsp at Pitt
         This is not a parameter, this is the abscissa
-
     x0 : float
         The characteristic position where the slope changes
-
     y0 : float
         The value of f(x0)
-
     m1 : float
         The slope at x << x0
-
     m2 : float
         The slope as x >> x0
-
     alpha : float
         The sharpness of the slope transition from m1 to m2
 
@@ -927,11 +1016,10 @@ def correction_for_empty_bins(original_centroids: np.ndarray,
     in the bin, this function will remove those centroids and
     shift the centroid_indices down so that no numbers are skipped.
 
-    Arguments
-    ---------
+    Parameters
+    ----------
     original_centroids : 1d array of floats/ints
         The centroids you passed to fuzzy_digitize
-
     original_indices : array of floats/ints
         The array returned to you by fuzzy_digitize
 
@@ -940,7 +1028,6 @@ def correction_for_empty_bins(original_centroids: np.ndarray,
     new_centroids : 1d array of floats/ints
         similar to `original_centroids`, but removing any points
         corresponding to not a single index in `original_indices`
-
     new_indices : array of floats/ints
         array with same shape as `original_indices`, but indices
         are shifted to correspond to `new_centroids`
