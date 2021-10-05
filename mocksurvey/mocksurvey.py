@@ -355,7 +355,7 @@ class LightConeSelector:
         # Calculate limits in ra, dec, and distance
         fieldshape = self.field.get_shape(rdz=True)[:2, None]
         rdlims = self.field.center_rdz[:2, None] + np.array([[-.5, .5]]) \
-                 * fieldshape
+            * fieldshape
         distlim = util.comoving_disth([self.z_low, self.z_high], self.cosmo)
 
         rands = util.rand_rdz(n, *rdlims, distlim, seed=seed).astype(np.float32)
@@ -373,7 +373,7 @@ class LightConeSelector:
                 rands[:, :2] *= 180 / np.pi
         return rands
 
-    def block_digitize(self, lightcone, nbins=(2, 2, 1)):
+    def block_digitize(self, lightcone, nbins=(2, 2, 1), rands_rdz=None):
         """
         Bin lightcone into `np.product(nbins)` different blocks
         
@@ -382,19 +382,34 @@ class LightConeSelector:
         are outside of the selection function are given the index -1.
         """
         selection = self(lightcone, no_random_selection=True)
+        rands_selection = None
+        if rands_rdz is not None:
+            rands = util.make_struc_array(["ra", "dec", "redshift"],
+                                          rands_rdz.T, rands_rdz.dtype)
+            rands_selection = (self.field_selection(rands) &
+                               self.redshift_selection(rands))
+            rands_rdz = rands_rdz[rands_selection]
+
         data = util.xyz_array(lightcone[selection], ["ra", "dec", "redshift"])
         fieldshape = self.field.get_shape(rdz=True, deg=self.deg)
         center = self.field.center_rdz
 
         # noinspection PyProtectedMember
-        ans = cf._assign_block_indices(data, None, center,
-                                       fieldshape, nbins)[0]
-        if np.all(selection):
+        ans, ans_rands = cf._assign_block_indices(data, rands_rdz, center,
+                                                  fieldshape, nbins)
+
+        if not np.all(selection):
+            filled_ans = np.full(len(lightcone), -1)
+            filled_ans[selection] = ans
+            ans = filled_ans
+        if rands_rdz is None:
             return ans
         else:
-            full_ans = np.full(len(lightcone), -1)
-            full_ans[selection] = ans
-            return full_ans
+            if not np.all(rands_selection):
+                filled_ans = np.full(len(rands_selection), -1)
+                filled_ans[rands_selection] = ans_rands
+                ans_rands = filled_ans
+            return ans, ans_rands
 
 
 class CompletenessTester:
@@ -1253,8 +1268,8 @@ class UVISTAConfig(BaseDataConfig):
         selection = np.all([
             *(np.isfinite(x) for x in list(absolute_mags.values())),
             np.isfinite(logm), z > 1.1e-2, kmag < 23.4,
-                               dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
-                               dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
+            dat[0]["star"] == 0, dat[0]["K_flag"] < 4,
+            dat[0]["contamination"] == 0, dat[0]["nan_contam"] < 3],
             axis=0)
 
         # rel_keys, rel_vals = zip(*relative_mags.items())

@@ -708,19 +708,22 @@ def _assignblocks(data, rands, bins_info):
     return ind_d, ind_r
 
 
-def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=False):
+def _assign_block_indices(data, rands, centers, fieldshape, nbins,
+                          rdz_distance=False, cosmo=None):
     if data is None or len(data) == 0 or (rands is not None and len(rands) == 0):
-        raise ValueError("data_to_bin: %s \nrands_to_bin: %s" %(str(data), str(rands)))
+        raise ValueError("data_to_bin: %s \nrands_to_bin: %s" % (str(data), str(rands)))
 
-    nbins = (2,2,1) if nbins is None else nbins
+    nbins = (2, 2, 1) if nbins is None else nbins
     nbins = (*nbins, 1, 1, 1)[:3]
     nx, ny, nz = nbins
-    # Make sure centers.shape = (numfields,3)
-    centers = np.atleast_2d(centers); assert(centers.shape[-1] == 3); assert(len(centers.shape) < 3)
-    
+    # Make sure centers.shape = (numfields, 3)
+    centers = np.atleast_2d(centers)
+    assert(centers.shape[-1] == 3)
+    assert(len(centers.shape) < 3)
+
     # Index every data point and random point according to their block (jackknife region)
     ind_data_rands = ()
-    for dat in data,rands:
+    for dat in data, rands:
         if dat is None:
             ind_data_rands += None,
             continue
@@ -728,39 +731,39 @@ def _assign_block_indices(data, rands, centers, fieldshape, nbins, rdz_distance=
         # Find the center which the point is closest to
         for center in centers:
             if rdz_distance:
-                dist = util.rdz_distance(dat, center, rdz_distance)
+                dist = util.rdz_distance(dat, center, cosmo=cosmo)
             else:
                 dist = util.xyz_distance(dat, center)
-            
+
             dist_to_center.append(dist)
-        
+
         dist_to_center = np.asarray(dist_to_center)
         closest_center = np.argmin(dist_to_center, axis=0)
-        
+
         # Assign bins around each center
         ind = -np.ones(len(dat), dtype=np.int32)
-        for i,center in enumerate(centers):
-            closest_ind = np.where(closest_center==i)
+        for i, center in enumerate(centers):
+            closest_ind = np.where(closest_center == i)
             dat_i = dat[closest_ind]
-            lower,upper = center - fieldshape/2., center + fieldshape/2.
+            lower, upper = center - fieldshape/2., center + fieldshape/2.
             # Fix the z selection so that center is at the center in CARTESIAN space so this isn't necessary
             # if nbins[2] < 3:
             #     lower[2] -= 100.
             #     upper[2] += 100.
 
             xbins, ybins, zbins = [np.linspace(lower[i], upper[i], nbins[i]+1) for i in range(3)]
-            xbins[0] = -np.inf; xbins[-1] = np.inf
-            ybins[0] = -np.inf; ybins[-1] = np.inf
-            zbins[0] = -np.inf; zbins[-1] = np.inf
-            
-            xind = np.digitize(dat_i[:,0], xbins) - 1
-            yind = np.digitize(dat_i[:,1], ybins) - 1
-            zind = np.digitize(dat_i[:,2], zbins) - 1
-            ind_i = xind * ny * nz   +   yind * nz   +   zind
+            xbins[0], xbins[-1] = -np.inf, np.inf
+            ybins[0], ybins[-1] = -np.inf, np.inf
+            zbins[0], zbins[-1] = -np.inf, np.inf
+
+            xind = np.digitize(dat_i[:, 0], xbins) - 1
+            yind = np.digitize(dat_i[:, 1], ybins) - 1
+            zind = np.digitize(dat_i[:, 2], zbins) - 1
+            ind_i = xind*ny*nz + yind*nz + zind
             ind_i += i*nx*ny*nz
-            
+
             ind[closest_ind] = ind_i
 
         ind_data_rands += ind,
-    
+
     return ind_data_rands[0], ind_data_rands[1]

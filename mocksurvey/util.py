@@ -99,6 +99,11 @@ def make_struc_array(names, values,
                  for x in subshapes]
     if isinstance(dtypes, str):
         dtypes = [dtypes for _ in names]
+    elif isinstance(dtypes, np.dtype):
+        if len(dtypes.descr) == 1:
+            dtypes = [dtypes for _ in names]
+        else:
+            dtypes = dtypes.descr
 
     if len(values):
         lengths = [len(val) for val in values]
@@ -679,16 +684,21 @@ def volume_rdz(ralim, declim, zlim, cosmo=None):
 
 def rdz_distance(rdz, rdz_prime, cosmo=None):
     """
-    rdz is an array of coordinates of shape (N,3) while rdz_prime is a single point of comparison of shape (3,)
-    z is interpreted as radial distance unless cosmo is given
-    
     Returns the distance of each rdz coordinate from rdz_prime
+
+    rdz is an array of coordinates of shape (N,3) while rdz_prime
+    is a single point of comparison of shape (3,). z is interpreted
+    as radial distance unless cosmo is given
     """
     if cosmo is not None:
+        rdz = np.array(rdz)
+        rdz_prime = np.array(rdz_prime)
         rdz[:, 2] = comoving_disth(rdz[:, 2], cosmo)
+        rdz_prime[2] = comoving_disth(rdz_prime[2], cosmo)
     r, d, z = rdz.T
     rp, dp, zp = rdz_prime
-    return np.sqrt(r ** 2 + rp ** 2 - 2. * r * rp * (np.cos(d) * np.cos(dp) * np.cos(r - rp) + np.sin(d) * np.sin(dp)))
+    return np.sqrt(r**2 + rp**2 - 2.0*r*rp * (
+            np.cos(d)*np.cos(dp)*np.cos(r - rp) + np.sin(d)*np.sin(dp)))
 
 
 def xyz_distance(xyz, xyz_prime):
