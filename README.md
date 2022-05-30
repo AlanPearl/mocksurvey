@@ -9,7 +9,7 @@ Some useful tools for conducting mock surveys of galaxies from the UniverseMachi
 <!-- - g++ (check with `g++ --version`, install with `conda install gxx_linux-64`) -->
 <!-- - gcc (check with `gcc --version`, install with `conda install gcc_linux-64`) -->
 - `python=3.9.*` or `python=3.8.*`
-- At the time of writing, a prerequisite (halotools) is incompatible with `setuptools>=58`. You can fix this by running `pip install "setuptools<58"`. It is also currently incompatible with `python>=3.10`.
+- At the time of writing, a prerequisite (`halotools>=0.7`) is incompatible with `setuptools>=58`. You can fix this by running `pip install "setuptools<58"`. It is also currently incompatible with `python>=3.10`.
 - Optional, but recommended to install Corrfunc (`pip install Corrfunc`)
   - Requires gsl installation (check with `gsl-config --version`, install with `conda install -c conda-forge gsl`)
 ### Example to automatically install prerequisites using a conda environment:
