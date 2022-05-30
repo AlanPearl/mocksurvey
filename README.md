@@ -13,7 +13,7 @@ ___
 - gcc (check with `gcc --version`, install with `conda install gcc_linux-64`)
 - `pip install "halotools>=0.7"`
 ### for halotools:
-- Note: At the time of writing, halotools is incompatible with `setuptools>58`. You can fix this by running `pip install "setuptools<58"`.
+- Note: At the time of writing, halotools is incompatible with `setuptools>=58`. You can fix this by running `pip install "setuptools<58"`.
 ### for Corrfunc (optional install: `pip install Corrfunc`):
 - gsl (check with `gsl-config --version`, install with `conda install -c conda-forge gsl`)
 
