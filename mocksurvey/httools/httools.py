@@ -58,6 +58,7 @@ class FieldSelector:
         self.cosmo = mockfield.simbox.cosmo
         self.delta_z = mockfield.delta_z
         self.scheme = mockfield.scheme
+        self.n_vertices = None
         self.make_selection, self.get_fieldshape = self.choose_selector()
     
     def __call__(self, *args, **kwargs):
@@ -66,10 +67,13 @@ class FieldSelector:
     def choose_selector(self):
         scheme = self.scheme
         if scheme.lower().startswith("cir"):
+            self.n_vertices = 0
             return self.circle_selector, self.circle_fieldshape
         elif scheme.lower().startswith("sq"):
+            self.n_vertices = 4
             return self.square_selector, self.square_fieldshape
         elif scheme.lower().startswith("hex"):
+            self.n_vertices = 6
             return self.hexagon_selector, self.hexagon_fieldshape
         elif scheme[0].isdigit():
             self.n_vertices = int(scheme.split("-")[0])
@@ -226,9 +230,9 @@ class CelestialSelector(FieldSelector):
     def __init__(self, mockfield):
         FieldSelector.__init__(self, mockfield)
 
-    def circle_selector(self, rdz, deg=False):
+    def circle_selector(self, rdz, deg=False, edgepad_radians=0):
         """Select galaxies in a circle centered at ra,dec = (0,0) radans"""
-        field_radius = self.circle_sqdeg2radius(return_angle=True)
+        field_radius = np.abs(self.circle_sqdeg2radius(return_angle=True) - edgepad_radians)
         if deg:
             field_radius *= 180./np.pi
         rd = rdz[:, :2] - self.center_rdz[np.newaxis, :2]
@@ -238,9 +242,9 @@ class CelestialSelector(FieldSelector):
         theta = np.arctan2(np.sqrt(x ** 2 + y ** 2), z)
         return theta < field_radius
 
-    def square_selector(self, rdz, deg=False):
+    def square_selector(self, rdz, deg=False, edgepad_radians=0):
         """Select galaxies in a square centered at ra,dec = (0,0) radians"""
-        field_apothem = self.square_sqdeg2apothem(return_angle=True)
+        field_apothem = np.abs(self.square_sqdeg2apothem(return_angle=True) - edgepad_radians)
         if deg:
             field_apothem *= 180./np.pi
         rd = rdz[:, :2] - self.center_rdz[np.newaxis, :2]
@@ -250,9 +254,9 @@ class CelestialSelector(FieldSelector):
         b4 = rd[:, 1] > -field_apothem
         return b1 & b2 & b3 & b4
 
-    def hexagon_selector(self, rdz, deg=False):
+    def hexagon_selector(self, rdz, deg=False, edgepad_radians=0):
         """Select galaxies in a hexagon centered at ra,dec = (0,0) radians"""
-        field_apothem = self.hexagon_sqdeg2apothem(return_angle=True)
+        field_apothem = np.abs(self.hexagon_sqdeg2apothem(return_angle=True) - edgepad_radians)
         if deg:
             field_apothem *= 180./np.pi
         rd = rdz[:, :2] - self.center_rdz[np.newaxis, :2]

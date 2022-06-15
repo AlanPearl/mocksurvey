@@ -195,7 +195,8 @@ class LightConeSelector:
     def __init__(self, z_low, z_high, sqdeg=None, fieldshape="sq",
                  sample_fraction=1., min_dict=None, max_dict=None,
                  cosmo=None, center_radec=None, realspace=False, deg=True,
-                 custom_selector=None):
+                 custom_selector=None, pad_cyl_r=0, pad_cyl_half_length=0,
+                 pad_cyl_is_perfect_cylinder=False):
         if cosmo is None:
             cosmo = bplcosmo
         assert isinstance(fieldshape, str)
@@ -221,6 +222,8 @@ class LightConeSelector:
         self.max_dict = {} if max_dict is None else max_dict
         self.realspace = realspace
         self.cosmo, self.deg = cosmo, deg
+        self.pad_cyl_r, self.pad_cyl_half_length = pad_cyl_r, pad_cyl_half_length
+        self.pad_cyl_is_perfect_cylinder = pad_cyl_is_perfect_cylinder
 
         z, dz = (z_high + z_low) / 2., z_high - z_low
 
@@ -321,14 +324,31 @@ class LightConeSelector:
     def field_selection(self, lightcone):
         if self.fieldshape.startswith("full"):
             return np.ones(len(lightcone), dtype=bool)
-        else:
-            rd = util.xyz_array(lightcone, ["ra", "dec"])
-            return self.field_selector(rd, deg=self.deg)
+
+        rd = util.xyz_array(lightcone, ["ra", "dec"])
+        edgepad_radians = 0
+        if self.pad_cyl_r > 0:
+            dist = np.sqrt(lightcone["x"]**2 + lightcone["y"]**2 + lightcone["z"]**2)
+            if self.pad_cyl_is_perfect_cylinder:
+                edgepad_radians = np.arctan(self.pad_cyl_r/np.abs(dist-self.pad_cyl_half_length))
+            else:
+                diff_r3 = (dist + self.pad_cyl_half_length) ** 3 - (
+                        dist - self.pad_cyl_half_length) ** 3
+                edgepad_radians = np.arccos(1 - 3 * self.pad_cyl_r ** 2
+                                            * self.pad_cyl_half_length / diff_r3)
+
+        return self.field_selector(rd, deg=self.deg, edgepad_radians=edgepad_radians)
 
     def redshift_selection(self, lightcone):
         z = lightcone["redshift_cosmo"] if self.realspace \
             else lightcone["redshift"]
-        return (self.z_low <= z) & (z <= self.z_high)
+        z_low, z_high = self.z_low, self.z_high
+        if self.pad_cyl_half_length > 0:
+            dist_low, dist_high = util.comoving_disth([z_low, z_high], self.cosmo)
+            dist_low += self.pad_cyl_half_length
+            dist_high -= self.pad_cyl_half_length
+            z_low, z_high = util.distance2redshift([dist_low, dist_high], self.cosmo)
+        return (z_low <= z) & (z <= z_high)
 
     def rand_selection(self, lightcone, seed=None):
         with util.temp_seed(seed):
