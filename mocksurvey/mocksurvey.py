@@ -371,7 +371,7 @@ class LightConeSelector:
 
         return cond1 & cond2
 
-    def make_rands(self, n, rdz=False, seed=None):
+    def make_rands(self, n, rdz=False, seed=None, use_um_convention=True):
         # Calculate limits in ra, dec, and distance
         fieldshape = self.field.get_shape(rdz=True)[:2, None]
         rdlims = self.field.center_rdz[:2, None] + np.array([[-.5, .5]]) \
@@ -385,7 +385,7 @@ class LightConeSelector:
         rands = rands[self.field_selector(rands)]
         # Convert to Cartesian coordinates
         if not rdz:
-            rands = util.rdz2xyz(rands, cosmo=None, use_um_convention=True)
+            rands = util.rdz2xyz(rands, cosmo=None, use_um_convention=use_um_convention)
         else:
             rands[:, 2] = util.distance2redshift(rands[:, 2], cosmo=self.cosmo, vr=None)
             # Convert radians to degrees
