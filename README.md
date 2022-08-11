@@ -55,7 +55,7 @@ python -m mocksurvey download-uvista
 ```
 python -m mocksurvey download-uvista-mock-spectra
 ```
-#### Get started by building a mock survey
+#### Get started by building a mock survey (see [Pearl et al. 2022](https://ui.adsabs.harvard.edu/abs/2022ApJ...925..180P/abstract))
 ```
 python -m mocksurvey lightcone [--help]
 ```
