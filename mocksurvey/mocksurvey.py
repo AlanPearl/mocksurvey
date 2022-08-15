@@ -38,7 +38,7 @@ def mass_complete_pfs_selector(lightcone, zlim, compfrac=0.95, fieldshape="sq",
                                masslim=None, randfrac=0.7, sqdeg=15.0,
                                masscol="obs_sm"):
     z_low, z_high = zlim
-    max_dict = surveys.pfs.max_dict.copy()
+    max_dict = surveys.pfs_low.max_dict.copy()
 
     if masslim is None:
         incompsel = LightConeSelector(z_low, z_high, 15., "fullsky",
@@ -874,7 +874,7 @@ CALC_ICL = 1
         except (SystemExit, KeyboardInterrupt):
             raise
         except:
-            raise ValueError("Cannot infer a redshift from this filename.")
+            raise ValueError(f"Cannot infer a redshift from {filename}.")
 
 
 class LightConeConfig(BaseConfig):
@@ -1730,6 +1730,9 @@ class UVISTAWgetter:
         self.sean_config = SeanSpectraConfig()
 
         self.uvista_gfid = "1UpcjWrZ236gS36GkAp9ehlrikjQW3kQy"
+        self.uvista_url = "https://pitt-my.sharepoint.com/:u:/g/personal/" \
+                          "anp180_pitt_edu/EXz7pC-rPNROtf6Eq0j7h6MBc2cHnj" \
+                          "Z8x92KekDOCjE0_g?download=1"
         self.sean_url = "https://pitt.box.com/shared/static/" \
                         "tfrah1t7rslp1jsqiccwxcwvfwy7ngw4.gz"
         self.spec_urls = ["https://pitt.box.com/shared/static/"
@@ -1784,8 +1787,8 @@ class UVISTAWgetter:
             if self.check_already_downloaded(wget_files, self.uvista_config):
                 return
 
-        util.download_file_from_google_drive(
-            self.uvista_gfid, self.uvista_tarf)
+        util.wget_download_shell(
+            self.uvista_url, self.uvista_tarf, overwrite=overwrite)
         self.decompress_tar(self.uvista_tarf)
         UVISTAConfig().auto_add()
 

@@ -1,5 +1,6 @@
 import sys
 import os
+import subprocess
 import shutil
 import inspect
 import collections
@@ -1110,8 +1111,18 @@ def wget_download(file_url, outfile, overwrite=False):
         shutil.move(actual, outfile)
 
 
+def wget_download_shell(file_url, outfile, overwrite=False):
+    if not overwrite and os.path.isfile(outfile):
+        return
+    args = ["wget", "-O", outfile, file_url]
+    print(" ".join(args))
+    subprocess.check_call(" ".join(args), stdout=sys.stdout, shell=True,
+                          stderr=subprocess.STDOUT)
+
+
 def download_file_from_google_drive(fileid, destination, progress=True,
-                                    overwrite=True, size=None, html_ok=False):
+                                    overwrite=True, size=None, html_ok=False,
+                                    raise_fail=False):
     """
     Downloads a shared file from Google Drive
     (based on code by turdus-merula on stackoverflow)
@@ -1134,6 +1145,8 @@ def download_file_from_google_drive(fileid, destination, progress=True,
     html_ok : bool
         Set to true to suppress warning that the downloaded file is
         an HTML file.
+    raise_fail : bool
+        If file failed to download, raise an IOError
 
     Returns
     -------
@@ -1159,7 +1172,8 @@ def download_file_from_google_drive(fileid, destination, progress=True,
     except:
         os.remove(destination)
         raise
-    _check_for_google_drive_error(destination, html_ok=html_ok)
+    _check_for_google_drive_error(destination, html_ok=html_ok,
+                                  raise_fail=raise_fail)
 
 
 def _get_confirm_token(response):
@@ -1187,7 +1201,7 @@ def _save_response_content(response, destination, progress=True, size=None):
     prog_bar.close()
 
 
-def _check_for_google_drive_error(filename, html_ok=False):
+def _check_for_google_drive_error(filename, html_ok=False, raise_fail=False):
     delete_this_file = False
     html_msg = False
     with open(filename) as f:
@@ -1207,18 +1221,30 @@ def _check_for_google_drive_error(filename, html_ok=False):
             msg3 = header.startswith("<!DOCTYPE html><html><head><title>"
                                      "Google Drive - Virus scan warning")
             delete_this_file = msg0 or msg1 or msg2 or msg3
-
             html_msg = "<html>" in header
+
     if delete_this_file:
         os.remove(filename)
         if msg0:
-            print("Failed. Nothing downloaded.")
+            if raise_fail:
+                raise IOError("Failed. Nothing downloaded.")
+            else:
+                print("Failed. Nothing downloaded.")
         if msg1:
-            print("Failed. Google Drive download quota exceeded. Try again in 24 hours.")
+            if raise_fail:
+                raise IOError("Failed. Google Drive download quota exceeded. Try again in 24 hours.")
+            else:
+                print("Failed. Google Drive download quota exceeded. Try again in 24 hours.")
         if msg2:
-            print("Failed. Google Drive flagged you as a robot. Try again in 24 hours.")
+            if raise_fail:
+                raise IOError("Failed. Google Drive flagged you as a robot. Try again in 24 hours.")
+            else:
+                print("Failed. Google Drive flagged you as a robot. Try again in 24 hours.")
         if msg3:
-            print("Failed because Google Drive can't run a virus scan")
+            if raise_fail:
+                raise IOError("Failed because Google Drive can't run a virus scan")
+            else:
+                print("Failed because Google Drive can't run a virus scan")
     elif html_msg and not html_ok:
         print("^ This looks like an html file. Download may have failed.")
 
