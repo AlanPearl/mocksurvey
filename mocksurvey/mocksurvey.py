@@ -1508,6 +1508,7 @@ class SeanSpectraConfig(BaseConfig):
 
 
 class UMWgetter:
+    base_url = "http://halos.as.arizona.edu/UniverseMachine/DR1/SFR/"
     fileinfo = [
         ('sfr_catalog_0.055623.bin', '1ihte0dRizdHLwVAMnUizcj6k1GgCfqj_', '11520'),
         ('sfr_catalog_0.060123.bin', '18B8QLq4F-ahevN7ZcLVIaky58TlMtILB', '129152'),
@@ -1702,11 +1703,14 @@ class UMWgetter:
         self.sizes = [int(file[2]) for file in self.fileinfo]
 
     def download_sfrcat_index(self, i, overwrite=False):
-        fileid = self.fileids[i]
-        size = self.sizes[i]
+        # fileid = self.fileids[i]
+        # size = self.sizes[i]
+        # util.download_file_from_google_drive(fileid, outfile, size=size,
+        #                                      overwrite=overwrite)
+        url = self.base_url + self.sfr_cats[i]
         outfile = UMConfig().get_path(self.sfr_cats[i])
-        util.download_file_from_google_drive(fileid, outfile, size=size,
-                                             overwrite=overwrite)
+        util.wget_download(url, outfile=outfile,
+                           overwrite=overwrite)
 
     def download_sfrcat_redshift(self, redshift, overwrite=False):
         zmin, zmax = np.min(redshift), np.max(redshift)

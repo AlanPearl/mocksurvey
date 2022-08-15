@@ -13,7 +13,7 @@ import tqdm
 import numpy as np
 import scipy.special as spec
 from scipy.interpolate import interp1d
-from astropy.constants import c  # the speed of light
+from astropy import constants  # for the speed of light
 from astropy import cosmology
 from astropy import units
 import halotools.utils as ht_utils
@@ -615,7 +615,7 @@ def comoving_disth(redshifts, cosmo):
 
 
 def distance2redshift(dist, cosmo, vr=None, zprec=1e-3, h_scaled=True):
-    c_km_s = c.to('km/s').value
+    c_km_s = constants.c.to('km/s').value
     dist_units = units.Mpc / cosmo.h if h_scaled else units.Mpc
 
     def d2z(d):
@@ -1192,7 +1192,7 @@ def _check_for_google_drive_error(filename, html_ok=False):
     html_msg = False
     with open(filename) as f:
         try:
-            header = f.read(100)
+            header = f.read(1000)
         except UnicodeDecodeError:
             pass
         else:
@@ -1204,9 +1204,11 @@ def _check_for_google_drive_error(filename, html_ok=False):
             # Sometimes, Google thinks I'm a robot
             msg2 = header.startswith("<html><head><meta http-equiv=\"content-type\" "
                                      "content=\"text/html; charset=utf-8\"/><title>Sorry...")
-            delete_this_file = msg0 or msg1 or msg2
+            msg3 = header.startswith("<!DOCTYPE html><html><head><title>"
+                                     "Google Drive - Virus scan warning")
+            delete_this_file = msg0 or msg1 or msg2 or msg3
 
-            html_msg = "<html>" in "header"
+            html_msg = "<html>" in header
     if delete_this_file:
         os.remove(filename)
         if msg0:
@@ -1215,7 +1217,9 @@ def _check_for_google_drive_error(filename, html_ok=False):
             print("Failed. Google Drive download quota exceeded. Try again in 24 hours.")
         if msg2:
             print("Failed. Google Drive flagged you as a robot. Try again in 24 hours.")
-    if html_msg and not html_ok:
+        if msg3:
+            print("Failed because Google Drive can't run a virus scan")
+    elif html_msg and not html_ok:
         print("^ This looks like an html file. Download may have failed.")
 
 
