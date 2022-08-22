@@ -32,12 +32,22 @@ pip install ./mocksurvey
 -->
 
 #### Set path to a directory where you would like to store downloaded data
+- Make a directory, for example:
 ```
-python -m mocksurvey set-data-path /path/to/download/mocksurvey/data
+mkdir -p ~/local/mocksurvey_downloads/
+```
+- Set the path:
+```
+python -m mocksurvey set-data-path ~/local/mocksurvey_downloads
 ```
 #### Download and install UniverseMachine source code
+- Make a directory, for example:
 ```
-cd /path/to/download/source/code
+mkdir -p ~/local/src/
+```
+- Install UniverseMachine:
+```
+cd ~/local/src
 git clone https://bitbucket.org/pbehroozi/universemachine
 cd universemachine
 make
