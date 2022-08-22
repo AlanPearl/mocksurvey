@@ -1251,3 +1251,31 @@ def _check_for_google_drive_error(filename, html_ok=False, raise_fail=False):
 
 def config_file_directory():
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), "config")
+
+
+def bitsum_hamming_weight(x):
+    """Returns the number of 1s in the binary representation of `x`"""
+    numbits = len(bin(int(np.max(x)))) - 2
+    hexdigits = int(np.ceil(numbits / 4))
+
+    hexnum = eval("0x" + "5"*hexdigits)
+    x = (x & hexnum) + ((x >> 1) & hexnum)
+    if numbits <= 2:
+        return x
+
+    hexnum = eval("0x" + "3"*hexdigits)
+    x = (x & hexnum) + ((x >> 2) & hexnum)
+    if numbits <= 4:
+        return x
+
+    return _recursive_hamming_weight(x, numbits, hexdigits, power=0)
+
+
+def _recursive_hamming_weight(x, numbits, hexdigits, power):
+    exp = 2 ** power
+    hexnum = eval("0x" + ("0"*exp + "f"*exp)*int(np.ceil(hexdigits/(exp*2))))
+    x = (x & hexnum) + ((x >> exp*4) & hexnum)
+    if numbits <= exp*8:
+        return x
+    else:
+        return _recursive_hamming_weight(x, numbits, hexdigits, power+1)
