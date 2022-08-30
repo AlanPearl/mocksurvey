@@ -330,8 +330,8 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
         raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
 
 
-def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
-          is_celestial_data=False, use_halotools_version=False,
+def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, weights=None,
+          nthreads=1, is_celestial_data=False, use_halotools_version=False,
           vz=None, cosmo=None, redshift=None):
     """
     wp_rp(data, rands, rpbins, pimax, boxsize=None, nthreads=1)
@@ -355,7 +355,11 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
     
     boxsize : float (default = None)
         Side length of the cube which `data` is selected in. Only used if `rands` is set to ``None``.
-    
+
+    weights : np.ndarray | list[np.ndarray] (default = None)
+        Floats are interpreted as IIP weights, while integers are assumed to be PIP bitmasks.
+        Providing a list of arrays allows for both to be provided (or multiple bitmask arrays)
+
     nthreads : int (default = 2)
         Number of CPU cores to be used for multiprocessing.
 
@@ -395,28 +399,31 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, nthreads=1,
 
     if pycorr_works:
         corrmode = "rppi"
+        engine = "corrfunc"
         edges = (rpbins, np.arange(pimax + 1))
         if is_celestial_data:
             if rands is None:
                 raise ValueError("Rands are necessary for celestial data")
             result = pycorr.TwoPointCorrelationFunction(
-                corrmode, edges, data.T, randoms_positions1=rands.T,
-                engine="corrfunc", position_type="rdd", estimator="landyszalay",
-                nthreads=nthreads, mpicomm=None, los="midpoint")
+                corrmode, edges, data.T, randoms_positions1=rands.T, data_weights1=weights,
+                engine=engine, position_type="rdd", estimator="landyszalay",
+                nthreads=nthreads, mpicomm=None, los="midpoint", compute_sepsavg=False)
         elif rands is None:
             if boxsize is None:
                 raise ValueError("`boxsize` cannot be None if `rands` is None")
             result = pycorr.TwoPointCorrelationFunction(
-                corrmode, edges, data, boxsize=boxsize,
-                engine="corrfunc", position_type="pos", estimator="natural",
-                nthreads=nthreads, mpicomm=None, los="z")
+                corrmode, edges, data, boxsize=boxsize, data_weights1=weights,
+                engine=engine, position_type="pos", estimator="natural",
+                nthreads=nthreads, mpicomm=None, los="z", compute_sepsavg=False)
         else:
             result = pycorr.TwoPointCorrelationFunction(
-                corrmode, edges, data, randoms_positions1=rands,
-                engine="corrfunc", position_type="pos", estimator="landyszalay",
-                nthreads=nthreads, mpicomm=None, los="z")
+                corrmode, edges, data, randoms_positions1=rands, data_weights1=weights,
+                engine=engine, position_type="pos", estimator="landyszalay",
+                nthreads=nthreads, mpicomm=None, los="z", compute_sepsavg=False)
 
         return result(pimax=pimax)
+    elif weights is not None:
+        raise ValueError("Cannot use weights unless pycorr is installed")
 
     if rands is None:
         if is_celestial_data:

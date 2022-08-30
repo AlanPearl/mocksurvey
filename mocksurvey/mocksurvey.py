@@ -874,9 +874,7 @@ CALC_ICL = 1
             return (1 - a) / a
         except ZeroDivisionError:
             return np.inf
-        except (SystemExit, KeyboardInterrupt):
-            raise
-        except:
+        except Exception:
             raise ValueError(f"Cannot infer a redshift from {filename}.")
 
 
