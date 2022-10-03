@@ -1,5 +1,5 @@
 # Read ascii table into halotools cache
-from sys import argv
+from sys import argv, exit
 if not len(argv)==6:
     print('Usage: halocache_from_cosmosim.py [datafile] [simname] [redshift] [Lbox] [particle mass]')
     exit()
