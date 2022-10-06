@@ -18,7 +18,7 @@ conda create -n py39-mocksurvey python=3.9 "setuptools<58" gsl
 conda activate py39-mocksurvey
 pip install Corrfunc
 ```
-**Note**: If using pycorr, don't run `pip install Corrfunc`. Instead, follow the installation here: https://github.com/adematti/Corrfunc
+**Note**: If using pycorr, don't `pip install Corrfunc`. Instead, follow the pycorr instructions at https://py2pcf.readthedocs.io/en/latest/user/building.html
 
 # Installation and Getting Started
 ```
