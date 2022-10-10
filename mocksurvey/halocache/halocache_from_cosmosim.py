@@ -1,7 +1,13 @@
 # Read ascii table into halotools cache
 from sys import argv, exit
-if not len(argv)==6:
-    print('Usage: halocache_from_cosmosim.py [datafile] [simname] [redshift] [Lbox] [particle mass]')
+
+overwrite = False
+for i in range(len(argv)):
+    if argv[i] == "--overwrite":
+        overwrite = True
+        del argv[i]
+if not len(argv) == 6:
+    print('Usage: halocache_from_cosmosim.py [--overwrite] [datafile] [simname] [redshift] [Lbox] [particle mass]')
     exit()
 from halotools.sim_manager import RockstarHlistReader
 
@@ -35,7 +41,8 @@ columns_to_keep_dict = {
 }
 
 reader = RockstarHlistReader(input_fname, columns_to_keep_dict, output_fname, simname,
-                             halo_finder, redshift, version_name, Lbox, particle_mass, header_char='"', overwrite=True)
+                             halo_finder, redshift, version_name, Lbox, particle_mass,
+                             header_char='"', overwrite=overwrite)
 reader.read_halocat(['halo_rvir', 'halo_rs'], write_to_disk=True, update_cache_log=True)
 
 # Error Output:
