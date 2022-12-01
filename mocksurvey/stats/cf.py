@@ -43,7 +43,7 @@ class PairCounts:
 
     def __repr__(self):
         msg = "\tPairCounts\n\t==========\n"
-        msg += "\tNdata = %d\n\tNrand = %d\n" %(self.Ndata,self.Nrand)
+        msg += "\tNdata = %d\n\tNrand = %d\n" % (self.Ndata, self.Nrand)
         msg += "DD = " + str(self.DD) + "\n"
         msg += "DR = " + str(self.DR) + "\n"
         msg += "RR = " + str(self.RR)
@@ -400,7 +400,7 @@ def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, weights=None,
     if pycorr_works:
         corrmode = "rppi"
         engine = "corrfunc"
-        edges = (rpbins, np.arange(pimax + 1))
+        edges = (rpbins, np.linspace(-pimax, pimax, int(2*np.ceil(pimax) + 1)))
         if is_celestial_data:
             if rands is None:
                 raise ValueError("Rands are necessary for celestial data")

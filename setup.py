@@ -33,6 +33,4 @@ setup(name="mocksurvey",
             # "matplotlib",
       ],
       zip_safe=True,
-      test_suite="nose.collector",
-      tests_require=["nose"],
       )
