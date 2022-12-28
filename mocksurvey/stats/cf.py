@@ -213,65 +213,6 @@ def wp_darkmatter(rp):
     return (rp/r0)**alpha
 
 
-# Returns the 2D correlation function xi(rp, pi) using Corrfunc
-# =============================================================
-def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1, estimator='Landy-Szalay'):
-    # Corrfunc implementation requires evenly spaced pibins, with first bin starting at pi=0
-    pimax = pibins[-1]
-    n_pibins = len(pibins) - 1
-    n_rpbins = len(rpbins) - 1
-
-    pi_factor = n_pibins / pimax
-    pimax *= pi_factor
-    array_factor = np.array([[1.], [1.], [pi_factor]])
-
-    x,y,z = data.T * array_factor
-    
-    if not corrfunc_works:
-        return htmo.rp_pi_tpcf(data, rpbins, pibins, randoms=rands,
-                                  num_threads=nthreads, estimator=estimator)
-
-    if rands is None:
-        if boxsize is None:
-            raise ValueError("`boxsize` cannot be None if `rands` is None")
-        if np.any((data > boxsize) | (data < 0)):
-            data = data%boxsize
-        
-        with warnings.catch_warnings():
-          with util.suppress_stdout():
-            warnings.simplefilter("ignore")
-            
-            DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z)
-            DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
-            RR = RRrppi_periodic(len(data), boxsize, rpbins, pibins)
-        return DD/RR - 1.
-    else:
-        xr,yr,zr = rands.T * array_factor
-        
-        with warnings.catch_warnings():
-          with util.suppress_stdout():
-            warnings.simplefilter("ignore")
-            
-            DD = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z, periodic=False)
-            DD = np.reshape(DD['npairs'], (n_rpbins, n_pibins))
-        
-            DR = Corrfunc.theory.DDrppi(autocorr=False, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=x, Y1=y, Z1=z,
-                                                                                        X2=xr, Y2=yr, Z2=zr, periodic=False)
-            DR = np.reshape(DR['npairs'], (n_rpbins, n_pibins))
-        
-            RR = Corrfunc.theory.DDrppi(autocorr=True, nthreads=nthreads, pimax=pimax, binfile=rpbins, X1=xr, Y1=yr, Z1=zr, periodic=False)
-            RR = np.reshape(RR['npairs'], (n_rpbins, n_pibins))
-    
-        factor = len(rands) / float(len(data))
-        factor2 = factor**2
-        if estimator.lower() == 'landy-szalay':
-            return (factor2*DD - 2.*factor*DR + RR)/RR # Landy & Szalay (1993) Estimator
-        elif estimator.lower() == 'natural':
-            return factor**2 * DD/RR - 1. # Natural Estimator
-        else:
-            raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
-
-
 # Returns the 3D correlation function xi(r) using Corrfunc
 # ========================================================
 def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay'):
@@ -328,6 +269,165 @@ def xi_r(data, rands, rbins, boxsize=None, nthreads=1, estimator='Landy-Szalay')
         return (factor2*DD_counts - 2*factor*DR_counts + RR_counts) / RR_counts
     else:
         raise KeyError("Estimator must be `Natural` or `Landy-Szalay`")
+
+
+# Returns the 2D correlation function xi(rp, pi) using Corrfunc
+# =============================================================
+def xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, weights=None,
+          nthreads=1, is_celestial_data=False, use_halotools_version=False,
+          vz=None, cosmo=None, redshift=None):
+    """
+    xi_rp_pi(data, rands, rpbins, pibins, boxsize=None, nthreads=1)
+
+    Return the projected correlation function :math:`w_p(r_p)` to measure the clustering of `data`, compared to uniformly distributed `rands`. If `rands` is ``None``, then `data` must be selected from a cube of side length `boxsize`. Wrapper for Corrfunc. Only Landy & Szalay estimator available.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Array of shape (N,3) containing columns x, y, z of data positions [Mpc/h]
+
+    rands : np.ndarray | None
+        Array of shape (N,3) containing columns x, y, z of uniformly distributed
+        random positions [Mpc/h]. If None, you must pass boxsize of the periodic box
+
+    rpbins : array_like, with shape (Nbins1+1,)
+        Array containing the edges of bins of separation ``rp = sqrt(dx^2 + dy^2)``. Must be increasing in value.
+
+    pibins : array_like, with shape (Nbins2+1,)
+        Similar to rpbins, but in the line-of-sight direction
+
+    boxsize : float (default = None)
+        Side length of the cube which `data` is selected in. Only used if `rands` is set to ``None``.
+
+    weights : np.ndarray | list[np.ndarray] (default = None)
+        Floats are interpreted as IIP weights, while integers are assumed to be PIP bitmasks.
+        Providing a list of arrays allows for both to be provided (or multiple bitmask arrays)
+
+    nthreads : int (default = 2)
+        Number of CPU cores to be used for multiprocessing.
+
+    use_halotools_version : bool (default = False)
+        Set to True if you don't have Corrfunc or pycorr installed
+
+    is_celestial_data : bool (default = False)
+        Set to True if passing data/rands as (ra, dec, dist) arrays. Ignored if rands is None.
+
+    vz : array_like, with shape (N,)
+        Array of vz (or radial velocity if is_celestial_data)
+
+    cosmo : astropy.comology.Cosmology object
+        Cosmology used to apply redshift distortion, if applicable
+
+    redshift : float
+        Redshift used to apply cartesian redshift distortion, if applicable
+
+    Returns
+    -------
+    xi : ndarray, with shape (Nbins1, Nbins2)
+        Projected two-point correlation function (units of distance) evaluated within each specified bin enclosed by `rpbins`.
+    """
+    if vz is not None and np.any(vz):
+        if cosmo is None:
+            raise ValueError("cosmo is required to perform velocity distortion")
+        if is_celestial_data:
+            data = np.array(data, copy=True)
+            z = util.distance2redshift(data[:, 2], cosmo, vz)
+            data[:, 2] = util.comoving_disth(z, cosmo)
+        else:
+            if redshift is None:
+                raise ValueError("Must provide redshift to perform cartesian velocity distortion")
+            data = htmo.return_xyz_formatted_array(
+                *data.T, period=np.inf if boxsize is None else boxsize, cosmology=cosmo,
+                redshift=redshift, velocity=vz, velocity_distortion_dimension="z")
+
+    if pycorr_works:
+        corrmode = "rppi"
+        engine = "corrfunc"
+        edges = (rpbins, pibins)
+        if is_celestial_data:
+            if rands is None:
+                raise ValueError("Rands are necessary for celestial data")
+            result = pycorr.TwoPointCorrelationFunction(
+                corrmode, edges, data.T, randoms_positions1=rands.T, data_weights1=weights,
+                engine=engine, position_type="rdd", estimator="landyszalay",
+                nthreads=nthreads, mpicomm=None, los="midpoint", compute_sepsavg=False)
+        elif rands is None:
+            if boxsize is None:
+                raise ValueError("`boxsize` cannot be None if `rands` is None")
+            result = pycorr.TwoPointCorrelationFunction(
+                corrmode, edges, data, boxsize=boxsize, data_weights1=weights,
+                engine=engine, position_type="pos", estimator="natural",
+                nthreads=nthreads, mpicomm=None, los="z", compute_sepsavg=False)
+        else:
+            result = pycorr.TwoPointCorrelationFunction(
+                corrmode, edges, data, randoms_positions1=rands, data_weights1=weights,
+                engine=engine, position_type="pos", estimator="landyszalay",
+                nthreads=nthreads, mpicomm=None, los="z", compute_sepsavg=False)
+
+        return result()
+    elif weights is not None:
+        raise ValueError("Cannot use weights unless pycorr is installed")
+
+    if rands is None:
+        if is_celestial_data:
+            raise ValueError("Rands are necessary for celestial data")
+        # Periodic boundary conditions
+        if boxsize is None:
+            raise ValueError("`boxsize` cannot be None if `rands` is None")
+        if util.is_arraylike(boxsize):
+            raise ValueError(f"`boxsize` must be a scalar, not {boxsize.__class__}")
+        if rpbins[-1] * 3 > boxsize:
+            raise ValueError(f"boxsize must be at least 3x the largest rp bin. "
+                             f"boxsize={boxsize}, but 3*rpbins[-1]={3 * rpbins[-1]}")
+        if np.any((data > boxsize) | (data < 0)):
+            data = data % boxsize
+
+        if use_halotools_version or not corrfunc_works:
+            if rands is None:
+                return htmo.rp_pi_tpcf(
+                    data, rpbins, pibins, period=boxsize,
+                    estimator="Landy-Szalay", num_threads=nthreads)
+            else:
+                return htmo.rp_pi_tpcf(
+                    data, rpbins, pibins, randoms=rands,
+                    estimator="Landy-Szalay", num_threads=nthreads)
+
+        with warnings.catch_warnings():
+            with util.suppress_stdout():
+                warnings.simplefilter("ignore")
+                pc = paircount_rp_pi(
+                    data, rands, rpbins, np.max(np.abs(pibins)),
+                    nthreads, is_celestial_data=is_celestial_data)
+                return counts_to_xi(pc)
+
+    if is_celestial_data and not corrfunc_works:
+        raise ImportError("Passing celestial coordinates requires the "
+                          "installation of Corrfunc or pycorr")
+
+    n_rpbins = len(rpbins) - 1
+
+    # x, y, z = data.T
+    # xr, yr, zr = rands.T
+
+    N = len(data)
+    Nran = len(rands)
+    if N == 0 or Nran == 0:
+        return np.array([np.nan] * n_rpbins)
+
+    if not corrfunc_works:
+        if rands is None:
+            return htmo.rp_pi_tpcf(
+                data, rpbins, pibins, period=boxsize,
+                estimator="Landy-Szalay", num_threads=nthreads)
+        else:
+            return htmo.rp_pi_tpcf(
+                data, rpbins, pibins, randoms=rands,
+                estimator="Landy-Szalay", num_threads=nthreads)
+
+    pc = paircount_rp_pi(data, rands, rpbins, np.max(np.abs(pibins)),
+                         nthreads, is_celestial_data=is_celestial_data)
+    xi = counts_to_xi(pc)
+    return xi
 
 
 def wp_rp(data, rands, rpbins, pimax=50., boxsize=None, weights=None,
