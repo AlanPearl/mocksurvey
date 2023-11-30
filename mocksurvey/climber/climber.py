@@ -255,11 +255,103 @@ def lightcone_spectra(input_name: str = ".",
                       make_specmap: bool = False,
                       best_of: int = 6,
                       calibration="uvista",
-                      photbands: Sequence[str] = None):
+                      photbands: Sequence[str] = None,
+                      use_meng_specs=False):
     """
     Take an input lightcone and perform a selection and optionally break it
     up into sky regions. The resulting data is saved in the same directory,
     but with the same names, but with extensions '.spec' and '.specprop'
+    Parameters
+    ----------
+    input_name : str | LightConeConfig
+        Directory of the lightcone
+    input_realization : int | str | array-like (default="all")
+        Specify realization index(es) from the input to create
+        the selected lightcone(s). All realizations used by default
+    make_specmap : bool (default = False)
+        If True, binary files of the raw synthetic spectra will be
+        written ('.spec' extension) in addition to the spectral
+        property files ('.specprop' extension)'
+    best_of : int (default = 6)
+        Number of nearest neighbors to match in mass/redshift/sSFR
+        space prior to choosing the nearest color neighbor
+    calibration : str
+        "uvista" or "sdss" or custom name of the dataset being used
+        to calibrate the photometry in UniverseMachine
+    photbands : list[str] (default = ['g', 'r', 'y', 'j'])
+        Photometric bands used for nearest-neighbor color matching
+        of the nearest `best_of` neighbors
+    use_meng_specs : bool (default = False)
+        If true, use Meng's updated spectra instead of Sean's
+
+    Returns
+    -------
+    None (files are written)
+    """
+    if use_meng_specs:
+        return lightcone_meng_spectra(
+            input_name, input_realization, make_specmap,
+            best_of, calibration, photbands)
+    if photbands is None:
+        photbands = list("gryj")
+    if isinstance(input_name, ms.LightConeConfig):
+        config = input_name
+    else:
+        config = ms.LightConeConfig(input_name)
+    input_name = config.get_path()
+    with ms.util.suppress_stdout():
+        config.auto_add()
+
+    if input_realization is None or input_realization == "all":
+        input_realization = range(len(config["files"]))
+    input_realization = np.atleast_1d(input_realization)
+
+    assert ms.util.is_int(input_realization)
+
+    for index in input_realization:
+        base_fn = f"{config['files'][index]}"[:-4]
+        base_fn = os.path.join(input_name, base_fn)
+
+        meta_fn = f"{base_fn}.json"
+        prop_fn = f"{base_fn}.specprop"
+        if make_specmap:
+            spec_fn = f"{base_fn}.spec"
+        else:
+            spec_fn = None
+
+        cat, meta = config.load(index)
+        ngal = len(cat)
+        meta = util.metadict_with_specprop(meta)
+        if make_specmap:
+            meta = util.metadict_with_spec(meta, ngal)
+
+        nfinder = NeighborSeanSpecFinder(cat, photbands=photbands,
+                                         calibration=calibration)
+        nearest = nfinder.find_nearest_specid(
+            num_nearest=best_of, bestcolor=True)
+        propcat = nfinder.specprops(nearest, cosmo=ms.bplcosmo,
+                                    specmap_filename=spec_fn,
+                                    progress=True)
+
+        with open(meta_fn, "w") as f:
+            json.dump(meta, f, indent=4)
+        np.save(prop_fn, propcat)
+        os.rename(prop_fn + ".npy", prop_fn)
+
+    # Print location of the stored files
+    ms.LightConeConfig(input_name).auto_add()
+
+
+def lightcone_meng_spectra(input_name: str = ".",
+                      input_realization: Union[
+                          str, int, Sequence[int]] = "all",
+                      make_specmap: bool = False,
+                      best_of: int = 6,
+                      calibration="uvista",
+                      photbands: Sequence[str] = None):
+    """
+    Rewritten lightcone_spectra, but using Meng's updated spectra
+    library, instead of Sean's
     Parameters
     ----------
     input_name : str | LightConeConfig
@@ -316,7 +408,7 @@ def lightcone_spectra(input_name: str = ".",
         ngal = len(cat)
         meta = util.metadict_with_specprop(meta)
         if make_specmap:
-            meta = util.metadict_with_spec(meta, ngal)
+            meta = util.metadict_with_spec(meta, ngal)  # TODO
 
         nfinder = NeighborSeanSpecFinder(cat, photbands=photbands,
                                          calibration=calibration)

@@ -308,7 +308,7 @@ class LightConeSelector:
         else:
             def custom_selector(*args, **kwargs):
                 return self.custom_selector(*args, **kwargs) & \
-                       other.custom_selector(*args, **kwargs)
+                    other.custom_selector(*args, **kwargs)
 
         return LightConeSelector(z_low, z_high, sqdeg, fieldshape,
                                  sample_fraction, min_dict, max_dict,
@@ -328,12 +328,14 @@ class LightConeSelector:
         rd = util.xyz_array(lightcone, ["ra", "dec"])
         edgepad_radians = 0
         if self.pad_cyl_r > 0:
-            dist = np.sqrt(lightcone["x"]**2 + lightcone["y"]**2 + lightcone["z"]**2)
+            dist = np.sqrt(lightcone["x"]**2 +
+                           lightcone["y"]**2 + lightcone["z"]**2)
             if self.pad_cyl_is_perfect_cylinder:
-                edgepad_radians = np.arctan(self.pad_cyl_r/np.abs(dist-self.pad_cyl_half_length))
+                edgepad_radians = np.arctan(
+                    self.pad_cyl_r/np.abs(dist-self.pad_cyl_half_length))
             else:
                 diff_r3 = (dist + self.pad_cyl_half_length) ** 3 - (
-                        dist - self.pad_cyl_half_length) ** 3
+                    dist - self.pad_cyl_half_length) ** 3
                 edgepad_radians = np.arccos(1 - 3 * self.pad_cyl_r ** 2
                                             * self.pad_cyl_half_length / diff_r3)
 
@@ -344,10 +346,12 @@ class LightConeSelector:
             else lightcone["redshift"]
         z_low, z_high = self.z_low, self.z_high
         if self.pad_cyl_half_length > 0:
-            dist_low, dist_high = util.comoving_disth([z_low, z_high], self.cosmo)
+            dist_low, dist_high = util.comoving_disth(
+                [z_low, z_high], self.cosmo)
             dist_low += self.pad_cyl_half_length
             dist_high -= self.pad_cyl_half_length
-            z_low, z_high = util.distance2redshift([dist_low, dist_high], self.cosmo)
+            z_low, z_high = util.distance2redshift(
+                [dist_low, dist_high], self.cosmo)
         return (z_low <= z) & (z <= z_high)
 
     def rand_selection(self, lightcone, seed=None):
@@ -380,16 +384,19 @@ class LightConeSelector:
             * fieldshape
         distlim = util.comoving_disth([self.z_low, self.z_high], self.cosmo)
 
-        rands = util.rand_rdz(n, *rdlims, distlim, seed=seed).astype(np.float32)
+        rands = util.rand_rdz(n, *rdlims, distlim,
+                              seed=seed).astype(np.float32)
         # This only works perfectly if the fieldshape is a square
         # Cut randoms that fall outside the shape of the field
         # if not self.fieldshape == "square":
         rands = rands[self.field_selector(rands)]
         # Convert to Cartesian coordinates
         if not (rdx or rdz):
-            rands = util.rdz2xyz(rands, cosmo=None, use_um_convention=use_um_convention)
+            rands = util.rdz2xyz(
+                rands, cosmo=None, use_um_convention=use_um_convention)
         elif rdz:
-            rands[:, 2] = util.distance2redshift(rands[:, 2], cosmo=self.cosmo, vr=None)
+            rands[:, 2] = util.distance2redshift(
+                rands[:, 2], cosmo=self.cosmo, vr=None)
         if rdx or rdz:
             # Convert radians to degrees
             if self.deg:
@@ -399,7 +406,7 @@ class LightConeSelector:
     def block_digitize(self, lightcone, nbins=(2, 2, 1), rands_rdz=None):
         """
         Bin lightcone into `np.product(nbins)` different blocks
-        
+
         Returns an array of bin numbers specifying the index of the bin
         each object in the lightcone has been placed into. Objects that
         are outside of the selection function are given the index -1.
@@ -1068,7 +1075,8 @@ class BaseDataConfig(BaseConfig):
 
     @staticmethod
     def get_photbands(photbands, default=None):
-        raise NotImplementedError("get_photbands() must be defined in subclass")
+        raise NotImplementedError(
+            "get_photbands() must be defined in subclass")
 
     # ================================================
 
@@ -1508,6 +1516,83 @@ class SeanSpectraConfig(BaseConfig):
         return lambda: np.memmap(path, dtype="<f4", shape=shape)
 
 
+class MengSpectraConfig(BaseConfig):
+    """
+    Keeps track of the locations of locally saved files storing
+    information about Meng's simulated spectra.
+
+    Parameters
+    ----------
+    data_dir : str (required on first run)
+        The path to the directory where you plan on saving all of the files.
+        If the directory is moved, then you must provide this argument again.
+    """
+    is_temp = False
+    MENGFILES = ["mockspec_3dhst_pfswave_c3k_a_PFSemisTrue_logu-2_2023-11-20.pkl",
+                 "mockspec_cosmos_pfswave_c3k_a_PFSemisTrue_logu-2_2023-11-20.pkl",
+                 "PFS_12hr_noisemodels.fits", "theta_3dhst.csv",
+                 "theta_cosmos.csv"]
+
+    def __init__(self, data_dir=None):
+        config_file = "config-mengspec.json"
+        BaseConfig.__init__(self, config_file, data_dir)
+
+    def get_filepath(self, index=0):
+        """
+        Returns the absolute path to the requested file.
+        Just give the index of the following list:
+        """
+        filename = self.MENGFILES[index]
+        return BaseConfig.get_path(self, filename)
+
+    get_filepath.__doc__ += "\n" + repr(MENGFILES)
+
+    def add_file(self, filename):
+        if filename not in self.MENGFILES:
+            raise ValueError("Invalid MengSpectra file")
+
+        BaseConfig.add_file(self, filename)
+
+    def remove_file(self, filename):
+        BaseConfig.remove_file(self, filename)
+        self.save()
+
+    # Should be fine to keep all columns
+    # @staticmethod
+    # def names_to_keep(index=0):
+    #     assert index == 0
+    #     return ["id", "redshift", "L_UV", "L_IR", "SFR_UV", "SFR_IR",
+    #             "SFR_tot", "SFR_SED", "ltau", "metal", "lage", "Av",
+    #             "lmass", "lsfr", "lssfr", "m_CFHT_u", "m_Subaru_g",
+    #             "m_Subaru_B", "m_Subaru_V", "m_Subaru_r", "m_Subaru_i",
+    #             "m_Subaru_z", "m_VISTA_Y", "m_VISTA_J", "m_VISTA_H",
+    #             "m_VISTA_Ks"]
+
+    def are_all_files_stored(self):
+        return set(self["files"]) == set(self.MENGFILES)
+
+    def load(self, old_version=False, keep_all_columns=True):
+        i = 5 if old_version else 0
+        dat = astropy_table.Table.read(self.get_filepath(i))
+        if not keep_all_columns:
+            dat.keep_columns(self.names_to_keep())
+        return dat.to_pandas()
+
+    def specid(self):
+        return np.load(self.get_filepath(1))
+
+    def wavelength(self):
+        return np.load(self.get_filepath(2))
+
+    def isnan(self):
+        return np.load(self.get_filepath(4))
+
+    def specmap(self):
+        path = self.get_filepath(3)
+        shape = (self.specid().size, self.wavelength().size)
+        return lambda: np.memmap(path, dtype="<f4", shape=shape)
+
+
 class UMWgetter:
     base_url = "http://halos.as.arizona.edu/UniverseMachine/DR1/SFR/"
     fileinfo = [
@@ -1697,7 +1782,8 @@ class UMWgetter:
         """
 
         self.sfr_cats = [file[0] for file in self.fileinfo]
-        self.scales = np.array([float(i.split("_")[-1][:-4]) for i in self.sfr_cats])
+        self.scales = np.array([float(i.split("_")[-1][:-4])
+                               for i in self.sfr_cats])
         self.redshifts = 1 / self.scales - 1
 
         self.fileids = [file[1] for file in self.fileinfo]
