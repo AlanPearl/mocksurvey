@@ -30,7 +30,7 @@ def lightcone(z_low, z_high, x_arcmin, y_arcmin,
     data_dir = str(pathlib.Path(moved_files[0]).parent.absolute())
 
     # Check prerequisites
-    assert(vparse(ht.__version__) >= vparse("0.7dev"))
+    assert (vparse(ht.__version__) >= vparse("0.7dev"))
     if not ms.UVISTAConfig().are_all_files_stored():
         raise ValueError("You have not specified paths to all "
                          "UltraVISTA data. "
@@ -290,8 +290,7 @@ def lightcone_spectra(input_name: str = ".",
     """
     if use_meng_specs:
         return lightcone_meng_spectra(
-            input_name, input_realization, make_specmap,
-            best_of, calibration, photbands)
+            input_name, input_realization, make_specmap, best_of)
     if photbands is None:
         photbands = list("gryj")
     if isinstance(input_name, ms.LightConeConfig):
@@ -343,12 +342,10 @@ def lightcone_spectra(input_name: str = ".",
 
 
 def lightcone_meng_spectra(input_name: str = ".",
-                      input_realization: Union[
-                          str, int, Sequence[int]] = "all",
-                      make_specmap: bool = False,
-                      best_of: int = 6,
-                      calibration="uvista",
-                      photbands: Sequence[str] = None):
+                           input_realization: Union[
+                               str, int, Sequence[int]] = "all",
+                           make_specmap: bool = False,
+                           best_of: int = 6):
     """
     Rewritten lightcone_spectra, but using Meng's updated spectra
     library, instead of Sean's
@@ -377,8 +374,6 @@ def lightcone_meng_spectra(input_name: str = ".",
     -------
     None (files are written)
     """
-    if photbands is None:
-        photbands = list("gryj")
     if isinstance(input_name, ms.LightConeConfig):
         config = input_name
     else:
@@ -406,12 +401,11 @@ def lightcone_meng_spectra(input_name: str = ".",
 
         cat, meta = config.load(index)
         ngal = len(cat)
-        meta = util.metadict_with_specprop(meta)
+        meta = util.metadict_with_meng_specprop(meta)
         if make_specmap:
-            meta = util.metadict_with_spec(meta, ngal)  # TODO
+            meta = util.metadict_with_meng_spec(meta, ngal)  # TODO
 
-        nfinder = NeighborSeanSpecFinder(cat, photbands=photbands,
-                                         calibration=calibration)
+        nfinder = NeighborMengSpecFinder(cat)
         nearest = nfinder.find_nearest_specid(
             num_nearest=best_of, bestcolor=True)
         propcat = nfinder.specprops(nearest, cosmo=ms.bplcosmo,
@@ -523,21 +517,21 @@ class UMData:
             return self._logssfr_uv
         if self.snapshot_redshift is None:
             self._logssfr_uv = util.cam_binned_z(
-                        m=self.logm,
-                        z=self.z, prop=self.logssfr,
-                        m2=self.uvdat.logm,
-                        z2=self.uvdat.z,
-                        prop2=self.uvdat.logssfr_uv,
-                        nwin=self.nwin, dz=self.dz,
-                        seed=self.seed)
+                m=self.logm,
+                z=self.z, prop=self.logssfr,
+                m2=self.uvdat.logm,
+                z2=self.uvdat.z,
+                prop2=self.uvdat.logssfr_uv,
+                nwin=self.nwin, dz=self.dz,
+                seed=self.seed)
         else:
             self._logssfr_uv = util.cam_const_z(
-                        m=self.logm,
-                        prop=self.logssfr,
-                        m2=self.uvdat.logm,
-                        prop2=self.uvdat.logssfr_uv,
-                        z2=self.uvdat.z,
-                        z_avg=self.snapshot_redshift, dz=self.dz)
+                m=self.logm,
+                prop=self.logssfr,
+                m2=self.uvdat.logm,
+                prop2=self.uvdat.logssfr_uv,
+                z2=self.uvdat.z,
+                z_avg=self.snapshot_redshift, dz=self.dz)
         return self._logssfr_uv
 
     # Map (redshift, sSFR_UV) --> (mass-to-light,) via Random Forest
@@ -604,13 +598,13 @@ class SeanSpecStacker:
         self.get_specmap = self.config.specmap()
 
         redshifts = pd.DataFrame(dict(
-                        z=uvista_z,
-                        uvista_idx=np.arange(len(uvista_z))),
-                        index=uvista_id)
+            z=uvista_z,
+            uvista_idx=np.arange(len(uvista_z))),
+            index=uvista_id)
         fullmapper = pd.DataFrame(dict(
-                        idx=np.arange(len(self.specid)),
-                        hex=[hex(s) for s in self.specid]),
-                        index=self.specid)
+            idx=np.arange(len(self.specid)),
+            hex=[hex(s) for s in self.specid]),
+            index=self.specid)
         self.mapper = pd.merge(fullmapper.iloc[~self.isnan], redshifts,
                                left_index=True, right_index=True)
 
@@ -653,21 +647,78 @@ class SeanSpecStacker:
 
     def id2redshift(self, uvista_id):
         return np.reshape(self.mapper["z"].loc[
-                        np.ravel(uvista_id)].values, np.shape(uvista_id))
+            np.ravel(uvista_id)].values, np.shape(uvista_id))
 
     def id2idx_uvista(self, uvista_id):
         return np.reshape(self.mapper["uvista_idx"].loc[
-                        np.ravel(uvista_id)].values, np.shape(uvista_id))
+            np.ravel(uvista_id)].values, np.shape(uvista_id))
 
     def id2idx_specmap(self, uvista_id):
         return np.reshape(self.mapper["idx"].loc[
-                        np.ravel(uvista_id)].values, np.shape(uvista_id))
+            np.ravel(uvista_id)].values, np.shape(uvista_id))
+
+
+class MengSpecStacker:
+    def __init__(self, uvista_z, uvista_id):
+        self.config = ms.MengSpectraConfig()
+        self.wave = self.config.wavelength()
+        self.specid = self.config.specid()
+        self.get_spectra = self.config.specmapper()
+
+        self.redshifts = uvista_z
+
+    @property
+    def bytes_per_spec(self):
+        spec = self.get_spectra(0)
+        return spec.itemsize * spec.shape[-1]
+
+    def avg_spectrum(self, specids, lumcorrs, redshift, cosmo=None,
+                     return_each_spec=False):
+        if cosmo is None:
+            cosmo = ms.bplcosmo
+        is_scalar = not ms.util.is_arraylike(specids)
+        specids = np.atleast_2d(np.transpose(specids)).T
+        lumcorrs = np.atleast_2d(np.transpose(lumcorrs)).T
+        redshift = np.atleast_1d(redshift)
+        assert specids.ndim == 2 and lumcorrs.ndim == 2 and redshift.ndim == 1
+
+        idx = self.id2idx_specmap(specids)
+        z = self.id2redshift(specids)
+
+        lumcorrs = lumcorrs * ms.util.redshift_rest_flux_correction(
+            from_z=z, to_z=redshift[:, None], cosmo=cosmo)
+
+        specs = self.get_spectra(idx) * lumcorrs[:, :, None]
+        waves = self.wave[None, None, :] / (1 + z[:, :, None])
+        truewave = self.wave[None, :] / (1 + redshift[:, None])
+
+        eachspec = [[np.interp(truewave_i, wave_ij, spec_ij,
+                               left=np.nan, right=np.nan)
+                     for wave_ij, spec_ij in zip(waves_i, specs_i)]
+                    for truewave_i, waves_i, specs_i
+                    in zip(truewave, waves, specs)]
+        avgspec = np.mean(eachspec, axis=1)
+        if is_scalar:
+            avgspec, eachspec = avgspec[0], eachspec[0]
+        if return_each_spec:
+            return avgspec, eachspec
+        else:
+            return avgspec
+
+    def id2redshift(self, uvista_id):
+        return self.redshifts[uvista_id]
+
+    def id2idx_uvista(self, uvista_id):
+        return uvista_id
+
+    def id2idx_specmap(self, uvista_id):
+        return uvista_id
 
 
 class NeighborSeanSpecFinder:
     def __init__(self, umhalos, photbands=None, calibration="uvista",
                  snapshot_redshift=None, nwin=501, dz=0.05, seed=None):
-        assert calibration == "uvista", ("Sean's spectra can only be matched " 
+        assert calibration == "uvista", ("PFS spectra should be matched "
                                          "with UltraVISTA photometry")
         self.uvdat = UVData(calibration, photbands=photbands)
         self.umdat = UMData(umhalos, uvdat=self.uvdat,
@@ -695,7 +746,7 @@ class NeighborSeanSpecFinder:
             list(range(length)), sublength))
 
     def init_specmap(self, filename, num_spectra):
-        f = np.memmap(filename, self.stacker.get_specmap().dtype, "w+",
+        f = np.memmap(filename, self.stacker.get_spectra(0).dtype, "w+",
                       shape=(num_spectra, len(self.stacker.wave)))
         return f
 
@@ -749,9 +800,9 @@ class NeighborSeanSpecFinder:
         # Instantiate the nearest-neighbor regressor with metric
         # d^2 = (logM/1)^2 + (logsSFR/0.75)^2 + (z/2)^2
         reg = neighbors.NearestNeighbors(
-                n_neighbors=num_nearest,
-                metric="wminkowski",
-                metric_params=dict(w=metric_weights))
+            n_neighbors=num_nearest,
+            metric="wminkowski",
+            metric_params=dict(w=metric_weights))
 
         # Predictors:
         uv_x = np.array([self.uvdat.logm,
@@ -869,7 +920,216 @@ class NeighborSeanSpecFinder:
 
         um_colors = -np.diff(self.umdat.abs_mag[ummask])
         nbr_colors = -np.diff(self.uvdat.abs_mag.values[
-                                  self.id2idx_uvista(spec_id)])
+            self.id2idx_uvista(spec_id)])
+
+        best_neighbor = (np.abs(um_colors[:, None, :] - nbr_colors)
+                         ).sum(axis=2).argmin(axis=1)
+        return spec_id[np.arange(len(spec_id)), best_neighbor]
+
+
+class NeighborMengSpecFinder:
+    def __init__(self, umhalos, snapshot_redshift=None,
+                 nwin=501, dz=0.05, seed=None):
+        self.uvdat = UVData("meng", photbands=list("gryj"))
+        self.umdat = UMData(umhalos, uvdat=self.uvdat,
+                            snapshot_redshift=snapshot_redshift,
+                            nwin=nwin, dz=dz, seed=seed)
+        self.stacker = MengSpecStacker(self.uvdat.z,
+                                       self.uvdat.id)
+
+    def id2redshift(self, uvista_id):
+        return self.stacker.id2redshift(uvista_id)
+
+    def id2idx_uvista(self, uvista_id):
+        return self.stacker.id2idx_uvista(uvista_id)
+
+    def id2idx_specmap(self, uvista_id):
+        return self.stacker.id2idx_specmap(uvista_id)
+
+    def avg_spectrum(self, specids, lumcorrs, redshift, cosmo=None):
+        return self.stacker.avg_spectrum(specids, lumcorrs, redshift,
+                                         cosmo=cosmo)
+
+    def sublist_indices(self, length, max_mem_usage=int(1e8)):
+        sublength = int(max_mem_usage / self.stacker.bytes_per_spec)
+        return list(ms.util.generate_sublists(
+            list(range(length)), sublength))
+
+    def init_specmap(self, filename, num_spectra):
+        f = np.memmap(filename, np.float32, "w+",
+                      shape=(num_spectra, len(self.stacker.wave)))
+        return f
+
+    def write_specmap(self, outfile, neighbor_id, ummask=None,
+                      cosmo=None, corr="mass", progress=True,
+                      max_mem_usage=int(1e8)):
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
+        iterator = util.progress_iterator(progress)
+
+        um_redshift = self.umdat.z[ummask]
+        f = self.init_specmap(outfile, len(um_redshift))
+
+        if np.ndim(neighbor_id) == 1:
+            neighbor_id = np.asarray(neighbor_id)[:, None]
+
+        if corr is None:
+            masscorr = np.ones_like(neighbor_id)
+        elif corr == "mass":
+            masscorr = self.masscorr(neighbor_id, ummask=ummask)
+        elif corr == "lum":
+            masscorr = self.lumcorr(neighbor_id, ummask=ummask)
+        else:
+            raise ValueError(f"Invalid corr={corr}")
+
+        sub_index = self.sublist_indices(len(neighbor_id), max_mem_usage)
+        for i in iterator(len(sub_index)):
+            i = sub_index[i]
+            f[i] = self.avg_spectrum(neighbor_id[i], masscorr[i],
+                                     um_redshift[i], cosmo=cosmo)
+
+    def find_nearest_specid(self, num_nearest=6, bestcolor=True,
+                            metric_weights=None, ummask=None, verbose=1):
+        """
+        Default metric_weights = [1/1.0, 1/0.5, 1/2.0]
+        Specifies weights for logM, logsSFR_UV, redshift
+        """
+        if not num_nearest:
+            return None
+        from sklearn import neighbors
+        num_nearest = int(num_nearest)
+        if metric_weights is None:
+            metric_weights = [1/1.0, 1/0.5, 1/2.0]
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
+
+        # Select UltraVISTA galaxies with simulated spectra
+        specid = ms.MengSpectraConfig().specid()
+        uvsel = np.isin(self.uvdat.id, specid)
+        # Instantiate the nearest-neighbor regressor with metric
+        # d^2 = (logM/1)^2 + (logsSFR/0.75)^2 + (z/2)^2
+        reg = neighbors.NearestNeighbors(
+            n_neighbors=num_nearest,
+            metric="minkowski",
+            metric_params=dict(w=metric_weights))
+
+        # Predictors:
+        uv_x = np.array([self.uvdat.logm,
+                         self.uvdat.logssfr_uv,
+                         self.uvdat.z]).T
+        um_x = np.array([self.umdat.logm,
+                         self.umdat.logssfr_uv,
+                         self.umdat.z]).T
+        uvsel &= np.isfinite(uv_x).all(axis=1)
+        umsel = ummask
+        assert np.isfinite(um_x).all()
+
+        # Find nearest neighbor index --> SpecID
+        reg.fit(uv_x[uvsel])
+        if verbose:
+            print("Assigning nearest-neighbor SpecIDs...")
+        neighbor_index = reg.kneighbors(um_x[umsel])[1]
+        if verbose:
+            print("SpecIDs assigned successfully.")
+        neighbor_id = np.full((len(self.umdat.logm), num_nearest), -99)
+        neighbor_id[umsel] = self.uvdat.id[uvsel][neighbor_index]
+
+        ans = neighbor_id[ummask]
+        if bestcolor:
+            ans = self.best_color(ans, ummask=ummask)  # .reshape(-1, 1)
+        return ans
+
+    def specprops(self, specid, ummask=None, cosmo=None,
+                  specmap_filename=None, progress=True):
+        """
+        Return structured array of spectral properties derived from
+        Sean's synthetic spectra
+        Parameters
+        ----------
+        specid : array
+            One-dimensional array containing the UltraVISTA ID of
+            the galaxies to include in the returned array
+        ummask : numpy mask (default = None)
+            Mask you can apply to UniverseMachine redshifts
+        cosmo : astropy.Cosmology (default = Bolshoi-Planck)
+            Used to calculate distance discrepancy, which is used
+            as a flux correction factor
+        specmap_filename : str (default = None)
+            If supplied, save the spectra as they are generated to
+            a memory map at this filename (alternative to write_specmap)
+        progress : bool | str (default = True)
+            If True, use tqdm progress bar. If 'notebook', use
+            tqdm.notebook progress bar. If False, no progress bar
+
+        Returns
+        -------
+        propcat : structured array
+            All spectral properties for each specified galaxy
+        """
+        if cosmo is None:
+            cosmo = ms.bplcosmo
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
+        if specmap_filename is None:
+            specmap = None
+        else:
+            specmap = self.init_specmap(specmap_filename, len(specid))
+        props = self.stacker.config.load_specprops()
+        props = props.iloc[specid]
+
+        dtypes = list(zip(props.columns.values, props.dtypes.values))
+        propcat = np.empty(len(props), dtype=dtypes)
+        for key in props.columns.values:
+            propcat[key] = props[key]
+
+        um_redshift = self.umdat.z[ummask]
+        propcat = util.fix_meng_specprops_columns(
+            self, um_redshift, propcat, cosmo, max_gband_nan=5000,
+            specmap=specmap, progress=progress)
+        if specmap is not None:
+            specmap.flush()
+        return propcat
+
+    def lumcorr(self, spec_id, band=None, ummask=None):
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
+
+        if band is None:
+            available = self.uvdat.photbands
+            band = available[-1]
+            if "y" in available:
+                band = "y"
+            elif "j" in available:
+                band = "j"
+            elif "i" in available:
+                band = "i"
+
+        # Normalize specified photometric band
+        uv_lum = 10 ** (-0.4 * self.uvdat.abs_mag[band].values)
+        um_lum = 10 ** (-0.4 * self.umdat.abs_mag[band].values)
+
+        # Return the correction factor, which is just a constant
+        # we have to multiply into the stacked spectrum
+        uv_lum = uv_lum[self.id2idx_uvista(spec_id)]
+        um_lum = um_lum[(ummask, *[None, ]*(spec_id.ndim-1))]
+        return um_lum / uv_lum
+
+    def masscorr(self, spec_id, ummask=None):
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
+
+        uv_logm = self.uvdat.logm[self.id2idx_uvista(spec_id)]
+        um_logm = self.umdat.logm[(ummask, *[None, ]*(spec_id.ndim-1))]
+
+        return 10 ** (um_logm - uv_logm)
+
+    def best_color(self, spec_id, ummask=None):
+        if ummask is None:
+            ummask = np.ones(self.umdat.z.shape, dtype=bool)
+
+        um_colors = -np.diff(self.umdat.abs_mag[ummask])
+        nbr_colors = -np.diff(self.uvdat.abs_mag.values[
+            self.id2idx_uvista(spec_id)])
 
         best_neighbor = (np.abs(um_colors[:, None, :] - nbr_colors)
                          ).sum(axis=2).argmin(axis=1)

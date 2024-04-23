@@ -63,7 +63,7 @@ def load_ascii_data(filename, obs_mass_limit=8e8, true_mass_limit=0):
     # Read in the ASCII table, make mass cut (this takes a while)
     masslimit = {"obs_sm": obs_mass_limit, "true_sm": true_mass_limit}
     reader = ht_sim_manager.tabular_ascii_reader.TabularAsciiReader(
-                             filename, cols, row_cut_min_dict=masslimit)
+        filename, cols, row_cut_min_dict=masslimit)
     return reader.read_ascii()
 
 
@@ -218,7 +218,7 @@ def metadict_with_specprop(meta):
 # These spectra assume solar metallicity (Z = 0.02), the stellar mass
 # given in the mock catalog, and an exponential SFH given by ltau/lage.
 #
-# Load via 
+# Load via
 # >>> data = np.load("filename.specprop")
 #
 # Column descriptions:
@@ -267,16 +267,78 @@ def metadict_with_spec(meta, ngal):
     return dict(Ngal=ngal, Nwave=nwave, header_spec=header_spec, **meta)
 
 
-# def get_photbands(photbands, default=None):
-#     if default is None:
-#         default = ["u", "b", "v", "g", "r", "i", "z",
-#                    "y", "j", "h", "k", "ch1", "ch2"]
-#     if photbands is None:
-#         photbands = [s.lower() for s in default if s]
-#     else:
-#         photbands = [s.lower() for s in photbands if s]
+def metadict_with_meng_specprop(meta):
+    if "header_specprop" in meta:
+        del meta["header_specprop"]
+
+    header_specprop = """# Structured array of emission line luminosities.
+# Nearest-neighbor matched to the synthetic spectra library compiled
+# by Meng Gu based on galaxies in 3DHST and COSMOS bright outliers.
 #
-#     return photbands
+#
+# Load via
+# >>> data = np.load("filename.specprop")
+#
+# - data["idx_3dhst"] gives the index from Meng's
+# 3DHST catalog that each object was matched to
+# (there were no matches to COSMOS galaxies)
+#
+# - data["logssfr"] gives log(sSFR) from Prospector,
+# which might be more reliable than UniverseMachine
+#
+# - 62 columns of emission lines with the following names:
+# ========================================================
+# '[Ar III] 3109', '[Ne III] 3343', '[Ne V] 3426', '[S III] 3722',
+  '[O II] 3726', '[O II] 3729', 'Ba-8 3798', 'Ba-7 3835',
+  '[O II] 3867', '[Ne III] 3869', 'He I 3888.63A', 'Ba-6 3889',
+  '[Ne III] 3968', 'Ba-5 3970', '[S II] 4070', '[S II] 4078',
+  'Ba-delta 4101.76A', 'Ba-gamma 4341', '[O III] 4363',
+  'He I 4471.49A', '[C  I] 4621', 'He II 4685.64A', '[Ar IV] 4711',
+  '[Ne IV] 4720', '[Ar IV] 4740', 'Ba-beta 4861', '[O III] 4931',
+  '[O III] 4959', '[O III] 5007', '[Ar III] 5192', '[N I] 5200',
+  '[Cl III] 5518', '[Cl III] 5538', '[O I] 5577', '[N II] 5755',
+  'He I 5875.64A', '[O I] 6300', '[S III] 6312', '[O I] 6363',
+  '[N II] 6548', 'Ba-alpha 6563', '[N II] 6584', 'He I 6678.15A',
+  '[S II] 6716', '[S II] 6731', 'He I 7065.22A', '[Ar III] 7135',
+  '[Ar IV] 7171', '[Ar IV] 7237', '[Ar IV] 7263', '[O II] 7323',
+  '[O II] 7332', '[Ar IV] 7332', '[Ar III] 7751', '[Cl II] 8579',
+  '[C I] 8727', 'Pa-7 9015', '[S III] 9069', '[Cl II] 9124',
+  'Pa-6 9229', '[S III] 9532', 'Pa-5 9546'
+"""
+    return dict(header_specprop=header_specprop, **meta)
+
+
+def metadict_with_meng_spec(meta, ngal):
+    if "header_spec" in meta:
+        del meta["header_spec"]
+    if "Ngal" in meta:
+        del meta["Ngal"]
+    if "Nwave" in meta:
+        del meta["Nwave"]
+
+    nwave = ms.MengSpectraConfig().wavelength().size
+    header_spec = """# Binary array of the spectrum of each galaxy in the mock.
+# Nearest-neighbor matched to the synthetic spectra library compiled
+# by Meng Gu based on galaxies in the 3DHST and COSMOS bright outliers.
+#
+# Flux units: maggies
+# Observed wavelength grid taken from Meng's catalogs
+# which ranges from 3800 to 12599.22 AA
+#
+# Loading instructions:
+# =====================
+# First, load the meta data to get the array's shape
+# >>> meta = json.load(open("filename.json"))
+# >>> shape = meta["Ngal"], meta["Nwave"]
+#
+# (Method A) Load the whole array
+# >>> spec = np.fromfile("filename.spec", dtype="<f4").reshape(shape)
+#
+# (Method B) Load a single spectrum or masked selection
+# >>> idx = 123
+# >>> spec = np.memmap("filename.spec", dtype="<f4", shape=shape)[idx]
+"""
+    return dict(Ngal=ngal, Nwave=nwave, header_spec=header_spec, **meta)
 
 
 def cam_const_z(m, prop, m2, prop2, z2, z_avg, dz, nwin=501):
@@ -386,7 +448,7 @@ def default_lightcone_filenames(z_low, z_high, x_arcmin, y_arcmin,
                                 samples=1, id_tag=""):
     if id_tag:
         id_tag += "_"
-    return [f"survey_{id_tag}z{z_low:.2f}-{z_high:.2f}_" 
+    return [f"survey_{id_tag}z{z_low:.2f}-{z_high:.2f}_"
             f"x{x_arcmin:.2f}_y{y_arcmin:.2f}_{i}.dat"
             for i in range(samples)]
 
@@ -596,4 +658,51 @@ def fix_specprops_columns(nfinder, um_redshift, specprops, cosmo,
     newprops = ms.util.make_struc_array([*mag_names, *line_names, *uvista_names],
                                         [*mag_vals, *line_vals, *uvista_vals],
                                         [*mag_dtypes, *line_dtypes, *uvista_dtypes])
+    return newprops
+
+
+def fix_meng_specprops_columns(
+        nfinder, um_redshift, specprops, cosmo,
+        max_gband_nan=5000, specmap=None, progress=True):
+    nbr_id = specprops["idx_3dhst"]
+    logssfr = specprops["logssfr"]
+    redshifts = um_redshift
+    masscorr = nfinder.masscorr(nbr_id)
+    hcorr = 1  # cosmo.h / 0.7
+
+    # For calculating line_vals
+    def get_line(linename):
+        ans = specprops[linename]
+        # Luminosity is affected by the mass and assumed cosmology
+        # return ans * masscorr / hcorr ** 2
+        return ans  # <-- No correction for now
+
+    # For calculating mag_vals (apparent magnitudes)
+    def write_specmap(show_progress=True, save_specmap=None):
+        iterator = progress_iterator(show_progress)
+
+        sub_index = nfinder.sublist_indices(len(nbr_id))
+        for sub_i in iterator(len(sub_index)):
+            sub_i = sub_index[sub_i]
+            spectra = nfinder.avg_spectrum(nbr_id[sub_i],
+                                           masscorr[sub_i],
+                                           redshifts[sub_i])
+            if save_specmap is not None:
+                save_specmap[sub_i] = spectra
+
+    if specmap is not None:
+        write_specmap(show_progress=progress,
+                      save_specmap=specmap)
+
+    # Collect lines integrated from the spectra
+    # =========================================
+    line_names = nfinder.stacker.config.eline_names
+    line_vals = [get_line(x) for x in line_names]
+    line_dtypes = ["<f8" for x in line_names]
+
+    newprops = ms.util.make_struc_array(
+        ["idx_3dhst", "logssfr", *line_names],
+        [nbr_id, logssfr, *line_vals],
+        [np.int64, np.float32, *line_dtypes]
+    )
     return newprops

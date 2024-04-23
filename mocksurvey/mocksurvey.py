@@ -5,7 +5,8 @@ Author: Alan Pearl
 A collection of useful tools for coducting mock surveys of galaxies
 populated by `halotools` and `UniverseMachine` models.
 """
-
+import pickle
+import gzip
 import os
 import pathlib
 import warnings
@@ -18,6 +19,7 @@ import tqdm
 import numpy as np
 import pandas as pd
 import astropy.table as astropy_table
+from astropy.io import fits
 import tarfile
 from natsort import natsorted
 
@@ -1528,12 +1530,33 @@ class MengSpectraConfig(BaseConfig):
         If the directory is moved, then you must provide this argument again.
     """
     is_temp = False
-    MENGFILES = ["mockspec_3dhst_pfswave_c3k_a_PFSemisTrue_logu-2_2023-11-20.pkl",
-                 "mockspec_cosmos_pfswave_c3k_a_PFSemisTrue_logu-2_2023-11-20.pkl",
-                 "PFS_12hr_noisemodels.fits", "theta_3dhst.csv",
-                 "theta_cosmos.csv"]
+    MENGFILES = ["mockspec_3dhst_pfswave_c3k_a_PFSemisTrue_logu-2_2023-12-11.pkl.gz",
+                 "mockspec_cosmos_pfswave_c3k_a_PFSemisTrue_logu-2_2023-12-11.pkl.gz",
+                 "PFS_12hr_noisemodels.fits", "theta_3dhst_2023-12-11.csv",
+                 "theta_cosmos_2023-12-11.csv",
+                 "tdhst_sfrs.dat", "cosmos_sfrs.dat",
+                 "spectra_3dhst.memmap", "spectra_cosmos.memmap"]
+    eline_names = np.array([
+        '[Ar III] 3109', '[Ne III] 3343', '[Ne V] 3426', '[S III] 3722',
+        '[O II] 3726', '[O II] 3729', 'Ba-8 3798', 'Ba-7 3835',
+        '[O II] 3867', '[Ne III] 3869', 'He I 3888.63A', 'Ba-6 3889',
+        '[Ne III] 3968', 'Ba-5 3970', '[S II] 4070', '[S II] 4078',
+        'Ba-delta 4101.76A', 'Ba-gamma 4341', '[O III] 4363',
+        'He I 4471.49A', '[C  I] 4621', 'He II 4685.64A', '[Ar IV] 4711',
+        '[Ne IV] 4720', '[Ar IV] 4740', 'Ba-beta 4861', '[O III] 4931',
+        '[O III] 4959', '[O III] 5007', '[Ar III] 5192', '[N I] 5200',
+        '[Cl III] 5518', '[Cl III] 5538', '[O I] 5577', '[N II] 5755',
+        'He I 5875.64A', '[O I] 6300', '[S III] 6312', '[O I] 6363',
+        '[N II] 6548', 'Ba-alpha 6563', '[N II] 6584', 'He I 6678.15A',
+        '[S II] 6716', '[S II] 6731', 'He I 7065.22A', '[Ar III] 7135',
+        '[Ar IV] 7171', '[Ar IV] 7237', '[Ar IV] 7263', '[O II] 7323',
+        '[O II] 7332', '[Ar IV] 7332', '[Ar III] 7751', '[Cl II] 8579',
+        '[C I] 8727', 'Pa-7 9015', '[S III] 9069', '[Cl II] 9124',
+        'Pa-6 9229', '[S III] 9532', 'Pa-5 9546'
+    ])
 
-    def __init__(self, data_dir=None):
+    def __init__(self, data_dir=None, photbands=None):
+        del photbands
         config_file = "config-mengspec.json"
         BaseConfig.__init__(self, config_file, data_dir)
 
@@ -1571,26 +1594,109 @@ class MengSpectraConfig(BaseConfig):
     def are_all_files_stored(self):
         return set(self["files"]) == set(self.MENGFILES)
 
-    def load(self, old_version=False, keep_all_columns=True):
-        i = 5 if old_version else 0
-        dat = astropy_table.Table.read(self.get_filepath(i))
-        if not keep_all_columns:
-            dat.keep_columns(self.names_to_keep())
-        return dat.to_pandas()
+    def load(self, cosmo=None):
+        if cosmo is None:
+            cosmo = bplcosmo
+
+        def maggie_to_mag(inarr):
+            return 22.5 - 2.5*np.log10(np.array(inarr)/1e-9)
+
+        phot = []
+        for i in [0, 1]:  # 3dHST + Cosmos
+            with gzip.open(self.get_filepath(i), 'rb') as f:
+                modelspec = pickle.load(f)
+            sfruv = pd.read_csv(
+                self.get_filepath(i + 5),
+                delim_whitespace=True)["sfr_uv"].values
+            ind_g, ind_r, ind_y, ind_j = 2, 3, 12, 13
+
+            d_lum = cosmo.luminosity_distance(
+                modelspec["zred"]).value * cosmo.h
+            distmod = 5 * np.log10(d_lum * 1e5)
+
+            phot.append(pd.DataFrame({
+                "logm": modelspec["log_stellarmass"],
+                "sfr_tot": 10 ** modelspec["log_sfr"],
+                "sfr_uv": sfruv,
+                "redshift": modelspec["zred"],
+                "M_g": maggie_to_mag(modelspec['phot'][:, ind_g]) - distmod,
+                "M_r": maggie_to_mag(modelspec['phot'][:, ind_r]) - distmod,
+                "M_y": maggie_to_mag(modelspec['phot'][:, ind_y]) - distmod,
+                "M_j": maggie_to_mag(modelspec['phot'][:, ind_j]) - distmod,
+                "id": np.arange(len(sfruv)),
+            }))
+        return pd.concat(phot, ignore_index=True)
+
+    def load_specprops(self):
+        phot = []
+        for i in [0, 1]:  # 3dHST + Cosmos
+            with gzip.open(self.get_filepath(i), 'rb') as f:
+                modelspec = pickle.load(f)
+
+            phot.append(pd.DataFrame({
+                "idx_3dhst": np.arange(len(modelspec["zred"])),
+                "logssfr": modelspec["log_sfr"] - modelspec["log_stellarmass"],
+                **{
+                    name: col for (name, col) in
+                    zip(self.eline_names, modelspec["eline_lum"].T)
+                }}))
+        return pd.concat(phot, ignore_index=True)
 
     def specid(self):
-        return np.load(self.get_filepath(1))
+        return np.arange(len(self.load()))
 
     def wavelength(self):
-        return np.load(self.get_filepath(2))
+        fits_12hr = fits.open(self.get_filepath(2))[1].data
+        wave_obs = fits_12hr['WAV']
+        _, idx = np.unique(wave_obs, return_index=True)  # removing duplicates
+        return wave_obs[idx]
 
-    def isnan(self):
-        return np.load(self.get_filepath(4))
+    def specmapper(self):
+        len_3dhst, len_cosmos, len_wave = (63413, 11479, 12257)
+        dtype_3dhst = np.float64
+        shape_3dhst = (len_3dhst, len_wave)
+        path_3dhst = self.get_filepath(7)
 
-    def specmap(self):
-        path = self.get_filepath(3)
-        shape = (self.specid().size, self.wavelength().size)
-        return lambda: np.memmap(path, dtype="<f4", shape=shape)
+        dtype_cosmos = np.float32
+        shape_cosmos = (len_cosmos, len_wave)
+        path_cosmos = self.get_filepath(8)
+
+        def get_spectra(index):
+            if np.ndim(index):
+                index = np.asarray(index)
+                where_cosmos = index >= len_3dhst
+                mmap_cosmos = np.memmap(
+                    path_cosmos, dtype=dtype_cosmos, shape=shape_cosmos)
+                mmap_3dhst = np.memmap(
+                    path_3dhst, dtype=dtype_3dhst, shape=shape_3dhst)
+                ans = np.zeros((*index.shape, len_wave), dtype_cosmos)
+                ans[where_cosmos, :] = mmap_cosmos[index[where_cosmos]
+                                                   - len_3dhst, :]
+                ans[~where_cosmos, :] = mmap_3dhst[index[~where_cosmos], :]
+                return ans
+
+            else:
+                if index >= len_3dhst:
+                    mmap = np.memmap(
+                        path_cosmos, dtype=dtype_cosmos, shape=shape_cosmos)
+                    return mmap[index - len_3dhst, :]
+                else:
+                    mmap = np.memmap(
+                        path_3dhst, dtype=dtype_3dhst, shape=shape_3dhst)
+                    return mmap[index, :]
+
+        return get_spectra
+
+    @staticmethod
+    def get_photbands(photbands, default=None):
+        if default is None:
+            default = ["g", "r", "y", "j"]
+        if photbands is None:
+            photbands = [s.lower() for s in default if s]
+        else:
+            photbands = [s.lower() for s in photbands if s]
+
+        return photbands
 
 
 class UMWgetter:
@@ -1907,4 +2013,5 @@ class UVISTAWgetter:
 available_calibrations = {
     "uvista": UVISTAConfig,
     "sdss": SDSSConfig,
+    "meng": MengSpectraConfig,
 }
