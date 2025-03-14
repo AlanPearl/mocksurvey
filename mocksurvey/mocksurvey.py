@@ -67,7 +67,7 @@ class RealizationLoader:
         self.meta = [self.config.load_meta(i) for i in range(self.nreal)]
         if nreal is not None:
             assert nreal <= self.nreal, f"There are only {self.nreal}" \
-                                        f"realizations of {name} available"
+                f"realizations of {name} available"
             self.nreal = nreal
 
         if selector is None:
@@ -260,7 +260,7 @@ class LightConeSelector:
 
     def __str__(self):
         return f"{type(self).__name__}(z_low={self.z_low}, " \
-               f"z_high={self.z_high}, sqdeg={self.sqdeg}, **kw)"
+            f"z_high={self.z_high}, sqdeg={self.sqdeg}, **kw)"
 
     def __and__(self, other):
         assert isinstance(other, LightConeSelector)
@@ -651,11 +651,10 @@ class UMConfig(BaseConfig):
         The path to the directory where you plan on saving all of the binary files.
         If the directory is moved, then you must provide this argument again.
     """
-    is_temp = False
 
-    def __init__(self, data_dir=None):
+    def __init__(self, data_dir=None, is_temp=False):
         config_file = "config-um.json"
-        BaseConfig.__init__(self, config_file, data_dir)
+        BaseConfig.__init__(self, config_file, data_dir, is_temp=is_temp)
 
     def _init_dict(self, data_dir=None):
         BaseConfig._init_dict(self, data_dir)
@@ -1086,7 +1085,7 @@ class BaseDataConfig(BaseConfig):
 
     def _msg1(self, ftype):
         return f"File type {repr(ftype)} not recognized. " \
-               f"Must be one of {set(self.FILES.keys())}"
+            f"Must be one of {set(self.FILES.keys())}"
 
     def __init__(self, data_dir=None, photbands=None):
         """
