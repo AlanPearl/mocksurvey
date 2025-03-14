@@ -6,7 +6,7 @@ Modified by Alan Pearl to work the code into my package.
 import os
 
 import numpy as np
-from scipy.integrate import simps
+from scipy.integrate import simpson as simps
 from scipy.interpolate import interp1d
 # from astropy.table import Table
 
@@ -23,6 +23,7 @@ class OptimizedFilterIntegrator:
     by saving the rebinned filter transmission curves instead of
     loading them and rebinning for every single spectrum
     """
+
     def __init__(self, wave_o_nm, filter_strings):
         wave_o = wave_o_nm * 10.0  # nm to Ang.
         self.nu = c_A / wave_o
@@ -66,7 +67,7 @@ def readfilter(filtername):
     return np.load(filename)
 
 
-# Rebin a filter response function to a new frequency grid   
+# Rebin a filter response function to a new frequency grid
 def rebinfilter(filtername, nu_new):
     filter_interp = interp1d(filtername['nu'], filtername['transmission'],
                              bounds_error=False, fill_value=0.0)
